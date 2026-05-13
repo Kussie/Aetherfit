@@ -1,0 +1,25 @@
+<Project>
+    <PropertyGroup>
+        <DALAMUD_HOME Condition="'$(DALAMUD_HOME)' == '' AND Exists('$(AppData)\XIVLauncherCN\addon\Hooks\dev')">$(AppData)\XIVLauncherCN\addon\Hooks\dev</DALAMUD_HOME>
+        <DALAMUD_HOME Condition="'$(DALAMUD_HOME)' == ''">$(AppData)\XIVLauncher\addon\Hooks\dev</DALAMUD_HOME>
+        <DalamudLibPath>$(DALAMUD_HOME)\</DalamudLibPath>
+    </PropertyGroup>
+
+    <Target Name="ComputeAetherfitVersion" BeforeTargets="GetAssemblyVersion;GenerateNuspec;Build" Condition="'$(AetherfitVersion)' == ''">
+        <Exec Command="git rev-list --count HEAD" ConsoleToMsBuild="true" StandardOutputImportance="low">
+            <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitCount" />
+        </Exec>
+        <CreateProperty Value="$([System.DateTime]::UtcNow.ToString('yyMM')).$(GitCommitCount)">
+            <Output TaskParameter="Value" PropertyName="AetherfitVersion" />
+        </CreateProperty>
+        <CreateProperty Value="$(AetherfitVersion)">
+            <Output TaskParameter="Value" PropertyName="Version" />
+        </CreateProperty>
+        <CreateProperty Value="$(AetherfitVersion)">
+            <Output TaskParameter="Value" PropertyName="AssemblyVersion" />
+        </CreateProperty>
+        <CreateProperty Value="$(AetherfitVersion)">
+            <Output TaskParameter="Value" PropertyName="FileVersion" />
+        </CreateProperty>
+    </Target>
+</Project>
