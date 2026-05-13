@@ -20,6 +20,9 @@ public class Configuration : IPluginConfiguration
 
     // Filenames (not full paths) of user-supplied images stored in {ConfigDirectory}/images/.
     public Dictionary<Guid, string> OutfitImages { get; set; } = new();
+    
+    // Filenames (not full paths) of additional images stored in {ConfigDirectory}/images/additional/.
+    public Dictionary<Guid, List<string>> OutfitAdditionalImages { get; set; } = new();
 
     public bool ShowThumbnailOnHover { get; set; } = true;
     public LoginAction LoginAction { get; set; } = LoginAction.None;

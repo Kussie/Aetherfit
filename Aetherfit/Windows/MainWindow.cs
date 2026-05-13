@@ -35,6 +35,9 @@ public class MainWindow : Window, IDisposable
     private const string ImageFilters = "Image{.png,.jpg,.jpeg,.bmp,.gif,.webp}";
     private const float RightPaneImageMax = 220f;
     private const float TooltipImageMax = 160f;
+    private const float AdditionalThumbSize = 72f;
+    private const int MaxAdditionalImages = 5;
+    private const string AdditionalImagesSubdir = "additional";
 
     private enum ImageFilterMode { All, HasImage, NoImage }
     private string filterName = string.Empty;
@@ -211,7 +214,7 @@ public class MainWindow : Window, IDisposable
             ImGui.OpenPopup(FilterTagsPopupId);
         }
 
-        ImGui.TextDisabled("Image:");
+        ImGui.TextDisabled("Cover Image:");
         ImGui.SameLine();
         ImGui.PushItemWidth(-1);
         var imageIdx = (int)filterImage;
@@ -259,7 +262,7 @@ public class MainWindow : Window, IDisposable
             return;
         }
 
-        ImGui.Text("Show designs matching any of:");
+        ImGui.Text("Show designs matching all of:");
         ImGui.Separator();
 
         var size = new Vector2(220 * ImGuiHelpers.GlobalScale, 200 * ImGuiHelpers.GlobalScale);
@@ -327,7 +330,7 @@ public class MainWindow : Window, IDisposable
         if (filterTags.Count > 0)
         {
             if (cached == null || cached.Tags.Count == 0) return false;
-            if (!cached.Tags.Any(t => filterTags.Contains(t))) return false;
+            if (!filterTags.All(t => cached.Tags.Contains(t, StringComparer.OrdinalIgnoreCase))) return false;
         }
 
         if (filterImage != ImageFilterMode.All)
@@ -447,7 +450,7 @@ public class MainWindow : Window, IDisposable
                 ImGui.Unindent();
                 ImGui.Spacing();
 
-                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Image");
+                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Cover Image");
                 ImGui.Indent();
                 DrawOutfitImageBlock(id);
                 ImGui.Unindent();
@@ -565,7 +568,7 @@ public class MainWindow : Window, IDisposable
             return;
         }
 
-        ImGui.Text("Pick tags to match (any of):");
+        ImGui.Text("Pick tags to match (all of):");
         ImGui.Separator();
 
         var scrollSize = new Vector2(
@@ -645,9 +648,8 @@ public class MainWindow : Window, IDisposable
             return msg;
         }
 
-        var tagSet = new HashSet<string>(tags, StringComparer.OrdinalIgnoreCase);
         var matching = plugin.Configuration.CachedOutfits
-            .Where(kv => kv.Value.Tags.Any(t => tagSet.Contains(t)))
+            .Where(kv => tags.All(t => kv.Value.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)))
             .Select(kv => kv.Key)
             .ToList();
 
@@ -668,9 +670,14 @@ public class MainWindow : Window, IDisposable
     {
         var imagePath = GetOutfitImagePath(id);
         if (imagePath != null)
-            DrawImageScaled(imagePath, RightPaneImageMax * ImGuiHelpers.GlobalScale);
+        {
+            if (DrawImageScaled(imagePath, RightPaneImageMax * ImGuiHelpers.GlobalScale, clickable: true))
+                plugin.ImageViewer.Show(imagePath);
+        }
         else
+        {
             ImGui.TextDisabled("No image set");
+        }
 
         ImGui.Spacing();
 
@@ -683,19 +690,105 @@ public class MainWindow : Window, IDisposable
             if (ImGui.Button("Remove Image"))
                 RemoveOutfitImage(id);
         }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        DrawAdditionalImagesBlock(id);
     }
 
-    private static void DrawImageScaled(string absolutePath, float maxSide)
+    private void DrawAdditionalImagesBlock(Guid id)
+    {
+        ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Additional Images");
+
+        var paths = GetAdditionalImagePaths(id);
+        var thumb = AdditionalThumbSize * ImGuiHelpers.GlobalScale;
+        var toRemoveIndex = -1;
+
+        for (var i = 0; i < paths.Count; i++)
+        {
+            if (i > 0)
+                ImGui.SameLine();
+            using (ImRaii.PushId(i))
+            {
+                var clicked = DrawSquareThumbnail(paths[i], thumb, out var deleteRequested);
+                if (clicked)
+                    plugin.ImageViewer.Show(paths[i]);
+                if (deleteRequested)
+                    toRemoveIndex = i;
+            }
+        }
+
+        if (paths.Count < MaxAdditionalImages)
+        {
+            if (paths.Count > 0)
+                ImGui.SameLine();
+            if (ImGui.Button("+", new Vector2(thumb, thumb)))
+                OpenAdditionalImagePicker(id);
+        }
+
+        ImGui.TextDisabled("Click an image to view it full size. Hold Shift and right-click to remove.");
+
+        if (toRemoveIndex >= 0)
+            RemoveAdditionalImage(id, toRemoveIndex);
+    }
+
+    private static bool DrawImageScaled(string absolutePath, float maxSide, bool clickable = false)
     {
         var tex = Plugin.TextureProvider.GetFromFile(absolutePath).GetWrapOrEmpty();
         if (tex.Width <= 0 || tex.Height <= 0)
         {
             ImGui.TextDisabled("Loading image...");
-            return;
+            return false;
         }
 
         var scale = Math.Min(maxSide / tex.Width, maxSide / tex.Height);
         ImGui.Image(tex.Handle, new Vector2(tex.Width * scale, tex.Height * scale));
+
+        if (!clickable)
+            return false;
+
+        var hovered = ImGui.IsItemHovered();
+        if (hovered)
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        return hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+    }
+
+    private static bool DrawSquareThumbnail(string absolutePath, float size, out bool deleteRequested)
+    {
+        deleteRequested = false;
+        var tex = Plugin.TextureProvider.GetFromFile(absolutePath).GetWrapOrEmpty();
+        if (tex.Width <= 0 || tex.Height <= 0)
+        {
+            ImGui.Dummy(new Vector2(size, size));
+            return false;
+        }
+
+        float uMin = 0f, uMax = 1f, vMin = 0f, vMax = 1f;
+        if (tex.Width > tex.Height)
+        {
+            var keep = tex.Height / (float)tex.Width;
+            uMin = (1f - keep) * 0.5f;
+            uMax = 1f - uMin;
+        }
+        else if (tex.Height > tex.Width)
+        {
+            var keep = tex.Width / (float)tex.Height;
+            vMin = (1f - keep) * 0.5f;
+            vMax = 1f - vMin;
+        }
+
+        ImGui.Image(tex.Handle, new Vector2(size, size), new Vector2(uMin, vMin), new Vector2(uMax, vMax));
+
+        var hovered = ImGui.IsItemHovered();
+        if (hovered)
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+
+        var leftClicked = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+        if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
+            deleteRequested = true;
+        return leftClicked;
     }
 
     private void OpenImagePicker(Guid id)
@@ -777,6 +870,102 @@ public class MainWindow : Window, IDisposable
             try { File.Delete(file); }
             catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to delete {File}", file); }
         }
+    }
+
+    private static string EnsureAdditionalImagesDirectory()
+    {
+        var dir = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images", AdditionalImagesSubdir);
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private List<string> GetAdditionalImagePaths(Guid id)
+    {
+        var result = new List<string>();
+        if (!plugin.Configuration.OutfitAdditionalImages.TryGetValue(id, out var filenames) || filenames.Count == 0)
+            return result;
+
+        var dir = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images", AdditionalImagesSubdir);
+        foreach (var name in filenames)
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            var path = Path.Combine(dir, name);
+            if (File.Exists(path))
+                result.Add(path);
+        }
+        return result;
+    }
+
+    private void OpenAdditionalImagePicker(Guid id)
+    {
+        fileDialog.OpenFileDialog(
+            "Pick an additional image",
+            ImageFilters,
+            (success, paths) =>
+            {
+                if (!success || paths.Count == 0)
+                    return;
+                AddAdditionalImage(id, paths[0]);
+            },
+            1);
+    }
+
+    private void AddAdditionalImage(Guid id, string sourcePath)
+    {
+        try
+        {
+            if (!plugin.Configuration.OutfitAdditionalImages.TryGetValue(id, out var list))
+            {
+                list = new List<string>();
+                plugin.Configuration.OutfitAdditionalImages[id] = list;
+            }
+
+            if (list.Count >= MaxAdditionalImages)
+                return;
+
+            var imagesDir = EnsureAdditionalImagesDirectory();
+            var ext = Path.GetExtension(sourcePath).ToLowerInvariant();
+            if (string.IsNullOrEmpty(ext))
+                ext = ".png";
+
+            var targetName = $"{id:N}_{Guid.NewGuid():N}{ext}";
+            var targetPath = Path.Combine(imagesDir, targetName);
+            File.Copy(sourcePath, targetPath, overwrite: true);
+
+            list.Add(targetName);
+            plugin.Configuration.Save();
+        }
+        catch (Exception ex)
+        {
+            Plugin.ChatGui.PrintError($"[Aetherfit] Failed to add image: {ex.Message}");
+            Plugin.Log.Warning(ex, "Failed to add additional image for {Id} from {Path}", id, sourcePath);
+        }
+    }
+
+    private void RemoveAdditionalImage(Guid id, int index)
+    {
+        if (!plugin.Configuration.OutfitAdditionalImages.TryGetValue(id, out var list))
+            return;
+        if (index < 0 || index >= list.Count)
+            return;
+
+        var filename = list[index];
+        list.RemoveAt(index);
+        if (list.Count == 0)
+            plugin.Configuration.OutfitAdditionalImages.Remove(id);
+
+        try
+        {
+            var path = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images", AdditionalImagesSubdir, filename);
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to delete additional image {File}", filename);
+        }
+
+        plugin.Configuration.Save();
     }
 
     private static CachedOutfit ParseOutfit(JObject j)

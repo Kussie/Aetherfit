@@ -27,6 +27,7 @@ public sealed class Plugin : IDalamudPlugin
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
     private MainWindow MainWindow { get; init; }
+    public ImageViewerWindow ImageViewer { get; init; }
 
     public Plugin()
     {
@@ -34,8 +35,10 @@ public sealed class Plugin : IDalamudPlugin
 
         ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
+        ImageViewer = new ImageViewerWindow();
         WindowSystem.AddWindow(ConfigWindow);
         WindowSystem.AddWindow(MainWindow);
+        WindowSystem.AddWindow(ImageViewer);
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
@@ -63,6 +66,7 @@ public sealed class Plugin : IDalamudPlugin
 
         ConfigWindow.Dispose();
         MainWindow.Dispose();
+        ImageViewer.Dispose();
 
         CommandManager.RemoveHandler(CommandName);
     }

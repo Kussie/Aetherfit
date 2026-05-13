@@ -1,8 +1,8 @@
 {
   "Author": "Kussie ",
   "Name": "Aetherfit",
-  "Punchline": "An alternative frontend for Glamourer",
-  "Description": "A custom frontend for Glamourer that allows you to browse and apply designs with screenshots and tags along with various other small features",
+  "Punchline": "An alternative simple frontend for Glamourer",
+  "Description": "A custom simple frontend for applying designs from Glamourer. Lets you browse and apply designs, and optionally upload your own images to more easily be able to decide on which design to wear.",
   "ApplicableVersion": "any",
   "Tags": [
     "glamour",
@@ -10,5 +10,6 @@
     "outfits",
     "glam",
     "fashion"
-  ]
+  ], 
+  "DalamudApiLevel": 15
 }

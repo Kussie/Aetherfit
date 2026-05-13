@@ -94,7 +94,7 @@ public class ConfigWindow : Window, IDisposable
             return;
         }
 
-        ImGui.TextDisabled("Pick tags (outfit matches if it has any of these):");
+        ImGui.TextDisabled("Pick tags (outfit must have all of these):");
 
         var size = new Vector2(0, 180 * ImGuiHelpers.GlobalScale);
         var changed = false;
