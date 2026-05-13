@@ -32,7 +32,7 @@ public class MainWindow : Window, IDisposable
     private readonly HashSet<string> selectedTagsForApply = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly FileDialogManager fileDialog = new();
-    private const string ImageFilters = "Image{.png,.jpg,.jpeg,.bmp,.gif,.webp}";
+    private const string ImageFilters = "Image{.png,.jpg,.jpeg,.webp}";
     private const float RightPaneImageMax = 220f;
     private const float TooltipImageMax = 160f;
     private const float AdditionalThumbSize = 72f;
