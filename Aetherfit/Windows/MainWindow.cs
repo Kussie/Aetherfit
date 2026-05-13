@@ -197,7 +197,7 @@ public class MainWindow : Window, IDisposable
         ImGui.SetWindowFontScale(1.0f);
         ImGui.Separator();
 
-        if (ImGui.Button("Cover Mode >>", new Vector2(-1, 0)))
+        if (ImGui.Button("Gallery Mode >>", new Vector2(-1, 0)))
             coverMode = true;
 
         if (ImGui.Button("Refresh"))

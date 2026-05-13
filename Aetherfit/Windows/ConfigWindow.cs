@@ -49,7 +49,7 @@ public class ConfigWindow : Window, IDisposable
         }
 
         var defaultCover = cfg.DefaultToCoverMode;
-        if (ImGui.Checkbox("Open the main window in Cover Mode by default", ref defaultCover))
+        if (ImGui.Checkbox("Open the main window in Gallery Mode by default", ref defaultCover))
         {
             cfg.DefaultToCoverMode = defaultCover;
             cfg.Save();
