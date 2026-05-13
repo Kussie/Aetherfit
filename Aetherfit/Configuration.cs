@@ -25,6 +25,7 @@ public class Configuration : IPluginConfiguration
     public Dictionary<Guid, List<string>> OutfitAdditionalImages { get; set; } = new();
 
     public bool ShowThumbnailOnHover { get; set; } = true;
+    public bool DefaultToCoverMode { get; set; } = false;
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 

@@ -47,6 +47,10 @@ public class MainWindow : Window, IDisposable
     private const string FilterTagsPopupId = "FilterTagsPopup";
     private List<string> availableTagsForFilter = new();
 
+    private bool coverMode;
+    private const int CoverColumns = 4;
+    private const float CoverMinThumbSize = 96f;
+
     public MainWindow(Plugin plugin)
         : base("Aetherfit##With a hidden ID", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
@@ -66,6 +70,7 @@ public class MainWindow : Window, IDisposable
 
     public override void OnOpen()
     {
+        coverMode = plugin.Configuration.DefaultToCoverMode;
         RefreshDesigns();
     }
 
@@ -147,21 +152,40 @@ public class MainWindow : Window, IDisposable
 
     public override void Draw()
     {
-        var leftWidth = 260 * ImGuiHelpers.GlobalScale;
+        var style = ImGui.GetStyle();
+        var bottomRowHeight = ImGui.GetFrameHeight() + style.ItemSpacing.Y;
+        var bodyHeight = Math.Max(0, ImGui.GetContentRegionAvail().Y - bottomRowHeight - style.ItemSpacing.Y);
 
-        using (var left = ImRaii.Child("OutfitTree", new Vector2(leftWidth, 0), true))
+        if (coverMode)
         {
-            if (left.Success)
-                DrawLeftPane();
+            using (var full = ImRaii.Child("CoverModePane", new Vector2(0, bodyHeight), true))
+            {
+                if (full.Success)
+                    DrawCoverModePane();
+            }
+        }
+        else
+        {
+            var leftWidth = 260 * ImGuiHelpers.GlobalScale;
+
+            using (var left = ImRaii.Child("OutfitTree", new Vector2(leftWidth, bodyHeight), true))
+            {
+                if (left.Success)
+                    DrawLeftPane();
+            }
+
+            ImGui.SameLine();
+
+            using (var right = ImRaii.Child("Right", new Vector2(0, bodyHeight), true))
+            {
+                if (right.Success)
+                    DrawSelectedOutfitDetails();
+            }
         }
 
-        ImGui.SameLine();
-
-        using (var right = ImRaii.Child("Right", Vector2.Zero, true))
-        {
-            if (right.Success)
-                DrawRightPane();
-        }
+        ImGui.Separator();
+        DrawBottomButtons();
+        DrawApplyByTagPopup();
 
         fileDialog.Draw();
     }
@@ -172,6 +196,9 @@ public class MainWindow : Window, IDisposable
         ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), "Glamourer Designs");
         ImGui.SetWindowFontScale(1.0f);
         ImGui.Separator();
+
+        if (ImGui.Button("Cover Mode >>", new Vector2(-1, 0)))
+            coverMode = true;
 
         if (ImGui.Button("Refresh"))
             RefreshDesigns();
@@ -204,11 +231,191 @@ public class MainWindow : Window, IDisposable
             DrawTree(root);
     }
 
-    private void DrawFilterUi()
+    private void DrawCoverModePane()
     {
-        if (!ImGui.CollapsingHeader("Filters"))
+        ImGui.SetWindowFontScale(1.25f);
+        ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), "Glamourer Designs");
+        ImGui.SetWindowFontScale(1.0f);
+        ImGui.Separator();
+
+        if (ImGui.Button("<< Tree Mode", new Vector2(-1, 0)))
+            coverMode = false;
+
+        if (ImGui.Button("Refresh"))
+            RefreshDesigns();
+        ImGui.SameLine();
+        ImGui.TextDisabled($"{designsCount} design(s)");
+
+        ImGui.Separator();
+
+        if (designsError != null)
+        {
+            ImGui.TextWrapped("Glamourer is not available. Make sure it is installed and enabled.");
+            ImGui.TextDisabled(designsError);
+            return;
+        }
+
+        if (designsCount == 0)
+        {
+            ImGui.Text("No Glamourer designs found.");
+            return;
+        }
+
+        DrawFilterUi(defaultOpen: true);
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        using var gridChild = ImRaii.Child("CoverGridScroll", Vector2.Zero, false);
+        if (gridChild.Success)
+            DrawCoverGrid();
+    }
+
+    private void DrawCoverGrid()
+    {
+        var visible = new List<DesignLeaf>();
+        CollectVisibleDesigns(root, visible);
+
+        if (visible.Count == 0)
+        {
+            ImGui.TextDisabled("No designs match the current filters.");
+            return;
+        }
+
+        var spacing = ImGui.GetStyle().ItemSpacing.X;
+        var avail = ImGui.GetContentRegionAvail().X;
+        var thumbSize = Math.Max(CoverMinThumbSize, (avail - (CoverColumns - 1) * spacing) / CoverColumns);
+
+        for (var i = 0; i < visible.Count; i++)
+        {
+            if (i % CoverColumns != 0)
+                ImGui.SameLine();
+            DrawCoverCell(visible[i], thumbSize);
+        }
+    }
+
+    private void CollectVisibleDesigns(FolderNode node, List<DesignLeaf> result)
+    {
+        foreach (var design in node.Designs)
+        {
+            plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var cached);
+            if (DesignMatchesFilters(design, cached))
+                result.Add(design);
+        }
+        foreach (var folder in node.Folders.Values)
+            CollectVisibleDesigns(folder, result);
+    }
+
+    private void DrawCoverCell(DesignLeaf design, float thumbSize)
+    {
+        using var id = ImRaii.PushId(design.Id.ToString());
+        using var group = ImRaii.Group();
+
+        var thumbStart = ImGui.GetCursorScreenPos();
+        var thumbVec = new Vector2(thumbSize, thumbSize);
+        var imagePath = GetOutfitImagePath(design.Id);
+        var clicked = false;
+        var doubleClicked = false;
+
+        if (imagePath != null)
+        {
+            var tex = Plugin.TextureProvider.GetFromFile(imagePath).GetWrapOrEmpty();
+            if (tex.Width > 0 && tex.Height > 0)
+            {
+                float uMin = 0f, uMax = 1f, vMin = 0f, vMax = 1f;
+                if (tex.Width > tex.Height)
+                {
+                    var keep = tex.Height / (float)tex.Width;
+                    uMin = (1f - keep) * 0.5f;
+                    uMax = 1f - uMin;
+                }
+                else if (tex.Height > tex.Width)
+                {
+                    var keep = tex.Width / (float)tex.Height;
+                    vMin = (1f - keep) * 0.5f;
+                    vMax = 1f - vMin;
+                }
+                ImGui.Image(tex.Handle, thumbVec, new Vector2(uMin, vMin), new Vector2(uMax, vMax));
+            }
+            else
+            {
+                ImGui.Dummy(thumbVec);
+            }
+        }
+        else
+        {
+            ImGui.InvisibleButton("##placeholder", thumbVec);
+            var dl = ImGui.GetWindowDrawList();
+            var fill = ImGui.ColorConvertFloat4ToU32(new Vector4(0.22f, 0.22f, 0.25f, 1f));
+            dl.AddRectFilled(thumbStart, thumbStart + thumbVec, fill, 4f);
+            const string text = "No Image";
+            var textSize = ImGui.CalcTextSize(text);
+            var textPos = thumbStart + (thumbVec - textSize) * 0.5f;
+            dl.AddText(textPos, ImGui.ColorConvertFloat4ToU32(new Vector4(0.65f, 0.65f, 0.68f, 1f)), text);
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                clicked = true;
+            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                doubleClicked = true;
+            DrawCoverCellTooltip(design);
+        }
+
+        if (selectedDesign == design.Id)
+        {
+            var dl = ImGui.GetWindowDrawList();
+            var hl = ImGui.ColorConvertFloat4ToU32(new Vector4(1.0f, 0.85f, 0.4f, 1f));
+            dl.AddRect(thumbStart, thumbStart + thumbVec, hl, 4f, ImDrawFlags.None, 2.5f);
+        }
+
+        var label = design.DisplayName;
+        var labelWidth = ImGui.CalcTextSize(label).X;
+        var indent = Math.Max(0f, (thumbSize - labelWidth) * 0.5f);
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
+
+        var hasColor = design.Color != 0;
+        if (hasColor)
+            ImGui.PushStyleColor(ImGuiCol.Text, design.Color);
+        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + thumbSize);
+        ImGui.TextUnformatted(label);
+        ImGui.PopTextWrapPos();
+        if (hasColor)
+            ImGui.PopStyleColor();
+
+        if (clicked)
+            selectedDesign = design.Id;
+        if (doubleClicked)
+        {
+            selectedDesign = design.Id;
+            ApplyDesignById(design.Id);
+        }
+    }
+
+    private void DrawCoverCellTooltip(DesignLeaf design)
+    {
+        ImGui.BeginTooltip();
+        ImGui.TextUnformatted(design.DisplayName);
+        if (!string.IsNullOrEmpty(design.FullPath))
+            ImGui.TextDisabled(design.FullPath);
+        ImGui.TextDisabled("Double-click to apply");
+        ImGui.EndTooltip();
+    }
+
+    private void DrawFilterUi(bool defaultOpen = false)
+    {
+        var flags = defaultOpen ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
+        if (!ImGui.CollapsingHeader("Filters", flags))
             return;
 
+        DrawFilterControls();
+        DrawFilterTagsPopup();
+    }
+
+    private void DrawFilterControls()
+    {
         ImGui.PushItemWidth(-1);
         ImGui.InputTextWithHint("##nameFilter", "Filter by name...", ref filterName, 64);
         ImGui.PopItemWidth();
@@ -243,8 +450,6 @@ public class MainWindow : Window, IDisposable
                 filterImage = ImageFilterMode.All;
             }
         }
-
-        DrawFilterTagsPopup();
     }
 
     private void RebuildAvailableFilterTags()
@@ -381,25 +586,6 @@ public class MainWindow : Window, IDisposable
         if (imagePath != null)
             DrawImageScaled(imagePath, TooltipImageMax * ImGuiHelpers.GlobalScale);
         ImGui.EndTooltip();
-    }
-
-    private void DrawRightPane()
-    {
-        var style = ImGui.GetStyle();
-        var bottomRowHeight = ImGui.GetFrameHeight() + style.ItemSpacing.Y;
-
-        var topHeight = Math.Max(0, ImGui.GetContentRegionAvail().Y - bottomRowHeight - style.ItemSpacing.Y);
-
-        using (var top = ImRaii.Child("DesignTop", new Vector2(0, topHeight), false))
-        {
-            if (top.Success)
-                DrawSelectedOutfitDetails();
-        }
-
-        ImGui.Separator();
-        DrawBottomButtons();
-
-        DrawApplyByTagPopup();
     }
 
     private void DrawSelectedOutfitDetails()

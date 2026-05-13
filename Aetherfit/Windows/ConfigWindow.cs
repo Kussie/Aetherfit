@@ -48,6 +48,13 @@ public class ConfigWindow : Window, IDisposable
             cfg.Save();
         }
 
+        var defaultCover = cfg.DefaultToCoverMode;
+        if (ImGui.Checkbox("Open the main window in Cover Mode by default", ref defaultCover))
+        {
+            cfg.DefaultToCoverMode = defaultCover;
+            cfg.Save();
+        }
+
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
