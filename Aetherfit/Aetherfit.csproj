@@ -11,6 +11,7 @@
     <Version>1.0.0.0</Version>
     <PackageProjectUrl>https://github.com/Kussie/Aetherfit</PackageProjectUrl>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+    <IconUrl>https://github.com/Kussie/Aetherfit/blob/d670ed8002d22bbb030f981ad48b8906145c4ca8/Data/icon.png</IconUrl>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
