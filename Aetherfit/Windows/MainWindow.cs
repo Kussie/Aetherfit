@@ -627,7 +627,7 @@ public class MainWindow : Window, IDisposable
     {
         try
         {
-            var result = applyDesign.Invoke(id, 0, 0, ApplyFlag.Equipment | ApplyFlag.Customization);
+            var result = applyDesign.Invoke(id, 0, 0);
             var name = plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.Name : id.ToString();
             Plugin.ChatGui.Print($"[Aetherfit] Applied \"{name}\": {result}");
             Plugin.Log.Info("Applied design {Name} ({Id}): {Result}", name, id, result);
