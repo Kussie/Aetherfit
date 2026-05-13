@@ -33,3 +33,7 @@ Main Interface:
 Cropping/Selecting area to use:
 
 ![Screenshot 2026-05-13 183159.png](Screenshots/Screenshot%202026-05-13%20183159.png)
+
+Thumbnail View:
+
+![Screenshot 2026-05-14 084811.png](Screenshots/Screenshot%202026-05-14%20084811.png)
