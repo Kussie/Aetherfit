@@ -684,6 +684,10 @@ public class MainWindow : Window, IDisposable
         if (ImGui.Button(imagePath == null ? "Set Image..." : "Change Image..."))
             OpenImagePicker(id);
 
+        ImGui.SameLine();
+        if (ImGui.Button("Screenshot..."))
+            plugin.ScreenshotSetup.Begin(croppedPath => SetOutfitImage(id, croppedPath));
+
         using (ImRaii.Disabled(imagePath == null))
         {
             ImGui.SameLine();
@@ -726,9 +730,13 @@ public class MainWindow : Window, IDisposable
                 ImGui.SameLine();
             if (ImGui.Button("+", new Vector2(thumb, thumb)))
                 OpenAdditionalImagePicker(id);
+
+            ImGui.SameLine();
+            if (ImGui.Button("Snap", new Vector2(thumb, thumb)))
+                plugin.ScreenshotSetup.Begin(croppedPath => AddAdditionalImage(id, croppedPath));
         }
 
-        ImGui.TextDisabled("Click an image to view it full size. Hold Shift and right-click to remove.");
+        ImGui.TextDisabled("Click an image to view it full size. Hold Shift and right-click to remove. \"+\" picks a file; \"Snap\" captures from the game.");
 
         if (toRemoveIndex >= 0)
             RemoveAdditionalImage(id, toRemoveIndex);

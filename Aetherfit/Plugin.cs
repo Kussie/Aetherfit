@@ -28,6 +28,10 @@ public sealed class Plugin : IDalamudPlugin
     private ConfigWindow ConfigWindow { get; init; }
     private MainWindow MainWindow { get; init; }
     public ImageViewerWindow ImageViewer { get; init; }
+    public ScreenshotSetupWindow ScreenshotSetup { get; init; }
+    public ScreenshotCropWindow ScreenshotCrop { get; init; }
+
+    private bool mainWindowOpenBeforeCapture;
 
     public Plugin()
     {
@@ -36,9 +40,13 @@ public sealed class Plugin : IDalamudPlugin
         ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
         ImageViewer = new ImageViewerWindow();
+        ScreenshotSetup = new ScreenshotSetupWindow(this);
+        ScreenshotCrop = new ScreenshotCropWindow(this);
         WindowSystem.AddWindow(ConfigWindow);
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ImageViewer);
+        WindowSystem.AddWindow(ScreenshotSetup);
+        WindowSystem.AddWindow(ScreenshotCrop);
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
@@ -50,6 +58,7 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigUi;
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
+        PluginInterface.UiBuilder.DisableGposeUiHide = true;
         ClientState.Login += OnLogin;
 
         Log.Information($"===A cool log message from {PluginInterface.Manifest.Name}===");
@@ -67,6 +76,8 @@ public sealed class Plugin : IDalamudPlugin
         ConfigWindow.Dispose();
         MainWindow.Dispose();
         ImageViewer.Dispose();
+        ScreenshotSetup.Dispose();
+        ScreenshotCrop.Dispose();
 
         CommandManager.RemoveHandler(CommandName);
     }
@@ -132,4 +143,17 @@ public sealed class Plugin : IDalamudPlugin
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();
     public void ToggleMainUi() => MainWindow.Toggle();
+
+    public void SetMainWindowHiddenForCapture(bool hide)
+    {
+        if (hide)
+        {
+            mainWindowOpenBeforeCapture = MainWindow.IsOpen;
+            MainWindow.IsOpen = false;
+        }
+        else if (mainWindowOpenBeforeCapture)
+        {
+            MainWindow.IsOpen = true;
+        }
+    }
 }
