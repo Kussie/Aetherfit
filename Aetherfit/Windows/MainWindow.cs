@@ -110,6 +110,13 @@ public class MainWindow : Window, IDisposable
             designsError = null;
 
             plugin.Configuration.CachedOutfits = newCache;
+
+            var validIds = new HashSet<Guid>(data.Keys);
+            CleanupRemovedDesigns(validIds);
+
+            if (selectedDesign is { } sid && !validIds.Contains(sid))
+                selectedDesign = null;
+
             plugin.Configuration.Save();
         }
         catch (Exception ex)
@@ -892,6 +899,69 @@ public class MainWindow : Window, IDisposable
         {
             try { File.Delete(file); }
             catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to delete {File}", file); }
+        }
+    }
+
+    private void CleanupRemovedDesigns(IReadOnlySet<Guid> validIds)
+    {
+        var coverDir = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images");
+        var additionalDir = Path.Combine(coverDir, AdditionalImagesSubdir);
+
+        var staleCoverIds = plugin.Configuration.OutfitImages.Keys
+            .Where(id => !validIds.Contains(id))
+            .ToList();
+        foreach (var id in staleCoverIds)
+        {
+            DeleteImageFilesFor(id, coverDir);
+            plugin.Configuration.OutfitImages.Remove(id);
+        }
+
+        var staleAdditionalIds = plugin.Configuration.OutfitAdditionalImages.Keys
+            .Where(id => !validIds.Contains(id))
+            .ToList();
+        foreach (var id in staleAdditionalIds)
+        {
+            if (plugin.Configuration.OutfitAdditionalImages.TryGetValue(id, out var filenames))
+            {
+                foreach (var name in filenames)
+                {
+                    try
+                    {
+                        var path = Path.Combine(additionalDir, name);
+                        if (File.Exists(path))
+                            File.Delete(path);
+                    }
+                    catch (Exception ex)
+                    {
+                        Plugin.Log.Warning(ex, "Failed to delete additional image {File}", name);
+                    }
+                }
+            }
+            plugin.Configuration.OutfitAdditionalImages.Remove(id);
+        }
+
+        SweepOrphanFiles(coverDir, validIds);
+        SweepOrphanFiles(additionalDir, validIds);
+    }
+
+    // Filenames in our image dirs encode the design Guid as the prefix before any underscore
+    // (cover: "{guid:N}.ext"; additional: "{guid:N}_{anotherGuid:N}.ext"). Anything whose prefix
+    // parses as a Guid but isn't in validIds is a leftover and gets removed.
+    private static void SweepOrphanFiles(string directory, IReadOnlySet<Guid> validIds)
+    {
+        if (!Directory.Exists(directory))
+            return;
+        foreach (var path in Directory.EnumerateFiles(directory))
+        {
+            var name = Path.GetFileNameWithoutExtension(path);
+            var underscore = name.IndexOf('_');
+            var prefix = underscore >= 0 ? name[..underscore] : name;
+            if (!Guid.TryParseExact(prefix, "N", out var fileId))
+                continue;
+            if (validIds.Contains(fileId))
+                continue;
+            try { File.Delete(path); }
+            catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to delete orphan file {File}", path); }
         }
     }
 
