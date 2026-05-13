@@ -13,6 +13,12 @@
         "requested": "[1.2.39, )",
         "resolved": "1.2.39",
         "contentHash": "fcFN01tDTIQqDuTwr1jUQK/geofiwjG5DycJQOnC72i1SsLAk1ELe+apBOuZ11UMQG8YKFZG1FgvjZPbqHyatg=="
+      },
+      "Glamourer.Api": {
+        "type": "Direct",
+        "requested": "[2.8.1, )",
+        "resolved": "2.8.1",
+        "contentHash": "RCaAAd1hmRLiLAeAVFPi8GZKRIVYrh2m0vmGA+3yKZj3xemWr8/KU2vHlt1mUdMnyPlCX2zPK6zM4nFsMB+GYg=="
       }
     }
   }

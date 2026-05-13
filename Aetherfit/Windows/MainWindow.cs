@@ -1,122 +1,837 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Textures;
+using Dalamud.Interface.ImGuiFileDialog;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
-using Lumina.Excel.Sheets;
+using Glamourer.Api.Enums;
+using Glamourer.Api.IpcSubscribers;
+using Newtonsoft.Json.Linq;
 
 namespace Aetherfit.Windows;
 
 public class MainWindow : Window, IDisposable
 {
-    private readonly string goatImagePath;
     private readonly Plugin plugin;
+    private readonly GetDesignListExtended getDesignListExtended;
+    private readonly GetDesignJObject getDesignJObject;
+    private readonly ApplyDesign applyDesign;
 
-    // We give this window a hidden ID using ##.
-    // The user will see "My Amazing Window" as window title,
-    // but for ImGui the ID is "My Amazing Window##With a hidden ID"
-    public MainWindow(Plugin plugin, string goatImagePath)
-        : base("My Amazing Window##With a hidden ID", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+    private FolderNode root = new();
+    private int designsCount;
+    private string? designsError;
+
+    private Guid? selectedDesign;
+
+    private const string ApplyByTagPopupId = "ApplyRandomByTag";
+    private List<string> availableTagsForPopup = new();
+    private readonly HashSet<string> selectedTagsForApply = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly FileDialogManager fileDialog = new();
+    private const string ImageFilters = "Image{.png,.jpg,.jpeg,.bmp,.gif,.webp}";
+    private const float RightPaneImageMax = 220f;
+    private const float TooltipImageMax = 160f;
+
+    private enum ImageFilterMode { All, HasImage, NoImage }
+    private string filterName = string.Empty;
+    private readonly HashSet<string> filterTags = new(StringComparer.OrdinalIgnoreCase);
+    private ImageFilterMode filterImage = ImageFilterMode.All;
+    private const string FilterTagsPopupId = "FilterTagsPopup";
+    private List<string> availableTagsForFilter = new();
+
+    public MainWindow(Plugin plugin)
+        : base("Aetherfit##With a hidden ID", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(375, 330),
+            MinimumSize = new Vector2(620, 400),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue)
         };
 
-        this.goatImagePath = goatImagePath;
         this.plugin = plugin;
+        getDesignListExtended = new GetDesignListExtended(Plugin.PluginInterface);
+        getDesignJObject = new GetDesignJObject(Plugin.PluginInterface);
+        applyDesign = new ApplyDesign(Plugin.PluginInterface);
     }
 
     public void Dispose() { }
 
+    public override void OnOpen()
+    {
+        RefreshDesigns();
+    }
+
+    private void RefreshDesigns()
+    {
+        try
+        {
+            var data = getDesignListExtended.Invoke();
+            var newRoot = new FolderNode();
+            var newCache = new Dictionary<Guid, CachedOutfit>();
+
+            foreach (var (guid, tuple) in data)
+            {
+                var folderSegments = SplitFolderPath(tuple.FullPath);
+                var node = newRoot;
+                foreach (var segment in folderSegments)
+                {
+                    if (!node.Folders.TryGetValue(segment, out var child))
+                    {
+                        child = new FolderNode();
+                        node.Folders[segment] = child;
+                    }
+                    node = child;
+                }
+                node.Designs.Add(new DesignLeaf(guid, tuple.DisplayName, tuple.FullPath, tuple.DisplayColor));
+
+                try
+                {
+                    var jobject = getDesignJObject.Invoke(guid);
+                    if (jobject != null)
+                        newCache[guid] = ParseOutfit(jobject);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.Warning(ex, "Failed to cache metadata for design {Id}", guid);
+                }
+            }
+
+            SortNodeDesigns(newRoot);
+            root = newRoot;
+            designsCount = data.Count;
+            designsError = null;
+
+            plugin.Configuration.CachedOutfits = newCache;
+            plugin.Configuration.Save();
+        }
+        catch (Exception ex)
+        {
+            root = new FolderNode();
+            designsCount = 0;
+            designsError = ex.Message;
+            Plugin.Log.Warning(ex, "Failed to fetch Glamourer designs");
+        }
+    }
+
+    private static IEnumerable<string> SplitFolderPath(string fullPath)
+    {
+        var parts = fullPath.Split('/');
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (!string.IsNullOrEmpty(parts[i]))
+                yield return parts[i];
+        }
+    }
+
+    private static void SortNodeDesigns(FolderNode node)
+    {
+        node.Designs.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase));
+        foreach (var child in node.Folders.Values)
+            SortNodeDesigns(child);
+    }
+
     public override void Draw()
     {
-        ImGui.Text($"The random config bool is {plugin.Configuration.SomePropertyToBeSavedAndWithADefault}");
+        var leftWidth = 260 * ImGuiHelpers.GlobalScale;
 
-        if (ImGui.Button("Show Settings"))
+        using (var left = ImRaii.Child("OutfitTree", new Vector2(leftWidth, 0), true))
         {
-            plugin.ToggleConfigUi();
+            if (left.Success)
+                DrawLeftPane();
         }
 
+        ImGui.SameLine();
+
+        using (var right = ImRaii.Child("Right", Vector2.Zero, true))
+        {
+            if (right.Success)
+                DrawRightPane();
+        }
+
+        fileDialog.Draw();
+    }
+
+    private void DrawLeftPane()
+    {
+        ImGui.SetWindowFontScale(1.25f);
+        ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), "Glamourer Designs");
+        ImGui.SetWindowFontScale(1.0f);
+        ImGui.Separator();
+
+        if (ImGui.Button("Refresh"))
+            RefreshDesigns();
+
+        ImGui.SameLine();
+        ImGui.TextDisabled($"{designsCount} design(s)");
+
+        ImGui.Separator();
+
+        if (designsError != null)
+        {
+            ImGui.TextWrapped("Glamourer is not available. Make sure it is installed and enabled.");
+            ImGui.TextDisabled(designsError);
+            return;
+        }
+
+        if (designsCount == 0)
+        {
+            ImGui.Text("No Glamourer designs found.");
+            return;
+        }
+
+        DrawFilterUi();
+        ImGui.Spacing();
+        ImGui.Separator();
         ImGui.Spacing();
 
-        // Normally a BeginChild() would have to be followed by an unconditional EndChild(),
-        // ImRaii takes care of this after the scope ends.
-        // This works for all ImGui functions that require specific handling, examples are BeginTable() or Indent().
-        using (var child = ImRaii.Child("SomeChildWithAScrollbar", Vector2.Zero, true))
+        using var treeChild = ImRaii.Child("OutfitTreeScroll", Vector2.Zero, false);
+        if (treeChild.Success)
+            DrawTree(root);
+    }
+
+    private void DrawFilterUi()
+    {
+        if (!ImGui.CollapsingHeader("Filters"))
+            return;
+
+        ImGui.PushItemWidth(-1);
+        ImGui.InputTextWithHint("##nameFilter", "Filter by name...", ref filterName, 64);
+        ImGui.PopItemWidth();
+
+        var tagsLabel = filterTags.Count == 0
+            ? "Filter by tags..."
+            : $"Tags: {filterTags.Count} selected";
+        if (ImGui.Button(tagsLabel, new Vector2(-1, 0)))
         {
-            // Check if this child is drawing
-            if (child.Success)
+            RebuildAvailableFilterTags();
+            ImGui.OpenPopup(FilterTagsPopupId);
+        }
+
+        ImGui.TextDisabled("Image:");
+        ImGui.SameLine();
+        ImGui.PushItemWidth(-1);
+        var imageIdx = (int)filterImage;
+        var imageOptions = new[] { "All", "With image", "Without image" };
+        if (ImGui.Combo("##imgFilter", ref imageIdx, imageOptions, imageOptions.Length))
+            filterImage = (ImageFilterMode)imageIdx;
+        ImGui.PopItemWidth();
+
+        var hasAnyFilter = filterName.Length > 0
+                        || filterTags.Count > 0
+                        || filterImage != ImageFilterMode.All;
+        using (ImRaii.Disabled(!hasAnyFilter))
+        {
+            if (ImGui.SmallButton("Clear filters"))
             {
-                ImGui.Text("Have a goat:");
-                var goatImage = Plugin.TextureProvider.GetFromFile(goatImagePath).GetWrapOrDefault();
-                if (goatImage != null)
+                filterName = string.Empty;
+                filterTags.Clear();
+                filterImage = ImageFilterMode.All;
+            }
+        }
+
+        DrawFilterTagsPopup();
+    }
+
+    private void RebuildAvailableFilterTags()
+    {
+        availableTagsForFilter = plugin.Configuration.CachedOutfits.Values
+            .SelectMany(o => o.Tags)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void DrawFilterTagsPopup()
+    {
+        using var popup = ImRaii.Popup(FilterTagsPopupId);
+        if (!popup.Success)
+            return;
+
+        if (availableTagsForFilter.Count == 0)
+        {
+            ImGui.Text("No tags available.");
+            if (ImGui.Button("Close"))
+                ImGui.CloseCurrentPopup();
+            return;
+        }
+
+        ImGui.Text("Show designs matching any of:");
+        ImGui.Separator();
+
+        var size = new Vector2(220 * ImGuiHelpers.GlobalScale, 200 * ImGuiHelpers.GlobalScale);
+        using (var scroll = ImRaii.Child("FilterTagsScroll", size, true))
+        {
+            if (scroll.Success)
+            {
+                foreach (var tag in availableTagsForFilter)
                 {
-                    using (ImRaii.PushIndent(55f))
+                    var sel = filterTags.Contains(tag);
+                    if (ImGui.Checkbox(tag, ref sel))
                     {
-                        ImGui.Image(goatImage.Handle, goatImage.Size);
+                        if (sel) filterTags.Add(tag);
+                        else filterTags.Remove(tag);
+                    }
+                }
+            }
+        }
+
+        if (ImGui.Button("Clear"))
+            filterTags.Clear();
+        ImGui.SameLine();
+        if (ImGui.Button("Done"))
+            ImGui.CloseCurrentPopup();
+    }
+
+    private void DrawTree(FolderNode node)
+    {
+        foreach (var (name, folder) in node.Folders)
+        {
+            if (!FolderHasMatch(folder)) continue;
+            if (ImGui.TreeNodeEx(name, ImGuiTreeNodeFlags.SpanAvailWidth))
+            {
+                DrawTree(folder);
+                ImGui.TreePop();
+            }
+        }
+
+        foreach (var design in node.Designs)
+        {
+            plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var cached);
+            if (!DesignMatchesFilters(design, cached)) continue;
+            DrawDesignLeaf(design);
+        }
+    }
+
+    private bool FolderHasMatch(FolderNode node)
+    {
+        foreach (var d in node.Designs)
+        {
+            plugin.Configuration.CachedOutfits.TryGetValue(d.Id, out var c);
+            if (DesignMatchesFilters(d, c)) return true;
+        }
+        foreach (var f in node.Folders.Values)
+            if (FolderHasMatch(f)) return true;
+        return false;
+    }
+
+    private bool DesignMatchesFilters(DesignLeaf design, CachedOutfit? cached)
+    {
+        if (filterName.Length > 0
+            && design.DisplayName.IndexOf(filterName, StringComparison.OrdinalIgnoreCase) < 0)
+            return false;
+
+        if (filterTags.Count > 0)
+        {
+            if (cached == null || cached.Tags.Count == 0) return false;
+            if (!cached.Tags.Any(t => filterTags.Contains(t))) return false;
+        }
+
+        if (filterImage != ImageFilterMode.All)
+        {
+            var hasImage = plugin.Configuration.OutfitImages.ContainsKey(design.Id);
+            if (filterImage == ImageFilterMode.HasImage && !hasImage) return false;
+            if (filterImage == ImageFilterMode.NoImage && hasImage) return false;
+        }
+
+        return true;
+    }
+
+    private void DrawDesignLeaf(DesignLeaf design)
+    {
+        var hasColor = design.Color != 0;
+        if (hasColor)
+            ImGui.PushStyleColor(ImGuiCol.Text, design.Color);
+
+        var selected = selectedDesign == design.Id;
+        if (ImGui.Selectable($"{design.DisplayName}##{design.Id}", selected))
+            selectedDesign = design.Id;
+
+        if (hasColor)
+            ImGui.PopStyleColor();
+
+        if (ImGui.IsItemHovered())
+            DrawDesignLeafTooltip(design);
+    }
+
+    private void DrawDesignLeafTooltip(DesignLeaf design)
+    {
+        var imagePath = plugin.Configuration.ShowThumbnailOnHover ? GetOutfitImagePath(design.Id) : null;
+        var hasPath = !string.IsNullOrEmpty(design.FullPath);
+        if (!hasPath && imagePath == null)
+            return;
+
+        ImGui.BeginTooltip();
+        if (hasPath)
+            ImGui.TextUnformatted(design.FullPath);
+        if (imagePath != null)
+            DrawImageScaled(imagePath, TooltipImageMax * ImGuiHelpers.GlobalScale);
+        ImGui.EndTooltip();
+    }
+
+    private void DrawRightPane()
+    {
+        var style = ImGui.GetStyle();
+        var bottomRowHeight = ImGui.GetFrameHeight() + style.ItemSpacing.Y;
+
+        var topHeight = Math.Max(0, ImGui.GetContentRegionAvail().Y - bottomRowHeight - style.ItemSpacing.Y);
+
+        using (var top = ImRaii.Child("DesignTop", new Vector2(0, topHeight), false))
+        {
+            if (top.Success)
+                DrawSelectedOutfitDetails();
+        }
+
+        ImGui.Separator();
+        DrawBottomButtons();
+
+        DrawApplyByTagPopup();
+    }
+
+    private void DrawSelectedOutfitDetails()
+    {
+        if (selectedDesign is not { } id)
+        {
+            ImGui.TextDisabled("Select a design on the left to see its details.");
+            return;
+        }
+
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(id, out var details))
+        {
+            ImGui.TextDisabled("No cached metadata for this design. Click Refresh.");
+            return;
+        }
+
+        var datesLineCount = (details.CreatedAt.HasValue ? 1 : 0) + (details.LastEdit.HasValue ? 1 : 0);
+        var datesBlockHeight = datesLineCount > 0
+            ? datesLineCount * ImGui.GetTextLineHeightWithSpacing()
+            : 0;
+
+        var bodyHeight = Math.Max(0, ImGui.GetContentRegionAvail().Y - datesBlockHeight);
+
+        using (var body = ImRaii.Child("DesignBody", new Vector2(0, bodyHeight), false))
+        {
+            if (body.Success)
+            {
+                ImGui.SetWindowFontScale(1.5f);
+                ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), details.Name);
+                ImGui.SetWindowFontScale(1.0f);
+                ImGui.Spacing();
+
+                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Tags");
+                ImGui.Indent();
+                if (details.Tags.Count > 0)
+                {
+                    for (var i = 0; i < details.Tags.Count; i++)
+                    {
+                        if (i > 0) ImGui.SameLine();
+                        ImGui.TextColored(new Vector4(0.55f, 0.78f, 1.0f, 1.0f), details.Tags[i]);
                     }
                 }
                 else
                 {
-                    ImGui.Text("Image not found.");
+                    ImGui.TextDisabled("No tags set in Glamourer");
                 }
+                ImGui.Unindent();
+                ImGui.Spacing();
 
-                ImGuiHelpers.ScaledDummy(20.0f);
-
-                // Example for other services that Dalamud provides.
-                // PlayerState provides a wrapper filled with information about the player character.
-
-                var playerState = Plugin.PlayerState;
-                if (!playerState.IsLoaded)
-                {
-                    ImGui.Text("Our local player is currently not logged in.");
-                    return;
-                }
-
-                if (!playerState.ClassJob.IsValid)
-                {
-                    ImGui.Text("Our current job is currently not valid.");
-                    return;
-                }
-
-                ImGui.AlignTextToFramePadding();
-                ImGui.Text($"Current job:");
-
-                // Scaling hardcoded pixel values is important, as otherwise users with HUD scales above or below 100%
-                // won't be able to see everything.
-                ImGui.SameLine(120 * ImGuiHelpers.GlobalScale);
-
-                // Get the icon id from a known offset + the class jobs id
-                var jobIconId = 62100 + playerState.ClassJob.RowId;
-                var iconTexture = Plugin.TextureProvider.GetFromGameIcon(new GameIconLookup(jobIconId)).GetWrapOrEmpty();
-                ImGui.Image(iconTexture.Handle, new Vector2(28, 28) * ImGuiHelpers.GlobalScale);
-
-                ImGui.SameLine();
-
-                // If you want to see the Macro representation of this SeString use `.ToMacroString()`
-                // More info about SeStrings: https://dalamud.dev/plugin-development/sestring/
-                ImGui.Text(playerState.ClassJob.Value.Abbreviation.ToString());
-
-                ImGui.SameLine();
-                ImGui.Text($" [Level {playerState.Level}]");
-
-                // Example for querying Lumina, getting the name of our current area.
-                var territoryId = Plugin.ClientState.TerritoryType;
-                if (Plugin.DataManager.GetExcelSheet<TerritoryType>().TryGetRow(territoryId, out var territoryRow))
-                {
-                    ImGui.Text($"Current location:");
-                    ImGui.SameLine(120 * ImGuiHelpers.GlobalScale);
-                    ImGui.Text(territoryRow.PlaceName.Value.Name.ToString());
-                }
+                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Description");
+                ImGui.Indent();
+                if (!string.IsNullOrWhiteSpace(details.Description))
+                    ImGui.TextWrapped(details.Description);
                 else
-                {
-                    ImGui.Text("Invalid territory.");
-                }
+                    ImGui.TextDisabled("No description set in Glamourer");
+                ImGui.Unindent();
+                ImGui.Spacing();
+
+                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Image");
+                ImGui.Indent();
+                DrawOutfitImageBlock(id);
+                ImGui.Unindent();
+            }
+        }
+
+        if (details.CreatedAt is { } created)
+            DrawDateLine("Created", created);
+        if (details.LastEdit is { } edited)
+            DrawDateLine("Last edited", edited);
+    }
+
+    private static void DrawDateLine(string label, DateTimeOffset dt)
+    {
+        ImGui.TextDisabled($"{label}: {FormatFriendlyRelative(dt)}");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(FormatFullDate(dt));
+    }
+
+    private static string FormatFriendlyRelative(DateTimeOffset dt)
+    {
+        var diff = DateTimeOffset.Now - dt;
+        if (diff.TotalSeconds < 0) return FormatFullDate(dt);
+        if (diff.TotalSeconds < 60) return "just now";
+        if (diff.TotalMinutes < 2) return "a minute ago";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} minutes ago";
+        if (diff.TotalHours < 2) return "an hour ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours} hours ago";
+        if (diff.TotalDays < 2) return "yesterday";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays} days ago";
+        if (diff.TotalDays < 14) return "last week";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)} weeks ago";
+        if (diff.TotalDays < 60) return "last month";
+        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)} months ago";
+        if (diff.TotalDays < 730) return "last year";
+        return $"{(int)(diff.TotalDays / 365)} years ago";
+    }
+
+    private static string FormatFullDate(DateTimeOffset dt) =>
+        dt.LocalDateTime.ToString("dddd, MMMM d, yyyy 'at' h:mm tt");
+
+    private void DrawBottomButtons()
+    {
+        var style = ImGui.GetStyle();
+        const string settingsLabel = "Settings";
+        const string applyLabel = "Apply Selected";
+        const string randomLabel = "Apply Random";
+        const string byTagLabel = "Apply Random By Tag(s)";
+
+        var pad = style.FramePadding.X * 2 + 8 * ImGuiHelpers.GlobalScale;
+        var settingsW = ImGui.CalcTextSize(settingsLabel).X + pad;
+        var applyW = ImGui.CalcTextSize(applyLabel).X + pad;
+        var randomW = ImGui.CalcTextSize(randomLabel).X + pad;
+        var byTagW = ImGui.CalcTextSize(byTagLabel).X + pad;
+        var rightTotal = applyW + randomW + byTagW + 2 * style.ItemSpacing.X;
+
+        if (ImGui.Button(settingsLabel, new Vector2(settingsW, 0)))
+            plugin.ToggleConfigUi();
+        ImGui.SameLine();
+
+        var avail = ImGui.GetContentRegionAvail().X;
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0, avail - rightTotal));
+
+        var hasSelection = selectedDesign is { } sid
+                        && plugin.Configuration.CachedOutfits.ContainsKey(sid);
+
+        using (ImRaii.Disabled(!hasSelection))
+        {
+            if (ImGui.Button(applyLabel, new Vector2(applyW, 0)) && selectedDesign is { } id)
+                ApplyDesignById(id);
+        }
+        ImGui.SameLine();
+
+        if (ImGui.Button(randomLabel, new Vector2(randomW, 0)))
+        {
+            var err = ApplyRandomDesign();
+            if (err != null) Plugin.ChatGui.PrintError($"[Aetherfit] {err}");
+        }
+        ImGui.SameLine();
+
+        var anyHasTags = plugin.Configuration.CachedOutfits.Values.Any(o => o.Tags.Count > 0);
+        using (ImRaii.Disabled(!anyHasTags))
+        {
+            if (ImGui.Button(byTagLabel, new Vector2(byTagW, 0)))
+            {
+                RebuildAvailableTags();
+                ImGui.OpenPopup(ApplyByTagPopupId);
             }
         }
     }
+
+    private void RebuildAvailableTags()
+    {
+        availableTagsForPopup = plugin.Configuration.CachedOutfits.Values
+            .SelectMany(o => o.Tags)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        selectedTagsForApply.RemoveWhere(t => !availableTagsForPopup.Contains(t, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private void DrawApplyByTagPopup()
+    {
+        using var popup = ImRaii.Popup(ApplyByTagPopupId);
+        if (!popup.Success)
+            return;
+
+        if (availableTagsForPopup.Count == 0)
+        {
+            ImGui.Text("No designs have any tags assigned in Glamourer.");
+            ImGui.Spacing();
+            if (ImGui.Button("Close"))
+                ImGui.CloseCurrentPopup();
+            return;
+        }
+
+        ImGui.Text("Pick tags to match (any of):");
+        ImGui.Separator();
+
+        var scrollSize = new Vector2(
+            220 * ImGuiHelpers.GlobalScale,
+            200 * ImGuiHelpers.GlobalScale);
+
+        using (var scroll = ImRaii.Child("TagsScroll", scrollSize, true))
+        {
+            if (scroll.Success)
+            {
+                foreach (var tag in availableTagsForPopup)
+                {
+                    var isSelected = selectedTagsForApply.Contains(tag);
+                    if (ImGui.Checkbox(tag, ref isSelected))
+                    {
+                        if (isSelected) selectedTagsForApply.Add(tag);
+                        else selectedTagsForApply.Remove(tag);
+                    }
+                }
+            }
+        }
+
+        ImGui.Spacing();
+
+        using (ImRaii.Disabled(selectedTagsForApply.Count == 0))
+        {
+            if (ImGui.Button("Apply Random Match"))
+            {
+                var err = ApplyRandomByTags(selectedTagsForApply);
+                if (err != null) Plugin.ChatGui.PrintError($"[Aetherfit] {err}");
+                ImGui.CloseCurrentPopup();
+            }
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel"))
+            ImGui.CloseCurrentPopup();
+    }
+
+    private void ApplyDesignById(Guid id)
+    {
+        try
+        {
+            var result = applyDesign.Invoke(id, 0, 0, ApplyFlag.Equipment | ApplyFlag.Customization);
+            var name = plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.Name : id.ToString();
+            Plugin.ChatGui.Print($"[Aetherfit] Applied \"{name}\": {result}");
+            Plugin.Log.Info("Applied design {Name} ({Id}): {Result}", name, id, result);
+        }
+        catch (Exception ex)
+        {
+            Plugin.ChatGui.PrintError($"[Aetherfit] Apply failed: {ex.Message}");
+            Plugin.Log.Warning(ex, "Failed to apply Glamourer design {Id}", id);
+        }
+    }
+
+    public string? ApplyRandomDesign()
+    {
+        var ids = plugin.Configuration.CachedOutfits.Keys.ToList();
+        if (ids.Count == 0)
+        {
+            var msg = "No cached designs — open Aetherfit and click Refresh first.";
+            Plugin.Log.Info(msg);
+            return msg;
+        }
+
+        var pick = ids[Random.Shared.Next(ids.Count)];
+        selectedDesign = pick;
+        ApplyDesignById(pick);
+        return null;
+    }
+
+    public string? ApplyRandomByTags(IReadOnlyCollection<string> tags)
+    {
+        if (tags.Count == 0)
+        {
+            var msg = "No tags provided.";
+            Plugin.Log.Info(msg);
+            return msg;
+        }
+
+        var tagSet = new HashSet<string>(tags, StringComparer.OrdinalIgnoreCase);
+        var matching = plugin.Configuration.CachedOutfits
+            .Where(kv => kv.Value.Tags.Any(t => tagSet.Contains(t)))
+            .Select(kv => kv.Key)
+            .ToList();
+
+        if (matching.Count == 0)
+        {
+            var msg = $"No designs match tags: {string.Join(", ", tags)}";
+            Plugin.Log.Info(msg);
+            return msg;
+        }
+
+        var pick = matching[Random.Shared.Next(matching.Count)];
+        selectedDesign = pick;
+        ApplyDesignById(pick);
+        return null;
+    }
+
+    private void DrawOutfitImageBlock(Guid id)
+    {
+        var imagePath = GetOutfitImagePath(id);
+        if (imagePath != null)
+            DrawImageScaled(imagePath, RightPaneImageMax * ImGuiHelpers.GlobalScale);
+        else
+            ImGui.TextDisabled("No image set");
+
+        ImGui.Spacing();
+
+        if (ImGui.Button(imagePath == null ? "Set Image..." : "Change Image..."))
+            OpenImagePicker(id);
+
+        using (ImRaii.Disabled(imagePath == null))
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("Remove Image"))
+                RemoveOutfitImage(id);
+        }
+    }
+
+    private static void DrawImageScaled(string absolutePath, float maxSide)
+    {
+        var tex = Plugin.TextureProvider.GetFromFile(absolutePath).GetWrapOrEmpty();
+        if (tex.Width <= 0 || tex.Height <= 0)
+        {
+            ImGui.TextDisabled("Loading image...");
+            return;
+        }
+
+        var scale = Math.Min(maxSide / tex.Width, maxSide / tex.Height);
+        ImGui.Image(tex.Handle, new Vector2(tex.Width * scale, tex.Height * scale));
+    }
+
+    private void OpenImagePicker(Guid id)
+    {
+        fileDialog.OpenFileDialog(
+            "Pick an image for this design",
+            ImageFilters,
+            (success, paths) =>
+            {
+                if (!success || paths.Count == 0)
+                    return;
+                SetOutfitImage(id, paths[0]);
+            },
+            1);
+    }
+
+    private void SetOutfitImage(Guid id, string sourcePath)
+    {
+        try
+        {
+            var imagesDir = EnsureImagesDirectory();
+            DeleteImageFilesFor(id, imagesDir);
+
+            var ext = Path.GetExtension(sourcePath).ToLowerInvariant();
+            if (string.IsNullOrEmpty(ext))
+                ext = ".png";
+            var targetName = id.ToString("N") + ext;
+            var targetPath = Path.Combine(imagesDir, targetName);
+            File.Copy(sourcePath, targetPath, overwrite: true);
+
+            plugin.Configuration.OutfitImages[id] = targetName;
+            plugin.Configuration.Save();
+        }
+        catch (Exception ex)
+        {
+            Plugin.ChatGui.PrintError($"[Aetherfit] Failed to set image: {ex.Message}");
+            Plugin.Log.Warning(ex, "Failed to set image for {Id} from {Path}", id, sourcePath);
+        }
+    }
+
+    private void RemoveOutfitImage(Guid id)
+    {
+        try
+        {
+            var imagesDir = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images");
+            DeleteImageFilesFor(id, imagesDir);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to delete image file for {Id}", id);
+        }
+
+        if (plugin.Configuration.OutfitImages.Remove(id))
+            plugin.Configuration.Save();
+    }
+
+    private string? GetOutfitImagePath(Guid id)
+    {
+        if (!plugin.Configuration.OutfitImages.TryGetValue(id, out var filename) || string.IsNullOrEmpty(filename))
+            return null;
+        var path = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images", filename);
+        return File.Exists(path) ? path : null;
+    }
+
+    private static string EnsureImagesDirectory()
+    {
+        var dir = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static void DeleteImageFilesFor(Guid id, string imagesDir)
+    {
+        if (!Directory.Exists(imagesDir))
+            return;
+        var prefix = id.ToString("N");
+        foreach (var file in Directory.EnumerateFiles(imagesDir, prefix + ".*"))
+        {
+            try { File.Delete(file); }
+            catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to delete {File}", file); }
+        }
+    }
+
+    private static CachedOutfit ParseOutfit(JObject j)
+    {
+        var name = ReadString(j["Name"]) ?? "(unnamed)";
+        var description = ReadString(j["Description"]);
+        if (string.IsNullOrWhiteSpace(description))
+            description = null;
+
+        var tags = j["Tags"] is JArray tagArray
+            ? tagArray.Select(t => ReadString(t) ?? string.Empty)
+                      .Where(t => !string.IsNullOrWhiteSpace(t))
+                      .ToList()
+            : new List<string>();
+
+        return new CachedOutfit
+        {
+            Name = name,
+            Description = description,
+            Tags = tags,
+            CreatedAt = ReadDateTimeOffset(j["CreationDate"]),
+            LastEdit = ReadDateTimeOffset(j["LastEdit"]),
+        };
+    }
+
+    // Avoid JToken.Value<string>(): it goes through Convert.ChangeType, which throws
+    // "Object must implement IConvertible" on token values like DateTimeOffset.
+    private static string? ReadString(JToken? token)
+    {
+        if (token is null || token.Type == JTokenType.Null)
+            return null;
+        if (token is JValue v)
+            return v.Value?.ToString();
+        return token.ToString();
+    }
+
+    private static DateTimeOffset? ReadDateTimeOffset(JToken? token)
+    {
+        if (token is not JValue v || v.Value is null)
+            return null;
+        return v.Value switch
+        {
+            DateTimeOffset dto => dto,
+            DateTime dt => new DateTimeOffset(
+                dt.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : dt),
+            string s when DateTimeOffset.TryParse(s, out var parsed) => parsed,
+            _ => null,
+        };
+    }
+
+    private sealed class FolderNode
+    {
+        public SortedDictionary<string, FolderNode> Folders { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<DesignLeaf> Designs { get; } = new();
+    }
+
+    private sealed record DesignLeaf(Guid Id, string DisplayName, string FullPath, uint Color);
 }

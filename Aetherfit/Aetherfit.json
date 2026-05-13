@@ -2,7 +2,7 @@
   "Author": "Kussie ",
   "Name": "Aetherfit",
   "Punchline": "An alternative frontend for Glamourer",
-  "Description": "A more feature-rich and user-friendly frontend for Glamourer, with a focus on ease of use and accessibility.",
+  "Description": "A custom frontend for Glamourer that allows you to browse and apply designs with screenshots and tags along with various other small features",
   "ApplicableVersion": "any",
   "Tags": [
     "glamour",

@@ -1,59 +1,124 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 namespace Aetherfit.Windows;
 
 public class ConfigWindow : Window, IDisposable
 {
-    private readonly Configuration configuration;
+    private readonly Plugin plugin;
+    private readonly HashSet<string> loginTags;
 
-    // We give this window a constant ID using ###.
-    // This allows for labels to be dynamic, like "{FPS Counter}fps###XYZ counter window",
-    // and the window ID will always be "###XYZ counter window" for ImGui
-    public ConfigWindow(Plugin plugin) : base("A Wonderful Configuration Window###With a constant ID")
+    public ConfigWindow(Plugin plugin)
+        : base("Aetherfit Settings###AetherfitConfig")
     {
-        Flags = ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoScrollbar |
-                ImGuiWindowFlags.NoScrollWithMouse;
+        SizeConstraints = new WindowSizeConstraints
+        {
+            MinimumSize = new Vector2(400, 340),
+            MaximumSize = new Vector2(640, 800),
+        };
 
-        Size = new Vector2(232, 90);
-        SizeCondition = ImGuiCond.Always;
-
-        configuration = plugin.Configuration;
+        this.plugin = plugin;
+        loginTags = new HashSet<string>(plugin.Configuration.LoginTags, StringComparer.OrdinalIgnoreCase);
     }
 
     public void Dispose() { }
 
-    public override void PreDraw()
+    public override void OnOpen()
     {
-        // Flags must be added or removed before Draw() is being called, or they won't apply
-        if (configuration.IsConfigWindowMovable)
-        {
-            Flags &= ~ImGuiWindowFlags.NoMove;
-        }
-        else
-        {
-            Flags |= ImGuiWindowFlags.NoMove;
-        }
+        // Re-sync from config in case it changed externally.
+        loginTags.Clear();
+        foreach (var t in plugin.Configuration.LoginTags)
+            loginTags.Add(t);
     }
 
     public override void Draw()
     {
-        // Can't ref a property, so use a local copy
-        var configValue = configuration.SomePropertyToBeSavedAndWithADefault;
-        if (ImGui.Checkbox("Random Config Bool", ref configValue))
+        var cfg = plugin.Configuration;
+
+        var showThumb = cfg.ShowThumbnailOnHover;
+        if (ImGui.Checkbox("Show outfit thumbnail on mouse-over", ref showThumb))
         {
-            configuration.SomePropertyToBeSavedAndWithADefault = configValue;
-            // Can save immediately on change if you don't want to provide a "Save and Close" button
-            configuration.Save();
+            cfg.ShowThumbnailOnHover = showThumb;
+            cfg.Save();
         }
 
-        var movable = configuration.IsConfigWindowMovable;
-        if (ImGui.Checkbox("Movable Config Window", ref movable))
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "On login");
+        ImGui.TextDisabled("Only one login action can be active.");
+        ImGui.Spacing();
+
+        if (ImGui.RadioButton("Do nothing", cfg.LoginAction == LoginAction.None))
+            SetLoginAction(LoginAction.None);
+
+        if (ImGui.RadioButton("Apply a random outfit", cfg.LoginAction == LoginAction.ApplyRandom))
+            SetLoginAction(LoginAction.ApplyRandom);
+
+        if (ImGui.RadioButton("Apply a random outfit by tag", cfg.LoginAction == LoginAction.ApplyRandomByTag))
+            SetLoginAction(LoginAction.ApplyRandomByTag);
+
+        if (cfg.LoginAction == LoginAction.ApplyRandomByTag)
         {
-            configuration.IsConfigWindowMovable = movable;
-            configuration.Save();
+            ImGui.Indent();
+            DrawLoginTagPicker();
+            ImGui.Unindent();
+        }
+    }
+
+    private void SetLoginAction(LoginAction action)
+    {
+        if (plugin.Configuration.LoginAction == action) return;
+        plugin.Configuration.LoginAction = action;
+        plugin.Configuration.Save();
+    }
+
+    private void DrawLoginTagPicker()
+    {
+        var availableTags = plugin.Configuration.CachedOutfits.Values
+            .SelectMany(o => o.Tags)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (availableTags.Count == 0)
+        {
+            ImGui.TextDisabled("No tags available — refresh outfits in the main window first.");
+            return;
+        }
+
+        ImGui.TextDisabled("Pick tags (outfit matches if it has any of these):");
+
+        var size = new Vector2(0, 180 * ImGuiHelpers.GlobalScale);
+        var changed = false;
+        using (var scroll = ImRaii.Child("LoginTagsScroll", size, true))
+        {
+            if (scroll.Success)
+            {
+                foreach (var tag in availableTags)
+                {
+                    var selected = loginTags.Contains(tag);
+                    if (ImGui.Checkbox(tag, ref selected))
+                    {
+                        if (selected) loginTags.Add(tag);
+                        else loginTags.Remove(tag);
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if (changed)
+        {
+            plugin.Configuration.LoginTags = loginTags.ToList();
+            plugin.Configuration.Save();
         }
     }
 }
