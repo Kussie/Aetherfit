@@ -38,6 +38,7 @@ public class MainWindow : Window, IDisposable
     private const float AdditionalThumbSize = 72f;
     private const int MaxAdditionalImages = 5;
     private const string AdditionalImagesSubdir = "additional";
+    private const string ImageHelpText = "Click an image to view it full size. Hold Shift and right-click to remove. \"+\" picks a file; \"Snap\" captures from the game.";
 
     private enum ImageFilterMode { All, HasImage, NoImage }
     private string filterName = string.Empty;
@@ -132,7 +133,7 @@ public class MainWindow : Window, IDisposable
 
     private static void SortNodeDesigns(FolderNode node)
     {
-        node.Designs.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase));
+        node.Designs.Sort((a, b) => NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName));
         foreach (var child in node.Folders.Values)
             SortNodeDesigns(child);
     }
@@ -451,8 +452,16 @@ public class MainWindow : Window, IDisposable
                 ImGui.Spacing();
 
                 ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Cover Image");
+                DrawHelpMarker(ImageHelpText);
                 ImGui.Indent();
                 DrawOutfitImageBlock(id);
+                ImGui.Unindent();
+                ImGui.Spacing();
+
+                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Additional Images");
+                DrawHelpMarker(ImageHelpText);
+                ImGui.Indent();
+                DrawAdditionalImagesBlock(id);
                 ImGui.Unindent();
             }
         }
@@ -669,43 +678,38 @@ public class MainWindow : Window, IDisposable
     private void DrawOutfitImageBlock(Guid id)
     {
         var imagePath = GetOutfitImagePath(id);
+        var deleteRequested = false;
         if (imagePath != null)
         {
             if (DrawImageScaled(imagePath, RightPaneImageMax * ImGuiHelpers.GlobalScale, clickable: true))
                 plugin.ImageViewer.Show(imagePath);
+            if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
+                deleteRequested = true;
         }
         else
         {
             ImGui.TextDisabled("No image set");
         }
 
-        ImGui.Spacing();
-
-        if (ImGui.Button(imagePath == null ? "Set Image..." : "Change Image..."))
-            OpenImagePicker(id);
-
-        ImGui.SameLine();
-        if (ImGui.Button("Screenshot..."))
-            plugin.ScreenshotSetup.Begin(croppedPath => SetOutfitImage(id, croppedPath));
-
-        using (ImRaii.Disabled(imagePath == null))
+        if (imagePath == null)
         {
+            ImGui.Spacing();
+
+            var thumb = AdditionalThumbSize * ImGuiHelpers.GlobalScale;
+            if (ImGui.Button("+##cover", new Vector2(thumb, thumb)))
+                OpenImagePicker(id);
+
             ImGui.SameLine();
-            if (ImGui.Button("Remove Image"))
-                RemoveOutfitImage(id);
+            if (ImGui.Button("Snap##cover", new Vector2(thumb, thumb)))
+                plugin.ScreenshotSetup.Begin(croppedPath => SetOutfitImage(id, croppedPath));
         }
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        DrawAdditionalImagesBlock(id);
+        if (deleteRequested)
+            RemoveOutfitImage(id);
     }
 
     private void DrawAdditionalImagesBlock(Guid id)
     {
-        ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Additional Images");
-
         var paths = GetAdditionalImagePaths(id);
         var thumb = AdditionalThumbSize * ImGuiHelpers.GlobalScale;
         var toRemoveIndex = -1;
@@ -736,10 +740,21 @@ public class MainWindow : Window, IDisposable
                 plugin.ScreenshotSetup.Begin(croppedPath => AddAdditionalImage(id, croppedPath));
         }
 
-        ImGui.TextDisabled("Click an image to view it full size. Hold Shift and right-click to remove. \"+\" picks a file; \"Snap\" captures from the game.");
-
         if (toRemoveIndex >= 0)
             RemoveAdditionalImage(id, toRemoveIndex);
+    }
+
+    private static void DrawHelpMarker(string text)
+    {
+        ImGui.SameLine();
+        ImGui.TextDisabled("(?)");
+        if (!ImGui.IsItemHovered())
+            return;
+        ImGui.BeginTooltip();
+        ImGui.PushTextWrapPos(ImGui.GetFontSize() * 30f);
+        ImGui.TextUnformatted(text);
+        ImGui.PopTextWrapPos();
+        ImGui.EndTooltip();
     }
 
     private static bool DrawImageScaled(string absolutePath, float maxSide, bool clickable = false)
@@ -1026,9 +1041,65 @@ public class MainWindow : Window, IDisposable
 
     private sealed class FolderNode
     {
-        public SortedDictionary<string, FolderNode> Folders { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public SortedDictionary<string, FolderNode> Folders { get; } = new(NaturalStringComparer.OrdinalIgnoreCase);
         public List<DesignLeaf> Designs { get; } = new();
     }
 
     private sealed record DesignLeaf(Guid Id, string DisplayName, string FullPath, uint Color);
+
+    private sealed class NaturalStringComparer : IComparer<string>
+    {
+        public static readonly NaturalStringComparer OrdinalIgnoreCase = new();
+
+        public int Compare(string? x, string? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+
+            int i = 0, j = 0;
+            while (i < x.Length && j < y.Length)
+            {
+                var cx = x[i];
+                var cy = y[j];
+
+                if (char.IsDigit(cx) && char.IsDigit(cy))
+                {
+                    var xStart = i;
+                    while (i < x.Length && char.IsDigit(x[i])) i++;
+                    var yStart = j;
+                    while (j < y.Length && char.IsDigit(y[j])) j++;
+
+                    var xDigit = xStart;
+                    while (xDigit < i - 1 && x[xDigit] == '0') xDigit++;
+                    var yDigit = yStart;
+                    while (yDigit < j - 1 && y[yDigit] == '0') yDigit++;
+
+                    var xLen = i - xDigit;
+                    var yLen = j - yDigit;
+
+                    if (xLen != yLen) return xLen - yLen;
+                    for (var k = 0; k < xLen; k++)
+                    {
+                        var d = x[xDigit + k] - y[yDigit + k];
+                        if (d != 0) return d;
+                    }
+
+                    var leadX = xDigit - xStart;
+                    var leadY = yDigit - yStart;
+                    if (leadX != leadY) return leadX - leadY;
+                }
+                else
+                {
+                    var ux = char.ToUpperInvariant(cx);
+                    var uy = char.ToUpperInvariant(cy);
+                    if (ux != uy) return ux - uy;
+                    i++;
+                    j++;
+                }
+            }
+
+            return (x.Length - i) - (y.Length - j);
+        }
+    }
 }

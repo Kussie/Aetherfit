@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 namespace Aetherfit.Windows;
@@ -70,7 +69,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
             return;
         }
 
-        ImGui.TextWrapped("Drag on the image to select the area to keep, then click Save.");
+        ImGui.TextWrapped("Drag on the image to select the area to keep. It will save automatically when you release.");
         ImGui.Spacing();
 
         var style = ImGui.GetStyle();
@@ -84,12 +83,6 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
         DrawCropImage(new Vector2(avail.X, imageAreaH));
 
         ImGui.Spacing();
-        using (ImRaii.Disabled(!hasSelection))
-        {
-            if (ImGui.Button("Save", new Vector2(120, 0)))
-                ConfirmCrop();
-        }
-        ImGui.SameLine();
         if (ImGui.Button("Retake", new Vector2(120, 0)))
             Retake();
         ImGui.SameLine();
@@ -138,6 +131,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
             selEnd = p;
         }
 
+        var justFinishedSelection = false;
         if (dragging)
         {
             if (ImGui.IsItemActive())
@@ -149,11 +143,15 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
                 dragging = false;
                 hasSelection = Math.Abs(selEnd.X - selStart.X) >= 4
                             && Math.Abs(selEnd.Y - selStart.Y) >= 4;
+                justFinishedSelection = hasSelection;
             }
         }
 
         if (hasSelection || dragging)
             DrawSelectionOverlay(imgMin, imgMax, scale);
+
+        if (justFinishedSelection)
+            ConfirmCrop();
     }
 
     private void DrawSelectionOverlay(Vector2 imgMin, Vector2 imgMax, float scale)
