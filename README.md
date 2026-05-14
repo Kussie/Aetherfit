@@ -20,7 +20,7 @@ It adds the following functionality:
 
 ### Installation
 
-Add this repo to your experimental tab under /xlplugins `https://raw.githubusercontent.com/Kussie/Aetherfit/refs/heads/master/repo.json`
+Add this repo to your experimental tab under /xlplugins `https://raw.githubusercontent.com/Kussie/Aetherfit/master/repo.json`
 Save, then find Aetherfit in the main /xlplugins window.
 
 You can then access the plugin by typing `/aetherfit` in chat.
