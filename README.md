@@ -36,6 +36,7 @@ You can then access the plugin by typing `/aetherfit` in chat.
 
 `/aetherfit <tags>` - Apply a random design from your entire collection of designs with the specified tag, multiple tags can be specified by separating them with a comma.
 
+`/aetherfit revery` - Revert your character to the games state
 ---
 
 ## Screenshots:

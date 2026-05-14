@@ -1017,7 +1017,7 @@ public class MainWindow : Window, IDisposable
             ImGui.CloseCurrentPopup();
     }
 
-    private void RevertAppearance()
+    public void RevertAppearance()
     {
         try
         {

@@ -52,7 +52,8 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage = "/aetherfit — toggle the Aetherfit window.\n"
                         + "/aetherfit random — apply a random outfit.\n"
-                        + "/aetherfit tag <tag1,tag2,...> — apply a random outfit matching any of the tags."
+                        + "/aetherfit tag <tag1,tag2,...> — apply a random outfit matching any of the tags.\n"
+                        + "/aetherfit revert — revert appearance to the game state."
         });
 
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
@@ -114,6 +115,10 @@ public sealed class Plugin : IDalamudPlugin
                     ChatGui.PrintError($"[Aetherfit] {err}");
                 break;
             }
+
+            case "revert":
+                MainWindow.RevertAppearance();
+                break;
 
             default:
                 MainWindow.Toggle();
