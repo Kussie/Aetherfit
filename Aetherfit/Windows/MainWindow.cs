@@ -315,6 +315,7 @@ public class MainWindow : Window, IDisposable
         var thumbVec = new Vector2(thumbSize, thumbSize);
         var imagePath = GetOutfitImagePath(design.Id);
         var clicked = false;
+        var shiftClicked = false;
         var doubleClicked = false;
 
         if (imagePath != null)
@@ -358,7 +359,12 @@ public class MainWindow : Window, IDisposable
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
             if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                clicked = true;
+            {
+                if (ImGui.GetIO().KeyShift)
+                    shiftClicked = true;
+                else
+                    clicked = true;
+            }
             if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                 doubleClicked = true;
             DrawCoverCellTooltip(design);
@@ -387,6 +393,11 @@ public class MainWindow : Window, IDisposable
 
         if (clicked)
             selectedDesign = design.Id;
+        if (shiftClicked)
+        {
+            selectedDesign = design.Id;
+            coverMode = false;
+        }
         if (doubleClicked)
         {
             selectedDesign = design.Id;
@@ -401,6 +412,7 @@ public class MainWindow : Window, IDisposable
         if (!string.IsNullOrEmpty(design.FullPath))
             ImGui.TextDisabled(design.FullPath);
         ImGui.TextDisabled("Double-click to apply");
+        ImGui.TextDisabled("Shift+click to open in tree view");
         ImGui.EndTooltip();
     }
 
@@ -588,11 +600,49 @@ public class MainWindow : Window, IDisposable
         ImGui.EndTooltip();
     }
 
+    private void DrawWelcomePlaceholder()
+    {
+        const string message = "Select a design on the left to see its details.";
+        var avail = ImGui.GetContentRegionAvail();
+
+        var iconDir = Plugin.PluginInterface.AssemblyLocation.DirectoryName;
+        var iconPath = iconDir != null ? Path.Combine(iconDir, "icon.png") : null;
+        var tex = iconPath != null && File.Exists(iconPath)
+            ? Plugin.TextureProvider.GetFromFile(iconPath).GetWrapOrEmpty()
+            : null;
+
+        Vector2 imageSize = Vector2.Zero;
+        if (tex is { Width: > 0, Height: > 0 })
+        {
+            var maxSide = Math.Min(256f * ImGuiHelpers.GlobalScale, Math.Min(avail.X, avail.Y * 0.6f));
+            var scale = Math.Min(maxSide / tex.Width, maxSide / tex.Height);
+            if (scale > 0f)
+                imageSize = new Vector2(tex.Width * scale, tex.Height * scale);
+        }
+
+        var textSize = ImGui.CalcTextSize(message);
+        var spacing = imageSize.Y > 0 ? ImGui.GetStyle().ItemSpacing.Y : 0f;
+        var totalHeight = imageSize.Y + spacing + textSize.Y;
+        var startY = ImGui.GetCursorPosY() + Math.Max(0f, (avail.Y - totalHeight) * 0.5f);
+
+        if (imageSize.Y > 0 && tex != null)
+        {
+            ImGui.SetCursorPosY(startY);
+            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (avail.X - imageSize.X) * 0.5f));
+            ImGui.Image(tex.Handle, imageSize);
+            startY = ImGui.GetCursorPosY() + spacing;
+        }
+
+        ImGui.SetCursorPosY(startY);
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (avail.X - textSize.X) * 0.5f));
+        ImGui.TextDisabled(message);
+    }
+
     private void DrawSelectedOutfitDetails()
     {
         if (selectedDesign is not { } id)
         {
-            ImGui.TextDisabled("Select a design on the left to see its details.");
+            DrawWelcomePlaceholder();
             return;
         }
 
