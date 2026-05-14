@@ -4,6 +4,7 @@ using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
+using Aetherfit.Services;
 using Aetherfit.Windows;
 
 namespace Aetherfit;
@@ -23,6 +24,8 @@ public sealed class Plugin : IDalamudPlugin
     private const string CommandName = "/aetherfit";
 
     public Configuration Configuration { get; init; }
+    public GlamourerService Glamourer { get; init; }
+    public ImageStorageService ImageStorage { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
@@ -36,6 +39,8 @@ public sealed class Plugin : IDalamudPlugin
     public Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        Glamourer = new GlamourerService();
+        ImageStorage = new ImageStorageService(Configuration);
 
         ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
