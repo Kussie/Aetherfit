@@ -35,6 +35,13 @@ public sealed class ScreenshotSetupWindow : Window, IDisposable
     {
         onConfirmed = onConfirmedCallback;
         errorMessage = null;
+
+        if (Plugin.ClientState.IsGPosing)
+        {
+            BeginCapture();
+            return;
+        }
+
         IsOpen = true;
         BringToFront();
     }
