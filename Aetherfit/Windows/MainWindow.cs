@@ -51,6 +51,7 @@ public class MainWindow : Window, IDisposable
     private bool coverMode;
     private const int CoverColumns = 4;
     private const float CoverMinThumbSize = 96f;
+    private const float CoverAspectRatio = 4f / 3f; // height / width — portrait to suit character screenshots
     private readonly Dictionary<Guid, int> galleryImageIndex = new();
 
     private enum GallerySortField { Name, LastModified, Created }
@@ -245,7 +246,7 @@ public class MainWindow : Window, IDisposable
         ImGui.SetWindowFontScale(1.0f);
         ImGui.Separator();
 
-        if (ImGui.Button("<< Tree Mode", new Vector2(-1, 0)))
+        if (ImGui.Button("<< Edit Mode", new Vector2(-1, 0)))
             coverMode = false;
 
         if (ImGui.Button("Refresh"))
@@ -319,13 +320,14 @@ public class MainWindow : Window, IDisposable
 
         var spacing = ImGui.GetStyle().ItemSpacing.X;
         var avail = ImGui.GetContentRegionAvail().X;
-        var thumbSize = Math.Max(CoverMinThumbSize, (avail - (CoverColumns - 1) * spacing) / CoverColumns);
+        var thumbWidth = Math.Max(CoverMinThumbSize, (avail - (CoverColumns - 1) * spacing) / CoverColumns);
+        var thumbHeight = thumbWidth * CoverAspectRatio;
 
         for (var i = 0; i < visible.Count; i++)
         {
             if (i % CoverColumns != 0)
                 ImGui.SameLine();
-            DrawCoverCell(visible[i], thumbSize);
+            DrawCoverCell(visible[i], thumbWidth, thumbHeight);
         }
     }
 
@@ -378,13 +380,14 @@ public class MainWindow : Window, IDisposable
             CollectVisibleDesigns(folder, result);
     }
 
-    private void DrawCoverCell(DesignLeaf design, float thumbSize)
+    private void DrawCoverCell(DesignLeaf design, float thumbWidth, float thumbHeight)
     {
         using var id = ImRaii.PushId(design.Id.ToString());
         using var group = ImRaii.Group();
 
         var thumbStart = ImGui.GetCursorScreenPos();
-        var thumbVec = new Vector2(thumbSize, thumbSize);
+        var thumbVec = new Vector2(thumbWidth, thumbHeight);
+        var containerAspect = thumbWidth / thumbHeight;
 
         var coverPath = GetOutfitImagePath(design.Id);
         var additionalPaths = GetAdditionalImagePaths(design.Id);
@@ -409,15 +412,16 @@ public class MainWindow : Window, IDisposable
             if (tex.Width > 0 && tex.Height > 0)
             {
                 float uMin = 0f, uMax = 1f, vMin = 0f, vMax = 1f;
-                if (tex.Width > tex.Height)
+                var texAspect = tex.Width / (float)tex.Height;
+                if (texAspect > containerAspect)
                 {
-                    var keep = tex.Height / (float)tex.Width;
+                    var keep = containerAspect / texAspect;
                     uMin = (1f - keep) * 0.5f;
                     uMax = 1f - uMin;
                 }
-                else if (tex.Height > tex.Width)
+                else if (texAspect < containerAspect)
                 {
-                    var keep = tex.Width / (float)tex.Height;
+                    var keep = texAspect / containerAspect;
                     vMin = (1f - keep) * 0.5f;
                     vMax = 1f - vMin;
                 }
@@ -446,11 +450,11 @@ public class MainWindow : Window, IDisposable
         var canPrev = imgIdx > 0;
         var canNext = imgIdx < images.Count - 1;
 
-        var arrowZone = Math.Min(28f * ImGuiHelpers.GlobalScale, thumbSize * 0.32f);
+        var arrowZone = Math.Min(28f * ImGuiHelpers.GlobalScale, Math.Min(thumbWidth, thumbHeight) * 0.32f);
         var arrowMargin = 4f * ImGuiHelpers.GlobalScale;
-        var leftMin = new Vector2(thumbStart.X + arrowMargin, thumbStart.Y + (thumbSize - arrowZone) * 0.5f);
+        var leftMin = new Vector2(thumbStart.X + arrowMargin, thumbStart.Y + (thumbHeight - arrowZone) * 0.5f);
         var leftMax = new Vector2(leftMin.X + arrowZone, leftMin.Y + arrowZone);
-        var rightMax = new Vector2(thumbStart.X + thumbSize - arrowMargin, thumbStart.Y + (thumbSize + arrowZone) * 0.5f);
+        var rightMax = new Vector2(thumbStart.X + thumbWidth - arrowMargin, thumbStart.Y + (thumbHeight + arrowZone) * 0.5f);
         var rightMin = new Vector2(rightMax.X - arrowZone, rightMax.Y - arrowZone);
 
         var mouse = ImGui.GetIO().MousePos;
@@ -497,13 +501,13 @@ public class MainWindow : Window, IDisposable
 
         var label = design.DisplayName;
         var labelWidth = ImGui.CalcTextSize(label).X;
-        var indent = Math.Max(0f, (thumbSize - labelWidth) * 0.5f);
+        var indent = Math.Max(0f, (thumbWidth - labelWidth) * 0.5f);
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
 
         var hasColor = design.Color != 0;
         if (hasColor)
             ImGui.PushStyleColor(ImGuiCol.Text, design.Color);
-        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + thumbSize);
+        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + thumbWidth);
         ImGui.TextUnformatted(label);
         ImGui.PopTextWrapPos();
         if (hasColor)
@@ -559,7 +563,7 @@ public class MainWindow : Window, IDisposable
         if (!string.IsNullOrEmpty(design.FullPath))
             ImGui.TextDisabled(design.FullPath);
         ImGui.TextDisabled("Double-click to apply");
-        ImGui.TextDisabled("Shift+click to open in tree view");
+        ImGui.TextDisabled("Shift+click to open in edit view");
         ImGui.EndTooltip();
     }
 
