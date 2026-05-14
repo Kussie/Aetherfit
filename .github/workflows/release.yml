@@ -60,9 +60,8 @@ jobs:
               shell: pwsh
               run: |
                   $manifest = Get-Content "Aetherfit\bin\Release\win-x64\Aetherfit.json" -Raw | ConvertFrom-Json
-                  $loaded = Get-Content "repo.json" -Raw | ConvertFrom-Json
-                  $repo = @($loaded)
-                  $entry = $repo[0]
+                  $entry = Get-Content "repo.json" -Raw | ConvertFrom-Json
+                  while ($entry -is [Array]) { $entry = $entry[0] }
                   $existingNames = @($entry.PSObject.Properties.Name)
                   foreach ($prop in $manifest.PSObject.Properties) {
                       if ($existingNames -contains $prop.Name) {
@@ -70,7 +69,7 @@ jobs:
                       }
                   }
                   $entry.LastUpdate = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
-                  $json = (ConvertTo-Json -InputObject $repo -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
+                  $json = (ConvertTo-Json -InputObject $entry -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 
             - name: Commit repo.json
