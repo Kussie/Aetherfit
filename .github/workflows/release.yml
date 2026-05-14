@@ -55,3 +55,34 @@ jobs:
                   overwrite_files: true
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Update repo.json
+              shell: pwsh
+              run: |
+                  $manifest = Get-Content "Aetherfit\bin\Release\win-x64\Aetherfit.json" -Raw | ConvertFrom-Json
+                  $repo = Get-Content "repo.json" -Raw | ConvertFrom-Json
+                  $entry = $repo[0]
+                  $existingNames = @($entry.PSObject.Properties.Name)
+                  foreach ($prop in $manifest.PSObject.Properties) {
+                      if ($existingNames -contains $prop.Name) {
+                          $entry.$($prop.Name) = $prop.Value
+                      }
+                  }
+                  $entry.LastUpdate = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+                  $json = (ConvertTo-Json -InputObject $repo -Depth 10) -replace '(?m)^(\s+)', '$1$1'
+                  Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
+
+            - name: Commit repo.json
+              shell: pwsh
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  git diff --quiet HEAD -- repo.json
+                  if ($LASTEXITCODE -eq 0) {
+                      Write-Host "repo.json unchanged; nothing to commit."
+                      exit 0
+                  }
+                  $LASTEXITCODE = 0
+                  git add repo.json
+                  git commit -m "chore(release): update repo.json for v${{ steps.version.outputs.version }} [skip ci]"
+                  git push origin HEAD:master

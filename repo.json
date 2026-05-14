@@ -1,0 +1,34 @@
+[
+    {
+        "Author": "Kussie",
+        "Name": "Aetherfit",
+        "InternalName": "Aetherfit",
+        "AssemblyVersion": "2605.19.0.0",
+        "Description": "A custom simple frontend for applying designs from Glamourer. Lets you browse and apply designs, and optionally upload your own images to more easily be able to decide on which design to wear.",
+        "ApplicableVersion": "any",
+        "Tags": [
+            "glamour",
+            "glamourer",
+            "outfits",
+            "glam",
+            "fashion"
+        ],
+        "CategoryTags": [
+            "utility"
+        ],
+        "DalamudApiLevel": 15,
+        "IsHide": false,
+        "IsTestingExclusive": false,
+        "DownloadLinkInstall": "https://github.com/Kussie/Aetherfit/releases/latest/download/latest.zip",
+        "DownloadLinkTesting": "https://github.com/Kussie/Aetherfit/releases/latest/download/latest.zip",
+        "DownloadLinkUpdate": "https://github.com/Kussie/Aetherfit/releases/latest/download/latest.zip",
+        "DownloadCount": 0,
+        "LastUpdate": 1778718925,
+        "Punchline": "An alternative simple frontend for Glamourer",
+        "AcceptsFeedback": true,
+        "LoadRequiredState": 0,
+        "LoadSync": false,
+        "CanUnloadAsync": false,
+        "LoadPriority": 0
+    }
+]
