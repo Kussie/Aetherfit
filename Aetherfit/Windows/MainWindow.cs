@@ -50,6 +50,7 @@ public class MainWindow : Window, IDisposable
     private bool coverMode;
     private const int CoverColumns = 4;
     private const float CoverMinThumbSize = 96f;
+    private readonly Dictionary<Guid, int> galleryImageIndex = new();
 
     public MainWindow(Plugin plugin)
         : base("Aetherfit##With a hidden ID", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
@@ -313,14 +314,27 @@ public class MainWindow : Window, IDisposable
 
         var thumbStart = ImGui.GetCursorScreenPos();
         var thumbVec = new Vector2(thumbSize, thumbSize);
-        var imagePath = GetOutfitImagePath(design.Id);
+
+        var coverPath = GetOutfitImagePath(design.Id);
+        var additionalPaths = GetAdditionalImagePaths(design.Id);
+        var images = new List<string>();
+        if (coverPath != null) images.Add(coverPath);
+        images.AddRange(additionalPaths);
+
+        if (!galleryImageIndex.TryGetValue(design.Id, out var imgIdx) || imgIdx < 0 || imgIdx >= images.Count)
+        {
+            imgIdx = 0;
+            galleryImageIndex[design.Id] = 0;
+        }
+        var currentImage = images.Count > 0 ? images[imgIdx] : null;
+
         var clicked = false;
         var shiftClicked = false;
         var doubleClicked = false;
 
-        if (imagePath != null)
+        if (currentImage != null)
         {
-            var tex = Plugin.TextureProvider.GetFromFile(imagePath).GetWrapOrEmpty();
+            var tex = Plugin.TextureProvider.GetFromFile(currentImage).GetWrapOrEmpty();
             if (tex.Width > 0 && tex.Height > 0)
             {
                 float uMin = 0f, uMax = 1f, vMin = 0f, vMax = 1f;
@@ -355,19 +369,52 @@ public class MainWindow : Window, IDisposable
             dl.AddText(textPos, ImGui.ColorConvertFloat4ToU32(new Vector4(0.65f, 0.65f, 0.68f, 1f)), text);
         }
 
-        if (ImGui.IsItemHovered())
+        var imageHovered = ImGui.IsItemHovered();
+
+        var hasArrows = additionalPaths.Count > 0;
+        var canPrev = imgIdx > 0;
+        var canNext = imgIdx < images.Count - 1;
+
+        var arrowZone = Math.Min(28f * ImGuiHelpers.GlobalScale, thumbSize * 0.32f);
+        var arrowMargin = 4f * ImGuiHelpers.GlobalScale;
+        var leftMin = new Vector2(thumbStart.X + arrowMargin, thumbStart.Y + (thumbSize - arrowZone) * 0.5f);
+        var leftMax = new Vector2(leftMin.X + arrowZone, leftMin.Y + arrowZone);
+        var rightMax = new Vector2(thumbStart.X + thumbSize - arrowMargin, thumbStart.Y + (thumbSize + arrowZone) * 0.5f);
+        var rightMin = new Vector2(rightMax.X - arrowZone, rightMax.Y - arrowZone);
+
+        var mouse = ImGui.GetIO().MousePos;
+        var overLeft = imageHovered && hasArrows && canPrev
+                       && mouse.X >= leftMin.X && mouse.X <= leftMax.X
+                       && mouse.Y >= leftMin.Y && mouse.Y <= leftMax.Y;
+        var overRight = imageHovered && hasArrows && canNext
+                        && mouse.X >= rightMin.X && mouse.X <= rightMax.X
+                        && mouse.Y >= rightMin.Y && mouse.Y <= rightMax.Y;
+
+        if (imageHovered && hasArrows)
+        {
+            var dl = ImGui.GetWindowDrawList();
+            if (canPrev) DrawGalleryChevron(dl, leftMin, leftMax, isLeft: true, hovered: overLeft);
+            if (canNext) DrawGalleryChevron(dl, rightMin, rightMax, isLeft: false, hovered: overRight);
+        }
+
+        if (imageHovered)
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
             if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             {
-                if (ImGui.GetIO().KeyShift)
+                if (overLeft)
+                    galleryImageIndex[design.Id] = imgIdx - 1;
+                else if (overRight)
+                    galleryImageIndex[design.Id] = imgIdx + 1;
+                else if (ImGui.GetIO().KeyShift)
                     shiftClicked = true;
                 else
                     clicked = true;
             }
-            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !overLeft && !overRight)
                 doubleClicked = true;
-            DrawCoverCellTooltip(design);
+            if (!overLeft && !overRight)
+                DrawCoverCellTooltip(design);
         }
 
         if (selectedDesign == design.Id)
@@ -402,6 +449,35 @@ public class MainWindow : Window, IDisposable
         {
             selectedDesign = design.Id;
             ApplyDesignById(design.Id);
+        }
+    }
+
+    private static void DrawGalleryChevron(ImDrawListPtr dl, Vector2 min, Vector2 max, bool isLeft, bool hovered)
+    {
+        var bgAlpha = hovered ? 0.85f : 0.55f;
+        var bg = ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, bgAlpha));
+        dl.AddRectFilled(min, max, bg, 4f);
+
+        var center = (min + max) * 0.5f;
+        var size = Math.Min(max.X - min.X, max.Y - min.Y);
+        var halfH = size * 0.25f;
+        var halfW = size * 0.18f;
+        var color = ImGui.ColorConvertFloat4ToU32(Vector4.One);
+        if (isLeft)
+        {
+            dl.AddTriangleFilled(
+                new Vector2(center.X - halfW, center.Y),
+                new Vector2(center.X + halfW, center.Y + halfH),
+                new Vector2(center.X + halfW, center.Y - halfH),
+                color);
+        }
+        else
+        {
+            dl.AddTriangleFilled(
+                new Vector2(center.X + halfW, center.Y),
+                new Vector2(center.X - halfW, center.Y - halfH),
+                new Vector2(center.X - halfW, center.Y + halfH),
+                color);
         }
     }
 
