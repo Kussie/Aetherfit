@@ -19,6 +19,24 @@ Aetherfit is designed to be a lightweight and easy-to-use alternative to the def
 
 Aetherfit also provides a quick and easy way to preview your designs with screenshots that can be added to your designs. Screenshots can either be loaded from disk or taken directly in game.
 
+---
+## For Users
+
+### Installation
+
+Add this repo to your experimental tab under /xlplugins `https://raw.githubusercontent.com/Kussie/Aetherfit/refs/heads/master/repo.json`
+Save, then find Aetherfit in the main /xlplugins window.
+
+You can then access the plugin by typing `/aetherfit` in chat.
+
+### Command Usage
+`/aetherfit` - Opens the main interface.
+
+`/aetherfit random` - Apply a random design from your entire collection of designs.
+
+`/aetherfit <tags>` - Apply a random design from your entire collection of designs with the specified tag, multiple tags can be specified by separating them with a comma.
+
+---
 
 ## Screenshots:
 
