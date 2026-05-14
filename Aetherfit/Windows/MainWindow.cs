@@ -51,7 +51,7 @@ public class MainWindow : Window, IDisposable
     private bool coverMode;
     private const int CoverColumns = 4;
     private const float CoverMinThumbSize = 96f;
-    private const float CoverAspectRatio = 4f / 3f; // height / width — portrait to suit character screenshots
+    private const float CoverAspectRatio = 3f / 2f; // height / width — portrait to suit character screenshots
     private readonly Dictionary<Guid, int> galleryImageIndex = new();
 
     private enum GallerySortField { Name, LastModified, Created }
