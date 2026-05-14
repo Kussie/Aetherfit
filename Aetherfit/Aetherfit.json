@@ -5,7 +5,7 @@
   "Description": "A custom simple frontend for applying designs from Glamourer. Lets you browse and apply designs, and optionally upload your own images to more easily be able to decide on which design to wear.",
   "ApplicableVersion": "any",
   "RepoUrl": "https://github.com/Kussie/Aetherfit",
-  "IconUrl": "https://github.com/Kussie/Aetherfit/blob/d670ed8002d22bbb030f981ad48b8906145c4ca8/Data/icon.png",
+  "IconUrl": "https://raw.githubusercontent.com/Kussie/Aetherfit/master/Data/icon.png",
   "Tags": [
     "glamour",
     "glamourer",
