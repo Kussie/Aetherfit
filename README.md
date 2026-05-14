@@ -55,3 +55,8 @@ Cropping/Selecting area to use:
 Thumbnail View:
 
 ![Screenshot 2026-05-14 084811.png](Screenshots/Screenshot%202026-05-14%20084811.png)
+
+---
+
+## AI Usage Disclaimer
+AI was used to generate the logo as my art skills are non existent.

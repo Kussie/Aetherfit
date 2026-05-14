@@ -20,6 +20,7 @@ public class MainWindow : Window, IDisposable
     private readonly GetDesignListExtended getDesignListExtended;
     private readonly GetDesignJObject getDesignJObject;
     private readonly ApplyDesign applyDesign;
+    private readonly RevertState revertState;
 
     private FolderNode root = new();
     private int designsCount;
@@ -52,6 +53,10 @@ public class MainWindow : Window, IDisposable
     private const float CoverMinThumbSize = 96f;
     private readonly Dictionary<Guid, int> galleryImageIndex = new();
 
+    private enum GallerySortField { Name, LastModified, Created }
+    private GallerySortField gallerySortField = GallerySortField.Name;
+    private bool gallerySortAscending = true;
+
     public MainWindow(Plugin plugin)
         : base("Aetherfit##With a hidden ID", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
@@ -65,6 +70,7 @@ public class MainWindow : Window, IDisposable
         getDesignListExtended = new GetDesignListExtended(Plugin.PluginInterface);
         getDesignJObject = new GetDesignJObject(Plugin.PluginInterface);
         applyDesign = new ApplyDesign(Plugin.PluginInterface);
+        revertState = new RevertState(Plugin.PluginInterface);
     }
 
     public void Dispose() { }
@@ -267,15 +273,43 @@ public class MainWindow : Window, IDisposable
         ImGui.Separator();
         ImGui.Spacing();
 
+        DrawGallerySortControls();
+        ImGui.Spacing();
+
         using var gridChild = ImRaii.Child("CoverGridScroll", Vector2.Zero, false);
         if (gridChild.Success)
             DrawCoverGrid();
+    }
+
+    private void DrawGallerySortControls()
+    {
+        ImGui.TextDisabled("Sort by:");
+        ImGui.SameLine();
+
+        var dirLabel = gallerySortAscending ? "Asc" : "Desc";
+        var dirWidth = ImGui.CalcTextSize(dirLabel).X + ImGui.GetStyle().FramePadding.X * 2 + 8 * ImGuiHelpers.GlobalScale;
+        var comboWidth = Math.Max(120f * ImGuiHelpers.GlobalScale,
+            ImGui.GetContentRegionAvail().X - dirWidth - ImGui.GetStyle().ItemSpacing.X);
+
+        ImGui.PushItemWidth(comboWidth);
+        var fieldIdx = (int)gallerySortField;
+        var fieldOptions = new[] { "Name (alphabetical)", "Last modified", "Created" };
+        if (ImGui.Combo("##gallerySortField", ref fieldIdx, fieldOptions, fieldOptions.Length))
+            gallerySortField = (GallerySortField)fieldIdx;
+        ImGui.PopItemWidth();
+
+        ImGui.SameLine();
+        if (ImGui.Button($"{dirLabel}##gallerySortDir", new Vector2(dirWidth, 0)))
+            gallerySortAscending = !gallerySortAscending;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(gallerySortAscending ? "Ascending — click to switch to descending" : "Descending — click to switch to ascending");
     }
 
     private void DrawCoverGrid()
     {
         var visible = new List<DesignLeaf>();
         CollectVisibleDesigns(root, visible);
+        SortGalleryDesigns(visible);
 
         if (visible.Count == 0)
         {
@@ -293,6 +327,43 @@ public class MainWindow : Window, IDisposable
                 ImGui.SameLine();
             DrawCoverCell(visible[i], thumbSize);
         }
+    }
+
+    private void SortGalleryDesigns(List<DesignLeaf> designs)
+    {
+        var asc = gallerySortAscending;
+        switch (gallerySortField)
+        {
+            case GallerySortField.Name:
+                designs.Sort((a, b) =>
+                {
+                    var cmp = NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName);
+                    return asc ? cmp : -cmp;
+                });
+                break;
+            case GallerySortField.LastModified:
+                designs.Sort((a, b) => CompareDates(GetLastEdit(a.Id), GetLastEdit(b.Id), asc));
+                break;
+            case GallerySortField.Created:
+                designs.Sort((a, b) => CompareDates(GetCreatedAt(a.Id), GetCreatedAt(b.Id), asc));
+                break;
+        }
+    }
+
+    private DateTimeOffset? GetLastEdit(Guid id) =>
+        plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.LastEdit : null;
+
+    private DateTimeOffset? GetCreatedAt(Guid id) =>
+        plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.CreatedAt : null;
+
+    // Missing dates always sink to the bottom, regardless of direction.
+    private static int CompareDates(DateTimeOffset? a, DateTimeOffset? b, bool ascending)
+    {
+        if (a is null && b is null) return 0;
+        if (a is null) return 1;
+        if (b is null) return -1;
+        var cmp = a.Value.CompareTo(b.Value);
+        return ascending ? cmp : -cmp;
     }
 
     private void CollectVisibleDesigns(FolderNode node, List<DesignLeaf> result)
@@ -654,6 +725,12 @@ public class MainWindow : Window, IDisposable
         if (ImGui.Selectable($"{design.DisplayName}##{design.Id}", selected))
             selectedDesign = design.Id;
 
+        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+        {
+            selectedDesign = design.Id;
+            ApplyDesignById(design.Id);
+        }
+
         if (hasColor)
             ImGui.PopStyleColor();
 
@@ -665,14 +742,13 @@ public class MainWindow : Window, IDisposable
     {
         var imagePath = plugin.Configuration.ShowThumbnailOnHover ? GetOutfitImagePath(design.Id) : null;
         var hasPath = !string.IsNullOrEmpty(design.FullPath);
-        if (!hasPath && imagePath == null)
-            return;
 
         ImGui.BeginTooltip();
         if (hasPath)
             ImGui.TextUnformatted(design.FullPath);
         if (imagePath != null)
             DrawImageScaled(imagePath, TooltipImageMax * ImGuiHelpers.GlobalScale);
+        ImGui.TextDisabled("Double-click to apply");
         ImGui.EndTooltip();
     }
 
@@ -824,12 +900,14 @@ public class MainWindow : Window, IDisposable
     {
         var style = ImGui.GetStyle();
         const string settingsLabel = "Settings";
+        const string revertLabel = "Revert Appearance";
         const string applyLabel = "Apply Selected";
         const string randomLabel = "Apply Random";
         const string byTagLabel = "Apply Random By Tag(s)";
 
         var pad = style.FramePadding.X * 2 + 8 * ImGuiHelpers.GlobalScale;
         var settingsW = ImGui.CalcTextSize(settingsLabel).X + pad;
+        var revertW = ImGui.CalcTextSize(revertLabel).X + pad;
         var applyW = ImGui.CalcTextSize(applyLabel).X + pad;
         var randomW = ImGui.CalcTextSize(randomLabel).X + pad;
         var byTagW = ImGui.CalcTextSize(byTagLabel).X + pad;
@@ -837,6 +915,10 @@ public class MainWindow : Window, IDisposable
 
         if (ImGui.Button(settingsLabel, new Vector2(settingsW, 0)))
             plugin.ToggleConfigUi();
+        ImGui.SameLine();
+
+        if (ImGui.Button(revertLabel, new Vector2(revertW, 0)))
+            RevertAppearance();
         ImGui.SameLine();
 
         var avail = ImGui.GetContentRegionAvail().X;
@@ -933,6 +1015,21 @@ public class MainWindow : Window, IDisposable
         ImGui.SameLine();
         if (ImGui.Button("Cancel"))
             ImGui.CloseCurrentPopup();
+    }
+
+    private void RevertAppearance()
+    {
+        try
+        {
+            var result = revertState.Invoke(0);
+            Plugin.ChatGui.Print($"[Aetherfit] Reverted appearance to game state: {result}");
+            Plugin.Log.Info("Reverted appearance to game state: {Result}", result);
+        }
+        catch (Exception ex)
+        {
+            Plugin.ChatGui.PrintError($"[Aetherfit] Revert failed: {ex.Message}");
+            Plugin.Log.Warning(ex, "Failed to revert appearance");
+        }
     }
 
     private void ApplyDesignById(Guid id)
