@@ -211,7 +211,7 @@ public partial class MainWindow
                 ImGui.SetWindowFontScale(1.0f);
                 ImGui.Spacing();
 
-                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Tags");
+                DrawSubheader("Tags");
                 ImGui.Indent();
                 if (details.Tags.Count > 0)
                 {
@@ -228,7 +228,7 @@ public partial class MainWindow
                 ImGui.Unindent();
                 ImGui.Spacing();
 
-                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Description");
+                DrawSubheader("Description");
                 ImGui.Indent();
                 if (!string.IsNullOrWhiteSpace(details.Description))
                     ImGui.TextWrapped(details.Description);
@@ -237,15 +237,13 @@ public partial class MainWindow
                 ImGui.Unindent();
                 ImGui.Spacing();
 
-                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Cover Image");
-                DrawHelpMarker(ImageHelpText);
+                DrawSubheader("Cover Image", ImageHelpText);
                 ImGui.Indent();
                 DrawOutfitImageBlock(id);
                 ImGui.Unindent();
                 ImGui.Spacing();
 
-                ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Additional Images");
-                DrawHelpMarker(ImageHelpText);
+                DrawSubheader("Additional Images", ImageHelpText);
                 ImGui.Indent();
                 DrawAdditionalImagesBlock(id);
                 ImGui.Unindent();
@@ -388,15 +386,41 @@ public partial class MainWindow
     private static string FormatFullDate(DateTimeOffset dt) =>
         dt.LocalDateTime.ToString("dddd, MMMM d, yyyy 'at' h:mm tt");
 
-    private static void DrawHelpMarker(string text)
+    private static void DrawSubheader(string label, string? helpText = null)
     {
-        ImGui.SameLine();
-        ImGui.TextDisabled("(?)");
-        if (!ImGui.IsItemHovered())
+        // Mirrors DrawCollapsibleSubheader's framed look but is static (no chevron, no toggle).
+        var style = ImGui.GetStyle();
+        var draw = ImGui.GetWindowDrawList();
+
+        var avail = ImGui.GetContentRegionAvail().X;
+        var lineH = ImGui.GetTextLineHeight();
+        var rectH = lineH + style.FramePadding.Y * 2f;
+
+        var rectMin = ImGui.GetCursorScreenPos();
+        var rectMax = new Vector2(rectMin.X + avail, rectMin.Y + rectH);
+
+        ImGui.Dummy(new Vector2(avail, rectH));
+        draw.AddRectFilled(rectMin, rectMax, ImGui.GetColorU32(ImGuiCol.Header), style.FrameRounding);
+
+        var textY = rectMin.Y + (rectH - lineH) * 0.5f;
+        draw.AddText(new Vector2(rectMin.X + style.FramePadding.X, textY),
+            ImGui.GetColorU32(SectionHeader), label);
+
+        if (helpText == null)
             return;
+
+        const string marker = "(?)";
+        var markerSize = ImGui.CalcTextSize(marker);
+        var markerPos = new Vector2(rectMax.X - markerSize.X - style.FramePadding.X, textY);
+        draw.AddText(markerPos, ImGui.GetColorU32(ImGuiCol.TextDisabled), marker);
+
+        var hoverMax = new Vector2(markerPos.X + markerSize.X, markerPos.Y + markerSize.Y);
+        if (!ImGui.IsMouseHoveringRect(markerPos, hoverMax))
+            return;
+
         ImGui.BeginTooltip();
         ImGui.PushTextWrapPos(ImGui.GetFontSize() * 30f);
-        ImGui.TextUnformatted(text);
+        ImGui.TextUnformatted(helpText);
         ImGui.PopTextWrapPos();
         ImGui.EndTooltip();
     }
