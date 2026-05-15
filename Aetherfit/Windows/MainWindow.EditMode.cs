@@ -56,11 +56,15 @@ public partial class MainWindow
         if (!treeChild.Success)
             return;
 
-        // Widen the vertical gap between rows so the mouse can't sit on the seam between
-        // two items and produce overlapping tooltips.
+        // Widen the vertical gap between rows so the mouse rarely sits on the seam between two items and reports both as hovered in the same frame.
         var spacing = ImGui.GetStyle().ItemSpacing;
+        hoveredDesignForTooltip = null;
         using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(spacing.X, spacing.Y + 3)))
             DrawTree(root);
+
+        // Render the tooltip once, after the walk. ImGui's tooltip window is shared, so if two Selectables both reported IsItemHovered() in the same frame, calling BeginTooltip per leaf would stack their contents into one tooltip.
+        if (hoveredDesignForTooltip is { } hovered)
+            DrawDesignLeafTooltip(hovered);
     }
 
     private void DrawTree(FolderNode node)
@@ -103,7 +107,7 @@ public partial class MainWindow
             ImGui.PopStyleColor();
 
         if (ImGui.IsItemHovered())
-            DrawDesignLeafTooltip(design);
+            hoveredDesignForTooltip = design;
     }
 
     private void DrawDesignLeafTooltip(DesignLeaf design)
@@ -226,6 +230,10 @@ public partial class MainWindow
                 ImGui.Indent();
                 DrawAdditionalImagesBlock(id);
                 ImGui.Unindent();
+                ImGui.Spacing();
+
+                DrawEquipmentPanel(details);
+                DrawModsPanel(details);
             }
         }
 

@@ -20,6 +20,12 @@
         "resolved": "2.8.1",
         "contentHash": "RCaAAd1hmRLiLAeAVFPi8GZKRIVYrh2m0vmGA+3yKZj3xemWr8/KU2vHlt1mUdMnyPlCX2zPK6zM4nFsMB+GYg=="
       },
+      "Penumbra.Api": {
+        "type": "Direct",
+        "requested": "[5.15.1, )",
+        "resolved": "5.15.1",
+        "contentHash": "3ikk0zIOaLm2n3nZRQpW3xaRQ2cq/TOOEApNUjYXolqbyvCrZVGXhdQulcssNUbo0AMQ81l+cf7OfqRceeRBcg=="
+      },
       "System.Drawing.Common": {
         "type": "Direct",
         "requested": "[10.0.0, )",

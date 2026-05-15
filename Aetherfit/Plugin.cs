@@ -25,6 +25,8 @@ public sealed class Plugin : IDalamudPlugin
 
     public Configuration Configuration { get; init; }
     public GlamourerService Glamourer { get; init; }
+    public PenumbraService Penumbra { get; init; }
+    public GameDataService GameData { get; init; }
     public ImageStorageService ImageStorage { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
@@ -40,6 +42,8 @@ public sealed class Plugin : IDalamudPlugin
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         Glamourer = new GlamourerService();
+        Penumbra = new PenumbraService();
+        GameData = new GameDataService();
         ImageStorage = new ImageStorageService(Configuration);
 
         ConfigWindow = new ConfigWindow(this);

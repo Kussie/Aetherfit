@@ -18,6 +18,7 @@ public partial class MainWindow : Window, IDisposable
     private int designsCount;
     private string? designsError;
     private Guid? selectedDesign;
+    private DesignLeaf? hoveredDesignForTooltip;
 
     private readonly FileDialogManager fileDialog = new();
     private const string ImageFilters = "Image{.png,.jpg,.jpeg,.webp}";
