@@ -66,6 +66,7 @@ public sealed class GlamourerService
         try
         {
             var result = applyDesign.Invoke(id, 0, 0);
+            Sounds.PlayApply();
             Plugin.ChatGui.Print($"[Aetherfit] Applied \"{designName}\": {result}");
             Plugin.Log.Info("Applied design {Name} ({Id}): {Result}", designName, id, result);
         }
@@ -81,6 +82,7 @@ public sealed class GlamourerService
         try
         {
             var result = revertState.Invoke(0);
+            Sounds.PlayRevert();
             Plugin.ChatGui.Print($"[Aetherfit] Reverted appearance to game state: {result}");
             Plugin.Log.Info("Reverted appearance to game state: {Result}", result);
         }

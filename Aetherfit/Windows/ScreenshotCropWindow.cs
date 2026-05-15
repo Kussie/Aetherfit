@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Numerics;
+using Aetherfit.Services;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 
@@ -9,15 +10,11 @@ namespace Aetherfit.Windows;
 public sealed class ScreenshotCropWindow : Window, IDisposable
 {
     private readonly Plugin plugin;
-
-    // Captured screenshot (full game window) saved to disk so the texture provider
-    // can load it; deleted when this window closes or a new capture is taken.
+    
     private string? capturedImagePath;
     private Action<string>? onConfirmed;
     private string? errorMessage;
-
-    // Selection rectangle in *image* coordinates (pixels of the captured image),
-    // independent of how the image is currently scaled for display.
+    
     private Vector2 selStart;
     private Vector2 selEnd;
     private bool hasSelection;
@@ -210,6 +207,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
             var h = (int)Math.Abs(selEnd.Y - selStart.Y);
 
             var croppedPath = plugin.Screenshot.CropTempToOutput(capturedImagePath, x, y, w, h);
+            Sounds.PlayCapture();
 
             // Take the callback locally; closing the window nulls onConfirmed via OnClose.
             var cb = onConfirmed;

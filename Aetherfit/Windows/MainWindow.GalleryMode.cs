@@ -185,9 +185,7 @@ public partial class MainWindow
                 {
                     case GalleryFitMode.Letterbox:
                     {
-                        // Reserve the full cell footprint via InvisibleButton so hover/hit testing
-                        // matches the cell, then draw a grey background for the bars and the image
-                        // at its aspect-preserving fitted size via the draw list.
+                        // Letterbox the image to fit
                         ImGui.InvisibleButton("##cellHit", thumbVec);
                         var dl = ImGui.GetWindowDrawList();
                         var bg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.22f, 0.22f, 0.25f, 1f));
