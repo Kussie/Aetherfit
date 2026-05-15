@@ -6,13 +6,11 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
-namespace Aetherfit.Windows;
+namespace Aetherfit.Services;
 
-// GDI-based screen capture against the running FFXIV client window, plus a small
-// helper for cropping a PNG file. Runs on Windows; the plugin only targets Windows
-// so SupportedOSPlatform("windows") is only needed to silence analyzers.
+// GDI-based screen capture against the running FFXIV client window, plus a small helper for cropping a PNG file. Runs on Windows; the plugin only targets Windows so SupportedOSPlatform("windows") is only needed to silence analyzers.
 [SupportedOSPlatform("windows")]
-public static class ScreenshotCapture
+internal static class ScreenshotCapture
 {
     public static (byte[] Png, int Width, int Height) CaptureGameWindow()
     {

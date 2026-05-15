@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility.Raii;
@@ -96,41 +95,21 @@ public sealed class ScreenshotSetupWindow : Window, IDisposable
         if (cb == null)
             return;
 
-        plugin.SetMainWindowHiddenForCapture(true);
-        IsOpen = false;
-
-        // Skip a few frames so the just-hidden ImGui windows are out of the framebuffer
-        // before we sample the screen.
-        Plugin.Framework.RunOnTick(() => DoCapture(cb), delayTicks: 3);
-    }
-
-    private void DoCapture(Action<string> cb)
-    {
-        try
-        {
-            var (png, _, _) = ScreenshotCapture.CaptureGameWindow();
-            var dir = EnsureImagesDir();
-            var path = Path.Combine(dir, $"capture_{Guid.NewGuid():N}.png");
-            File.WriteAllBytes(path, png);
-            plugin.SetMainWindowHiddenForCapture(false);
-            plugin.ScreenshotCrop.Begin(path, cb);
-        }
-        catch (Exception ex)
-        {
-            plugin.SetMainWindowHiddenForCapture(false);
-            onConfirmed = cb;
-            errorMessage = $"Capture failed: {ex.Message}";
-            IsOpen = true;
-            BringToFront();
-            Plugin.Log.Warning(ex, "Screenshot capture failed");
-        }
-    }
-
-    private static string EnsureImagesDir()
-    {
-        var dir = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images");
-        Directory.CreateDirectory(dir);
-        return dir;
+        plugin.Screenshot.CaptureGameWindowDelayed(
+            onBeforeCapture: () =>
+            {
+                plugin.SetMainWindowHiddenForCapture(true);
+                IsOpen = false;
+            },
+            onAfterCapture: () => plugin.SetMainWindowHiddenForCapture(false),
+            onTempReady: tempPath => plugin.ScreenshotCrop.Begin(tempPath, cb),
+            onError: ex =>
+            {
+                onConfirmed = cb;
+                errorMessage = $"Capture failed: {ex.Message}";
+                IsOpen = true;
+                BringToFront();
+            });
     }
 
     private static unsafe void TriggerGPoseToggle()

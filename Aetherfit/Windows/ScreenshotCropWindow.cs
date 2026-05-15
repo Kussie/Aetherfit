@@ -117,8 +117,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
         var imgMin = ImGui.GetItemRectMin();
         var imgMax = ImGui.GetItemRectMax();
 
-        // Overlay an invisible button so the click is consumed by an interactive item;
-        // otherwise the mouse-down falls through to the window and starts a window-drag.
+        // Overlay an invisible button so the click is consumed by an interactive item; otherwise the mouse-down falls through to the window and starts a window-drag.
         ImGui.SetCursorScreenPos(imgMin);
         ImGui.InvisibleButton("##cropArea", dispSize);
 
@@ -190,8 +189,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
 
     private void Retake()
     {
-        // Hand the callback back to the setup window before closing so OnClose
-        // doesn't null it on us.
+        // Hand the callback back to the setup window before closing so OnClose doesn't null it on us.
         var cb = onConfirmed;
         onConfirmed = null;
         IsOpen = false;
@@ -211,9 +209,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
             var w = (int)Math.Abs(selEnd.X - selStart.X);
             var h = (int)Math.Abs(selEnd.Y - selStart.Y);
 
-            var dir = EnsureImagesDir();
-            var croppedPath = Path.Combine(dir, $"crop_{Guid.NewGuid():N}.png");
-            ScreenshotCapture.CropAndSave(capturedImagePath, croppedPath, x, y, w, h);
+            var croppedPath = plugin.Screenshot.CropTempToOutput(capturedImagePath, x, y, w, h);
 
             // Take the callback locally; closing the window nulls onConfirmed via OnClose.
             var cb = onConfirmed;
@@ -221,10 +217,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
             IsOpen = false;
             cb?.Invoke(croppedPath);
 
-            // The owner copied the cropped PNG into its target slot; clean up our
-            // intermediate file so we don't leak it.
-            try { File.Delete(croppedPath); }
-            catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to delete intermediate crop file"); }
+            plugin.Screenshot.CleanupTemp(croppedPath);
         }
         catch (Exception ex)
         {
@@ -233,20 +226,9 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
         }
     }
 
-    private static string EnsureImagesDir()
-    {
-        var dir = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images");
-        Directory.CreateDirectory(dir);
-        return dir;
-    }
-
     private void DeleteCapturedFile()
     {
-        if (!string.IsNullOrEmpty(capturedImagePath))
-        {
-            try { File.Delete(capturedImagePath); }
-            catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to delete capture temp file"); }
-            capturedImagePath = null;
-        }
+        plugin.Screenshot.CleanupTemp(capturedImagePath);
+        capturedImagePath = null;
     }
 }

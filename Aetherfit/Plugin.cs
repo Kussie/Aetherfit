@@ -28,6 +28,7 @@ public sealed class Plugin : IDalamudPlugin
     public PenumbraService Penumbra { get; init; }
     public GameDataService GameData { get; init; }
     public ImageStorageService ImageStorage { get; init; }
+    public ScreenshotService Screenshot { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
@@ -45,6 +46,7 @@ public sealed class Plugin : IDalamudPlugin
         Penumbra = new PenumbraService();
         GameData = new GameDataService();
         ImageStorage = new ImageStorageService(Configuration);
+        Screenshot = new ScreenshotService();
 
         ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
