@@ -1,8 +1,7 @@
 # Aetherfit
 ![icon.png](Data/icon.png)
 
-**Requires:** [Penumbra](https://github.com/x
-ivdev/Penumbra), [Glamourer](https://github.com/Ottermandias/Glamourer)
+**Requires:** [Penumbra](https://github.com/xivdev/Penumbra), [Glamourer](https://github.com/Ottermandias/Glamourer)
 
 Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit aims to provide a more intuitive and user-friendly interface for selecting and applying designs, while still relying on Glamourer for the actual design data and application process and keeping it as the source of truth for all your designs.
 
@@ -41,7 +40,7 @@ You can then access the plugin by typing `/aetherfit` in chat.
 
 Main Interface:
 
-![Screenshot 2026-05-15 145347.png](Screenshots/Screenshot%202026-05-15%20145347.png)
+![Screenshot 2026-05-15 145401.png](Screenshots/Screenshot%202026-05-15%20145401.png)
 
 "Snap" options:
 
@@ -53,7 +52,7 @@ Cropping/Selecting area to use:
 
 Thumbnail View:
 
-![Screenshot 2026-05-15 145401.png](Screenshots/Screenshot%202026-05-15%20145401.png)
+![Screenshot 2026-05-15 145347.png](Screenshots/Screenshot%202026-05-15%20145347.png)
 
 ---
 
