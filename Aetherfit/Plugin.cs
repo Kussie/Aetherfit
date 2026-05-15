@@ -137,16 +137,21 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnLogin()
     {
-        if (Configuration.LoginAction == LoginAction.None)
-            return;
-
         // Give Glamourer a couple of seconds to finish initializing after login before we ask it to apply.
+        // PlayerState.ContentId also needs the same window to populate.
         Framework.RunOnTick(() =>
         {
-            string? err = Configuration.LoginAction switch
+            if (!PlayerState.IsLoaded)
+                return;
+
+            var settings = Configuration.GetOrCreateLoginSettings(PlayerState.ContentId);
+            if (settings.LoginAction == LoginAction.None)
+                return;
+
+            string? err = settings.LoginAction switch
             {
                 LoginAction.ApplyRandom => MainWindow.ApplyRandomDesign(),
-                LoginAction.ApplyRandomByTag => MainWindow.ApplyRandomByTags(Configuration.LoginTags),
+                LoginAction.ApplyRandomByTag => MainWindow.ApplyRandomByTags(settings.LoginTags),
                 _ => null,
             };
 

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -12,7 +11,6 @@ namespace Aetherfit.Windows;
 public class ConfigWindow : Window, IDisposable
 {
     private readonly Plugin plugin;
-    private readonly HashSet<string> loginTags;
 
     public ConfigWindow(Plugin plugin)
         : base("Aetherfit Settings###AetherfitConfig")
@@ -24,22 +22,18 @@ public class ConfigWindow : Window, IDisposable
         };
 
         this.plugin = plugin;
-        loginTags = new HashSet<string>(plugin.Configuration.LoginTags, StringComparer.OrdinalIgnoreCase);
     }
 
     public void Dispose() { }
 
-    public override void OnOpen()
-    {
-        // Re-sync from config in case it changed externally.
-        loginTags.Clear();
-        foreach (var t in plugin.Configuration.LoginTags)
-            loginTags.Add(t);
-    }
-
     public override void Draw()
     {
         var cfg = plugin.Configuration;
+
+        DrawCharacterLine();
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
 
         var showThumb = cfg.ShowThumbnailOnHover;
         if (ImGui.Checkbox("Show outfit thumbnail on mouse-over", ref showThumb))
@@ -59,35 +53,67 @@ public class ConfigWindow : Window, IDisposable
         ImGui.Separator();
         ImGui.Spacing();
 
+        DrawLoginSection();
+    }
+
+    private void DrawLoginSection()
+    {
+        var ps = Plugin.PlayerState;
         ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "On login");
-        ImGui.TextDisabled("Only one login action can be active.");
+
+        if (!ps.IsLoaded)
+        {
+            ImGui.TextDisabled("Log in to a character to configure login actions.");
+            return;
+        }
+
+        ImGui.TextDisabled("Settings below apply to this character only.");
         ImGui.Spacing();
 
-        if (ImGui.RadioButton("Do nothing", cfg.LoginAction == LoginAction.None))
-            SetLoginAction(LoginAction.None);
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(ps.ContentId);
 
-        if (ImGui.RadioButton("Apply a random outfit", cfg.LoginAction == LoginAction.ApplyRandom))
-            SetLoginAction(LoginAction.ApplyRandom);
+        if (ImGui.RadioButton("Do nothing", settings.LoginAction == LoginAction.None))
+            SetLoginAction(settings, LoginAction.None);
 
-        if (ImGui.RadioButton("Apply a random outfit by tag", cfg.LoginAction == LoginAction.ApplyRandomByTag))
-            SetLoginAction(LoginAction.ApplyRandomByTag);
+        if (ImGui.RadioButton("Apply a random outfit", settings.LoginAction == LoginAction.ApplyRandom))
+            SetLoginAction(settings, LoginAction.ApplyRandom);
 
-        if (cfg.LoginAction == LoginAction.ApplyRandomByTag)
+        if (ImGui.RadioButton("Apply a random outfit by tag", settings.LoginAction == LoginAction.ApplyRandomByTag))
+            SetLoginAction(settings, LoginAction.ApplyRandomByTag);
+
+        if (settings.LoginAction == LoginAction.ApplyRandomByTag)
         {
             ImGui.Indent();
-            DrawLoginTagPicker();
+            DrawLoginTagPicker(settings);
             ImGui.Unindent();
         }
     }
 
-    private void SetLoginAction(LoginAction action)
+    private static void DrawCharacterLine()
     {
-        if (plugin.Configuration.LoginAction == action) return;
-        plugin.Configuration.LoginAction = action;
+        var ps = Plugin.PlayerState;
+        ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Character:");
+        ImGui.SameLine();
+        if (!ps.IsLoaded)
+        {
+            ImGui.TextDisabled("(not logged in)");
+            return;
+        }
+
+        var name = ps.CharacterName.ToString();
+        var world = ps.HomeWorld.ValueNullable?.Name.ExtractText();
+        var line = string.IsNullOrEmpty(world) ? name : $"{name} @ {world}";
+        ImGui.TextUnformatted(line);
+    }
+
+    private void SetLoginAction(CharacterLoginSettings settings, LoginAction action)
+    {
+        if (settings.LoginAction == action) return;
+        settings.LoginAction = action;
         plugin.Configuration.Save();
     }
 
-    private void DrawLoginTagPicker()
+    private void DrawLoginTagPicker(CharacterLoginSettings settings)
     {
         var availableTags = plugin.Configuration.CachedOutfits.Values
             .SelectMany(o => o.Tags)
@@ -111,11 +137,18 @@ public class ConfigWindow : Window, IDisposable
             {
                 foreach (var tag in availableTags)
                 {
-                    var selected = loginTags.Contains(tag);
+                    var selected = settings.LoginTags.Contains(tag, StringComparer.OrdinalIgnoreCase);
                     if (ImGui.Checkbox(tag, ref selected))
                     {
-                        if (selected) loginTags.Add(tag);
-                        else loginTags.Remove(tag);
+                        if (selected)
+                        {
+                            if (!settings.LoginTags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+                                settings.LoginTags.Add(tag);
+                        }
+                        else
+                        {
+                            settings.LoginTags.RemoveAll(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase));
+                        }
                         changed = true;
                     }
                 }
@@ -123,9 +156,6 @@ public class ConfigWindow : Window, IDisposable
         }
 
         if (changed)
-        {
-            plugin.Configuration.LoginTags = loginTags.ToList();
             plugin.Configuration.Save();
-        }
     }
 }

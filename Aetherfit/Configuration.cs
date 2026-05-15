@@ -26,6 +26,10 @@ public class Configuration : IPluginConfiguration
 
     public bool ShowThumbnailOnHover { get; set; } = true;
     public bool DefaultToCoverMode { get; set; } = false;
+
+    // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
+    public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
+    
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
@@ -33,6 +37,28 @@ public class Configuration : IPluginConfiguration
     {
         Plugin.PluginInterface.SavePluginConfig(this);
     }
+
+    public CharacterLoginSettings GetOrCreateLoginSettings(ulong contentId)
+    {
+        if (CharacterLoginSettings.TryGetValue(contentId, out var existing))
+            return existing;
+
+        var seeded = new CharacterLoginSettings
+        {
+            LoginAction = LoginAction,
+            LoginTags = new List<string>(LoginTags),
+        };
+        CharacterLoginSettings[contentId] = seeded;
+        Save();
+        return seeded;
+    }
+}
+
+[Serializable]
+public class CharacterLoginSettings
+{
+    public LoginAction LoginAction { get; set; } = LoginAction.None;
+    public List<string> LoginTags { get; set; } = new();
 }
 
 [Serializable]
@@ -84,8 +110,7 @@ public class CachedEquipmentSlot
 [Serializable]
 public class CachedBonusItem
 {
-    // Raw slot key as serialized by Glamourer (e.g. "Glasses"). Stored as a string so
-    // future bonus slots Glamourer might add don't require a model change.
+    // This was annoying to figure out turns out they are "BonusItems" not normal slots for Facewear
     public string Slot { get; set; } = string.Empty;
     public ulong ItemId { get; set; }
     public bool Apply { get; set; }
@@ -106,6 +131,5 @@ public class CachedMod
     public string Directory { get; set; } = string.Empty;
     public ModState State { get; set; }
     public int Priority { get; set; }
-    // Option group name -> comma-joined selected option indices/values.
     public Dictionary<string, string> Settings { get; set; } = new();
 }
