@@ -56,25 +56,44 @@ public partial class MainWindow
         if (!treeChild.Success)
             return;
 
+        var hasFilter = HasAnyFilter;
+        // Whenthe filter clears, restore every tree node we forced open back to its pre-filter state
+        if (!hasFilter && wasFilterActive && treeOpenSnapshot.Count > 0)
+        {
+            var storage = ImGui.GetStateStorage();
+            foreach (var (id, wasOpen) in treeOpenSnapshot)
+                storage.SetInt(id, wasOpen ? 1 : 0);
+            treeOpenSnapshot.Clear();
+        }
+        wasFilterActive = hasFilter;
+
         // Widen the vertical gap between rows so the mouse rarely sits on the seam between two items and reports both as hovered in the same frame.
         var spacing = ImGui.GetStyle().ItemSpacing;
         hoveredDesignForTooltip = null;
         using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(spacing.X, spacing.Y + 3)))
-            DrawTree(root);
+            DrawTree(root, hasFilter);
 
-        // Render the tooltip once, after the walk. ImGui's tooltip window is shared, so if two Selectables both reported IsItemHovered() in the same frame, calling BeginTooltip per leaf would stack their contents into one tooltip.
         if (hoveredDesignForTooltip is { } hovered)
             DrawDesignLeafTooltip(hovered);
     }
 
-    private void DrawTree(FolderNode node)
+    private void DrawTree(FolderNode node, bool hasFilter)
     {
         foreach (var (name, folder) in node.Folders)
         {
             if (!FolderHasMatch(folder)) continue;
+
+            if (hasFilter)
+            {
+                var id = ImGui.GetID(name);
+                if (!treeOpenSnapshot.ContainsKey(id))
+                    treeOpenSnapshot[id] = ImGui.GetStateStorage().GetInt(id, 0) != 0;
+                ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+            }
+
             if (ImGui.TreeNodeEx(name, ImGuiTreeNodeFlags.SpanAvailWidth))
             {
-                DrawTree(folder);
+                DrawTree(folder, hasFilter);
                 ImGui.TreePop();
             }
         }

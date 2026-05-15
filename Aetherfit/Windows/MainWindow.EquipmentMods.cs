@@ -206,9 +206,14 @@ public partial class MainWindow
 
     private static void DrawToggle(string label, bool? state)
     {
+        // Group the icon + label so IsItemHovered checks the union of both rects, not just
+        // the most recent item.
+        ImGui.BeginGroup();
         DrawTriStateIcon(state);
         ImGui.SameLine();
         ImGui.TextUnformatted(label);
+        ImGui.EndGroup();
+
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(state switch
             {

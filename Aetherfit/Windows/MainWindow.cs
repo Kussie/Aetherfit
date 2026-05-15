@@ -20,6 +20,10 @@ public partial class MainWindow : Window, IDisposable
     private Guid? selectedDesign;
     private DesignLeaf? hoveredDesignForTooltip;
 
+    // When a filter is active we force every matching tree node open and keep note of the previous state so it can be restored whe nthe filters are cleared
+    private readonly Dictionary<uint, bool> treeOpenSnapshot = new();
+    private bool wasFilterActive;
+
     private readonly FileDialogManager fileDialog = new();
     private const string ImageFilters = "Image{.png,.jpg,.jpeg,.webp}";
 

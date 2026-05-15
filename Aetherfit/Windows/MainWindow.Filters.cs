@@ -19,6 +19,10 @@ public partial class MainWindow
     private ImageFilterMode filterImage = ImageFilterMode.All;
     private List<string> availableTagsForFilter = new();
 
+    private bool HasAnyFilter => filterName.Length > 0
+                              || filterTags.Count > 0
+                              || filterImage != ImageFilterMode.All;
+
     private void DrawFilterUi(bool defaultOpen = false)
     {
         var flags = defaultOpen ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
@@ -53,10 +57,7 @@ public partial class MainWindow
             filterImage = (ImageFilterMode)imageIdx;
         ImGui.PopItemWidth();
 
-        var hasAnyFilter = filterName.Length > 0
-                        || filterTags.Count > 0
-                        || filterImage != ImageFilterMode.All;
-        using (ImRaii.Disabled(!hasAnyFilter))
+        using (ImRaii.Disabled(!HasAnyFilter))
         {
             if (ImGui.SmallButton("Clear filters"))
             {
