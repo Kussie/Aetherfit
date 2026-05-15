@@ -49,6 +49,18 @@ public class ConfigWindow : Window, IDisposable
             cfg.Save();
         }
 
+        ImGui.TextDisabled("Gallery image fit:");
+        ImGui.SameLine();
+        var fitIdx = (int)cfg.GalleryFitMode;
+        var fitOptions = new[] { "Crop", "Letterbox", "Stretch" };
+        ImGui.PushItemWidth(160 * ImGuiHelpers.GlobalScale);
+        if (ImGui.Combo("##galleryFit", ref fitIdx, fitOptions, fitOptions.Length))
+        {
+            cfg.GalleryFitMode = (GalleryFitMode)fitIdx;
+            cfg.Save();
+        }
+        ImGui.PopItemWidth();
+
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();

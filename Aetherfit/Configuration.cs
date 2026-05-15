@@ -11,6 +11,13 @@ public enum LoginAction
     ApplyRandomByTag,
 }
 
+public enum GalleryFitMode
+{
+    Crop,
+    Letterbox,
+    Stretch,
+}
+
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
@@ -26,6 +33,10 @@ public class Configuration : IPluginConfiguration
 
     public bool ShowThumbnailOnHover { get; set; } = true;
     public bool DefaultToCoverMode { get; set; } = false;
+    public GalleryFitMode GalleryFitMode { get; set; } = GalleryFitMode.Crop;
+
+    // Legacy: replaced by GalleryFitMode. Migrated on first plugin load if it was set to true.
+    public bool GalleryFitWholeImage { get; set; } = false;
 
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();

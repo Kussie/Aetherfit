@@ -181,21 +181,51 @@ public partial class MainWindow
             var tex = Plugin.TextureProvider.GetFromFile(currentImage).GetWrapOrEmpty();
             if (tex.Width > 0 && tex.Height > 0)
             {
-                float uMin = 0f, uMax = 1f, vMin = 0f, vMax = 1f;
-                var texAspect = tex.Width / (float)tex.Height;
-                if (texAspect > containerAspect)
+                switch (plugin.Configuration.GalleryFitMode)
                 {
-                    var keep = containerAspect / texAspect;
-                    uMin = (1f - keep) * 0.5f;
-                    uMax = 1f - uMin;
+                    case GalleryFitMode.Letterbox:
+                    {
+                        // Reserve the full cell footprint via InvisibleButton so hover/hit testing
+                        // matches the cell, then draw a grey background for the bars and the image
+                        // at its aspect-preserving fitted size via the draw list.
+                        ImGui.InvisibleButton("##cellHit", thumbVec);
+                        var dl = ImGui.GetWindowDrawList();
+                        var bg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.22f, 0.22f, 0.25f, 1f));
+                        dl.AddRectFilled(thumbStart, thumbStart + thumbVec, bg, 4f);
+
+                        var scale = Math.Min(thumbWidth / tex.Width, thumbHeight / tex.Height);
+                        var fitted = new Vector2(tex.Width * scale, tex.Height * scale);
+                        var offset = (thumbVec - fitted) * 0.5f;
+                        dl.AddImage(tex.Handle, thumbStart + offset, thumbStart + offset + fitted);
+                        break;
+                    }
+                    case GalleryFitMode.Stretch:
+                    {
+                        // Distort the image to fill the entire cell; aspect ratio is not preserved.
+                        ImGui.Image(tex.Handle, thumbVec);
+                        break;
+                    }
+                    default:
+                    {
+                        // Crop: preserve aspect ratio, trim the overflow via UVs.
+                        float uMin = 0f, uMax = 1f, vMin = 0f, vMax = 1f;
+                        var texAspect = tex.Width / (float)tex.Height;
+                        if (texAspect > containerAspect)
+                        {
+                            var keep = containerAspect / texAspect;
+                            uMin = (1f - keep) * 0.5f;
+                            uMax = 1f - uMin;
+                        }
+                        else if (texAspect < containerAspect)
+                        {
+                            var keep = texAspect / containerAspect;
+                            vMin = (1f - keep) * 0.5f;
+                            vMax = 1f - vMin;
+                        }
+                        ImGui.Image(tex.Handle, thumbVec, new Vector2(uMin, vMin), new Vector2(uMax, vMax));
+                        break;
+                    }
                 }
-                else if (texAspect < containerAspect)
-                {
-                    var keep = texAspect / containerAspect;
-                    vMin = (1f - keep) * 0.5f;
-                    vMax = 1f - vMin;
-                }
-                ImGui.Image(tex.Handle, thumbVec, new Vector2(uMin, vMin), new Vector2(uMax, vMax));
             }
             else
             {
