@@ -21,6 +21,16 @@ public partial class MainWindow
     private GallerySortField gallerySortField = GallerySortField.Name;
     private bool gallerySortAscending = true;
 
+    // Cached filtered+sorted design list — rebuilt only when filter/sort state or designs change.
+    private List<DesignLeaf> cachedVisible = [];
+    private int designListGeneration;
+    private int cachedGeneration = -1;
+    private string cachedFilterName = string.Empty;
+    private ImageFilterMode cachedFilterImage;
+    private HashSet<string> cachedFilterTags = new(StringComparer.OrdinalIgnoreCase);
+    private GallerySortField cachedSortField;
+    private bool cachedSortAscending = true;
+
     private void DrawCoverModePane()
     {
         ImGui.SetWindowFontScale(1.25f);
@@ -88,11 +98,34 @@ public partial class MainWindow
             ImGui.SetTooltip(gallerySortAscending ? "Ascending — click to switch to descending" : "Descending — click to switch to ascending");
     }
 
+    private bool IsGalleryCacheStale() =>
+        cachedGeneration != designListGeneration ||
+        cachedSortField != gallerySortField ||
+        cachedSortAscending != gallerySortAscending ||
+        cachedFilterImage != filterImage ||
+        cachedFilterName != filterName ||
+        !cachedFilterTags.SetEquals(filterTags);
+
+    private void RebuildGalleryCache()
+    {
+        cachedVisible.Clear();
+        CollectVisibleDesigns(root, cachedVisible);
+        SortGalleryDesigns(cachedVisible);
+
+        cachedGeneration = designListGeneration;
+        cachedSortField = gallerySortField;
+        cachedSortAscending = gallerySortAscending;
+        cachedFilterImage = filterImage;
+        cachedFilterName = filterName;
+        cachedFilterTags = new HashSet<string>(filterTags, StringComparer.OrdinalIgnoreCase);
+    }
+
     private void DrawCoverGrid()
     {
-        var visible = new List<DesignLeaf>();
-        CollectVisibleDesigns(root, visible);
-        SortGalleryDesigns(visible);
+        if (IsGalleryCacheStale())
+            RebuildGalleryCache();
+
+        var visible = cachedVisible;
 
         if (visible.Count == 0)
         {

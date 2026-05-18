@@ -93,6 +93,7 @@ public partial class MainWindow : Window, IDisposable
 
     private void RefreshDesigns()
     {
+        designListGeneration++;
         var result = plugin.Glamourer.FetchDesigns();
         if (result.Error != null)
         {

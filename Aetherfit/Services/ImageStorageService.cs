@@ -11,6 +11,8 @@ public sealed class ImageStorageService
     private const string AdditionalImagesSubdir = "additional";
 
     private readonly Configuration configuration;
+    private readonly Dictionary<Guid, string?> coverPathCache = [];
+    private readonly Dictionary<Guid, List<string>> additionalPathsCache = [];
 
     public ImageStorageService(Configuration configuration)
     {
@@ -27,17 +29,31 @@ public sealed class ImageStorageService
 
     public string? GetCoverPath(Guid id)
     {
+        if (coverPathCache.TryGetValue(id, out var cached))
+            return cached;
+
         if (!configuration.OutfitImages.TryGetValue(id, out var filename) || string.IsNullOrEmpty(filename))
+        {
+            coverPathCache[id] = null;
             return null;
+        }
         var path = Path.Combine(ImagesDirectory, filename);
-        return File.Exists(path) ? path : null;
+        var result = File.Exists(path) ? path : null;
+        coverPathCache[id] = result;
+        return result;
     }
 
     public List<string> GetAdditionalPaths(Guid id)
     {
+        if (additionalPathsCache.TryGetValue(id, out var cached))
+            return cached;
+
         var result = new List<string>();
         if (!configuration.OutfitAdditionalImages.TryGetValue(id, out var filenames) || filenames.Count == 0)
+        {
+            additionalPathsCache[id] = result;
             return result;
+        }
 
         var dir = AdditionalImagesDirectory;
         foreach (var name in filenames)
@@ -47,6 +63,7 @@ public sealed class ImageStorageService
             if (File.Exists(path))
                 result.Add(path);
         }
+        additionalPathsCache[id] = result;
         return result;
     }
 
@@ -72,6 +89,10 @@ public sealed class ImageStorageService
             Plugin.ChatGui.PrintError($"[Aetherfit] Failed to set image: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to set image for {Id} from {Path}", id, sourcePath);
         }
+        finally
+        {
+            coverPathCache.Remove(id);
+        }
     }
 
     public void RemoveCover(Guid id)
@@ -87,6 +108,8 @@ public sealed class ImageStorageService
 
         if (configuration.OutfitImages.Remove(id))
             configuration.Save();
+
+        coverPathCache.Remove(id);
     }
 
     public void AddAdditional(Guid id, string sourcePath)
@@ -119,6 +142,10 @@ public sealed class ImageStorageService
             Plugin.ChatGui.PrintError($"[Aetherfit] Failed to add image: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to add additional image for {Id} from {Path}", id, sourcePath);
         }
+        finally
+        {
+            additionalPathsCache.Remove(id);
+        }
     }
 
     public void RemoveAdditional(Guid id, int index)
@@ -145,6 +172,7 @@ public sealed class ImageStorageService
         }
 
         configuration.Save();
+        additionalPathsCache.Remove(id);
     }
 
     public void CleanupRemovedDesigns(IReadOnlySet<Guid> validIds)
@@ -187,6 +215,9 @@ public sealed class ImageStorageService
 
         SweepOrphanFiles(coverDir, validIds);
         SweepOrphanFiles(additionalDir, validIds);
+
+        coverPathCache.Clear();
+        additionalPathsCache.Clear();
     }
 
     private string EnsureImagesDirectory()
