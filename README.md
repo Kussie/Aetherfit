@@ -43,7 +43,8 @@ Small bugs, QOL and big dream items that have popped into my head.  When and if 
  - Open designs directly in Glamourer
  - Edit description and tags directly in the interface
  - Ability to export list as a HTML file or something for easy sharing
- - 
+
+
 ---
 
 ## Screenshots:
