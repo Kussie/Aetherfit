@@ -27,6 +27,9 @@ public partial class MainWindow : Window, IDisposable
     private readonly FileDialogManager fileDialog = new();
     private const string ImageFilters = "Image{.png,.jpg,.jpeg,.webp}";
 
+    private float leftPaneWidth = 260f;
+    private const float MinLeftPaneWidth = 260f;
+
     private const string ApplyByTagPopupId = "ApplyRandomByTag";
     private List<string> availableTagsForPopup = new();
     private readonly HashSet<string> selectedTagsForApply = new(StringComparer.OrdinalIgnoreCase);
@@ -67,15 +70,44 @@ public partial class MainWindow : Window, IDisposable
         }
         else
         {
-            var leftWidth = 260 * ImGuiHelpers.GlobalScale;
+            var scale = ImGuiHelpers.GlobalScale;
+            var splitterW = 5f * scale;
+            var maxLeft = Math.Max(MinLeftPaneWidth, Math.Min(460f, (ImGui.GetWindowSize().X / scale) - 200f));
+            var actualLeftW = Math.Clamp(leftPaneWidth, MinLeftPaneWidth, maxLeft) * scale;
 
-            using (var left = ImRaii.Child("OutfitTree", new Vector2(leftWidth, bodyHeight), true))
+            using (var left = ImRaii.Child("OutfitTree", new Vector2(actualLeftW, bodyHeight), true))
             {
                 if (left.Success)
                     DrawLeftPane();
             }
 
-            ImGui.SameLine();
+            ImGui.SameLine(0, 0);
+
+            var splitterScreenPos = ImGui.GetCursorScreenPos();
+            ImGui.InvisibleButton("##vSplit", new Vector2(splitterW, bodyHeight));
+            var splitHovered = ImGui.IsItemHovered();
+            var splitActive  = ImGui.IsItemActive();
+
+            if (splitActive)
+            {
+                leftPaneWidth = Math.Clamp(
+                    leftPaneWidth + (ImGui.GetIO().MouseDelta.X / scale),
+                    MinLeftPaneWidth, maxLeft);
+            }
+            if (splitHovered || splitActive)
+                ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeEw);
+
+            var lineX     = splitterScreenPos.X + (splitterW * 0.5f);
+            var lineTop   = splitterScreenPos.Y;
+            var lineBot   = splitterScreenPos.Y + bodyHeight;
+            var lineColor = (splitHovered || splitActive)
+                ? ImGui.ColorConvertFloat4ToU32(new Vector4(1.00f, 0.85f, 0.40f, 1.00f))
+                : ImGui.ColorConvertFloat4ToU32(new Vector4(0.45f, 0.45f, 0.50f, 0.90f));
+            var lineThick = splitActive ? 2.5f : (splitHovered ? 2.0f : 1.5f);
+            ImGui.GetWindowDrawList().AddLine(
+                new Vector2(lineX, lineTop), new Vector2(lineX, lineBot), lineColor, lineThick);
+
+            ImGui.SameLine(0, 0);
 
             using (var right = ImRaii.Child("Right", new Vector2(0, bodyHeight), true))
             {
