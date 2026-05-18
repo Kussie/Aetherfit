@@ -262,7 +262,7 @@ public partial class MainWindow : Window, IDisposable
 
         using (ImRaii.Disabled(selectedTagsForApply.Count == 0))
         {
-            if (ImGui.Button("Apply Random Match"))
+            if (ImGui.Button("Apply Random Matching Design"))
             {
                 var err = ApplyRandomByTags(selectedTagsForApply);
                 if (err != null) Plugin.ChatGui.PrintError($"[Aetherfit] {err}");

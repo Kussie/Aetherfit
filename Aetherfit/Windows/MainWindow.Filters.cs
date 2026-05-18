@@ -18,6 +18,7 @@ public partial class MainWindow
     private readonly HashSet<string> filterTags = new(StringComparer.OrdinalIgnoreCase);
     private ImageFilterMode filterImage = ImageFilterMode.All;
     private List<string> availableTagsForFilter = new();
+    private string tagSearchText = string.Empty;
 
     private bool HasAnyFilter => filterName.Length > 0
                               || filterTags.Count > 0
@@ -39,12 +40,13 @@ public partial class MainWindow
         ImGui.InputTextWithHint("##nameFilter", "Filter by name...", ref filterName, 64);
         ImGui.PopItemWidth();
 
-        var tagsLabel = filterTags.Count == 0
-            ? "Filter by tags..."
-            : $"Tags: {filterTags.Count} selected";
+        DrawSelectedTagPills();
+
+        var tagsLabel = filterTags.Count == 0 ? "Filter by tag(s)..." : "Add tag...";
         if (ImGui.Button(tagsLabel, new Vector2(-1, 0)))
         {
             RebuildAvailableFilterTags();
+            tagSearchText = string.Empty;
             ImGui.OpenPopup(FilterTagsPopupId);
         }
 
@@ -52,7 +54,7 @@ public partial class MainWindow
         ImGui.SameLine();
         ImGui.PushItemWidth(-1);
         var imageIdx = (int)filterImage;
-        var imageOptions = new[] { "All", "With image", "Without image" };
+        var imageOptions = new[] { "All", "Has a cover image", "Missing cover image" };
         if (ImGui.Combo("##imgFilter", ref imageIdx, imageOptions, imageOptions.Length))
             filterImage = (ImageFilterMode)imageIdx;
         ImGui.PopItemWidth();
@@ -66,6 +68,57 @@ public partial class MainWindow
                 filterImage = ImageFilterMode.All;
             }
         }
+    }
+
+    private void DrawSelectedTagPills()
+    {
+        if (filterTags.Count == 0) return;
+
+        var style = ImGui.GetStyle();
+        var spacing = style.ItemSpacing.X;
+        var framePadX = style.FramePadding.X;
+        var availRight = ImGui.GetWindowPos().X + ImGui.GetContentRegionMax().X;
+        var cursorStart = ImGui.GetCursorScreenPos().X;
+        var lineRight = cursorStart;
+
+        bool first = true;
+        string? toRemove = null;
+
+        foreach (var tag in filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
+        {
+            var label = $"{tag} ×";
+            var btnWidth = ImGui.CalcTextSize(label).X + framePadX * 2;
+
+            if (first)
+            {
+                lineRight = cursorStart + btnWidth;
+                first = false;
+            }
+            else if (lineRight + spacing + btnWidth <= availRight)
+            {
+                ImGui.SameLine();
+                lineRight += spacing + btnWidth;
+            }
+            else
+            {
+                lineRight = cursorStart + btnWidth;
+            }
+
+            ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 8f * ImGuiHelpers.GlobalScale);
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.22f, 0.38f, 0.60f, 0.72f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.55f, 0.20f, 0.20f, 0.85f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.65f, 0.14f, 0.14f, 1.00f));
+            if (ImGui.Button($"{label}##{tag}"))
+                toRemove = tag;
+            ImGui.PopStyleColor(3);
+            ImGui.PopStyleVar();
+
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Remove \"{tag}\"");
+        }
+
+        if (toRemove != null)
+            filterTags.Remove(toRemove);
     }
 
     private void RebuildAvailableFilterTags()
@@ -83,38 +136,43 @@ public partial class MainWindow
         if (!popup.Success)
             return;
 
-        if (availableTagsForFilter.Count == 0)
-        {
-            ImGui.Text("No tags available.");
-            if (ImGui.Button("Close"))
-                ImGui.CloseCurrentPopup();
-            return;
-        }
+        if (ImGui.IsWindowAppearing())
+            ImGui.SetKeyboardFocusHere();
 
-        ImGui.Text("Show designs matching all of:");
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##tagSearch", "Search tags...", ref tagSearchText, 64);
         ImGui.Separator();
 
-        var size = new Vector2(220 * ImGuiHelpers.GlobalScale, 200 * ImGuiHelpers.GlobalScale);
-        using (var scroll = ImRaii.Child("FilterTagsScroll", size, true))
+        var unselected = availableTagsForFilter
+            .Where(t => !filterTags.Contains(t) &&
+                        (tagSearchText.Length == 0 ||
+                         t.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (unselected.Count == 0)
         {
+            ImGui.TextDisabled(tagSearchText.Length > 0 ? "No matching tags." : "All tags are selected.");
+        }
+        else
+        {
+            var rowHeight = ImGui.GetTextLineHeightWithSpacing();
+            var listHeight = Math.Min(unselected.Count, 8) * rowHeight;
+            using var scroll = ImRaii.Child("TagList", new Vector2(220 * ImGuiHelpers.GlobalScale, listHeight), false);
             if (scroll.Success)
             {
-                foreach (var tag in availableTagsForFilter)
+                foreach (var tag in unselected)
                 {
-                    var sel = filterTags.Contains(tag);
-                    if (ImGui.Checkbox(tag, ref sel))
+                    if (ImGui.Selectable(tag))
                     {
-                        if (sel) filterTags.Add(tag);
-                        else filterTags.Remove(tag);
+                        filterTags.Add(tag);
+                        tagSearchText = string.Empty;
                     }
                 }
             }
         }
 
-        if (ImGui.Button("Clear"))
-            filterTags.Clear();
-        ImGui.SameLine();
-        if (ImGui.Button("Done"))
+        ImGui.Separator();
+        if (ImGui.Button("Done", new Vector2(-1, 0)))
             ImGui.CloseCurrentPopup();
     }
 

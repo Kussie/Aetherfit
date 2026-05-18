@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -11,6 +12,9 @@ namespace Aetherfit.Windows;
 public class ConfigWindow : Window, IDisposable
 {
     private readonly Plugin plugin;
+    private const string LoginTagsPopupId = "LoginTagsPopup";
+    private string loginTagSearchText = string.Empty;
+    private List<string> availableLoginTags = [];
 
     public ConfigWindow(Plugin plugin)
         : base("Aetherfit Settings###AetherfitConfig")
@@ -99,6 +103,9 @@ public class ConfigWindow : Window, IDisposable
             DrawLoginTagPicker(settings);
             ImGui.Unindent();
         }
+
+        // Popup must be called every frame so ImGui can manage its open/close state.
+        DrawLoginTagsPopup(settings);
     }
 
     private static void DrawCharacterLine()
@@ -127,47 +134,127 @@ public class ConfigWindow : Window, IDisposable
 
     private void DrawLoginTagPicker(CharacterLoginSettings settings)
     {
-        var availableTags = plugin.Configuration.CachedOutfits.Values
+        availableLoginTags = [.. plugin.Configuration.CachedOutfits.Values
             .SelectMany(o => o.Tags)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)];
 
-        if (availableTags.Count == 0)
+        if (availableLoginTags.Count == 0)
         {
             ImGui.TextDisabled("No tags available — refresh outfits in the main window first.");
             return;
         }
 
-        ImGui.TextDisabled("Pick tags (outfit must have all of these):");
+        ImGui.TextDisabled("Outfit must have all selected tags:");
 
-        var size = new Vector2(0, 180 * ImGuiHelpers.GlobalScale);
-        var changed = false;
-        using (var scroll = ImRaii.Child("LoginTagsScroll", size, true))
+        DrawLoginTagPills(settings);
+
+        var btnLabel = settings.LoginTags.Count == 0 ? "Add tag..." : "Add another tag...";
+        if (ImGui.Button(btnLabel, new Vector2(-1, 0)))
         {
+            loginTagSearchText = string.Empty;
+            ImGui.OpenPopup(LoginTagsPopupId);
+        }
+    }
+
+    private void DrawLoginTagPills(CharacterLoginSettings settings)
+    {
+        if (settings.LoginTags.Count == 0) return;
+
+        var style = ImGui.GetStyle();
+        var spacing = style.ItemSpacing.X;
+        var framePadX = style.FramePadding.X;
+        var availRight = ImGui.GetWindowPos().X + ImGui.GetContentRegionMax().X;
+        var cursorStart = ImGui.GetCursorScreenPos().X;
+        var lineRight = cursorStart;
+
+        var first = true;
+        string? toRemove = null;
+
+        foreach (var tag in settings.LoginTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
+        {
+            var label = $"{tag} ×";
+            var btnWidth = ImGui.CalcTextSize(label).X + (framePadX * 2);
+
+            if (first)
+            {
+                lineRight = cursorStart + btnWidth;
+                first = false;
+            }
+            else if (lineRight + spacing + btnWidth <= availRight)
+            {
+                ImGui.SameLine();
+                lineRight += spacing + btnWidth;
+            }
+            else
+            {
+                lineRight = cursorStart + btnWidth;
+            }
+
+            ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 8f * ImGuiHelpers.GlobalScale);
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.22f, 0.38f, 0.60f, 0.72f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.55f, 0.20f, 0.20f, 0.85f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.65f, 0.14f, 0.14f, 1.00f));
+            if (ImGui.Button($"{label}##{tag}"))
+                toRemove = tag;
+            ImGui.PopStyleColor(3);
+            ImGui.PopStyleVar();
+
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Remove \"{tag}\"");
+        }
+
+        if (toRemove != null)
+        {
+            settings.LoginTags.RemoveAll(t => string.Equals(t, toRemove, StringComparison.OrdinalIgnoreCase));
+            plugin.Configuration.Save();
+        }
+    }
+
+    private void DrawLoginTagsPopup(CharacterLoginSettings settings)
+    {
+        using var popup = ImRaii.Popup(LoginTagsPopupId);
+        if (!popup.Success)
+            return;
+
+        if (ImGui.IsWindowAppearing())
+            ImGui.SetKeyboardFocusHere();
+
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##loginTagSearch", "Search tags...", ref loginTagSearchText, 64);
+        ImGui.Separator();
+
+        var unselected = availableLoginTags
+            .Where(t => !settings.LoginTags.Contains(t, StringComparer.OrdinalIgnoreCase) &&
+                        (loginTagSearchText.Length == 0 ||
+                         t.Contains(loginTagSearchText, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (unselected.Count == 0)
+        {
+            ImGui.TextDisabled(loginTagSearchText.Length > 0 ? "No matching tags." : "All tags are selected.");
+        }
+        else
+        {
+            var rowHeight = ImGui.GetTextLineHeightWithSpacing();
+            var listHeight = Math.Min(unselected.Count, 8) * rowHeight;
+            using var scroll = ImRaii.Child("LoginTagList", new Vector2(220 * ImGuiHelpers.GlobalScale, listHeight), false);
             if (scroll.Success)
             {
-                foreach (var tag in availableTags)
+                foreach (var tag in unselected)
                 {
-                    var selected = settings.LoginTags.Contains(tag, StringComparer.OrdinalIgnoreCase);
-                    if (ImGui.Checkbox(tag, ref selected))
+                    if (ImGui.Selectable(tag))
                     {
-                        if (selected)
-                        {
-                            if (!settings.LoginTags.Contains(tag, StringComparer.OrdinalIgnoreCase))
-                                settings.LoginTags.Add(tag);
-                        }
-                        else
-                        {
-                            settings.LoginTags.RemoveAll(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase));
-                        }
-                        changed = true;
+                        settings.LoginTags.Add(tag);
+                        plugin.Configuration.Save();
+                        loginTagSearchText = string.Empty;
                     }
                 }
             }
         }
 
-        if (changed)
-            plugin.Configuration.Save();
+        ImGui.Separator();
+        if (ImGui.Button("Done", new Vector2(-1, 0)))
+            ImGui.CloseCurrentPopup();
     }
 }
