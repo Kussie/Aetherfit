@@ -8,6 +8,7 @@ using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 namespace Aetherfit.Services;
 
 // Reads the game's backbuffer directly via D3D11, bypassing GDI so it works on Wine/DXVK.
+// I cant remember where i found this solution but it helped me figure out how to do it without wgoing through the GDI
 internal static unsafe class D3D11CaptureService
 {
     private static readonly Guid IID_ID3D11Texture2D = new(
@@ -33,8 +34,7 @@ internal static unsafe class D3D11CaptureService
 
         if (swapChain == 0) throw new InvalidOperationException("IDXGISwapChain pointer is null.");
         if (context   == 0) throw new InvalidOperationException("ID3D11DeviceContext pointer is null.");
-
-        // GetDevice adds a ref — must Release when done.
+        
         nint device = 0;
         VtGetDevice(context, &device);
         if (device == 0)
@@ -81,9 +81,9 @@ internal static unsafe class D3D11CaptureService
                 ArraySize      = 1,
                 Format         = desc.Format,
                 SampleDesc     = new SampleDesc { Count = 1, Quality = 0 },
-                Usage          = 3,          // D3D11_USAGE_STAGING
+                Usage          = 3,         
                 BindFlags      = 0,
-                CpuAccessFlags = 0x0002_0000, // D3D11_CPU_ACCESS_READ
+                CpuAccessFlags = 0x0002_0000,
                 MiscFlags      = 0,
             };
 
@@ -97,7 +97,7 @@ internal static unsafe class D3D11CaptureService
                 VtCopyResource(context, staging, backbuffer);
 
                 D3D11MappedSubresource mapped = default;
-                int mapHr = VtMap(context, staging, 0, 1, 0, &mapped); // D3D11_MAP_READ = 1
+                int mapHr = VtMap(context, staging, 0, 1, 0, &mapped);
                 if (mapHr < 0)
                     throw new InvalidOperationException($"ID3D11DeviceContext::Map failed (0x{mapHr:X8}).");
 
@@ -124,7 +124,7 @@ internal static unsafe class D3D11CaptureService
 
     private static byte[] ToPng(int width, int height, uint format, uint rowPitch, void* srcData)
     {
-        // GDI's Format32bppArgb is BGRA in memory, so RGBA sources need R and B swapped.
+        // GDI's Format32bppArgb is BGRA in memory, so RGBA sources need R and B swapped. Otherwise get a much darker image then what is shown on screen
         bool swapRB = format is FmtR8G8B8A8 or FmtR8G8B8A8Srgb;
 
         using var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
@@ -157,8 +157,6 @@ internal static unsafe class D3D11CaptureService
         bmp.Save(ms, ImageFormat.Png);
         return ms.ToArray();
     }
-
-    // COM vtable helpers — slot indices per d3d11.h / dxgi.h inheritance chains.
 
     private static void VtRelease(nint com)
     {
