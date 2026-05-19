@@ -108,12 +108,16 @@ public partial class MainWindow
 
     private void DrawDesignLeaf(DesignLeaf design)
     {
+        var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
         var hasColor = design.Color != 0;
         if (hasColor)
             ImGui.PushStyleColor(ImGuiCol.Text, design.Color);
 
         var selected = selectedDesign == design.Id;
-        if (ImGui.Selectable($"{design.DisplayName}##{design.Id}", selected))
+        var label = isFavourite
+            ? $"★ {design.DisplayName}##{design.Id}"
+            : $"{design.DisplayName}##{design.Id}";
+        if (ImGui.Selectable(label, selected))
             selectedDesign = design.Id;
 
         if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
@@ -206,7 +210,27 @@ public partial class MainWindow
         {
             if (body.Success)
             {
+                var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(id);
                 ImGui.SetWindowFontScale(1.5f);
+                ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1f, 1f, 1f, 0.08f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1f, 1f, 1f, 0.15f));
+                ImGui.PushStyleColor(ImGuiCol.Text, isFavourite
+                    ? new Vector4(1f, 0.85f, 0.1f, 1f)
+                    : new Vector4(0.45f, 0.45f, 0.48f, 1f));
+                if (ImGui.Button(isFavourite ? "★##favStar" : "☆##favStar"))
+                {
+                    if (isFavourite)
+                        plugin.Configuration.FavouriteDesigns.Remove(id);
+                    else
+                        plugin.Configuration.FavouriteDesigns.Add(id);
+                    plugin.Configuration.Save();
+                    favouriteVersion++;
+                }
+                ImGui.PopStyleColor(4);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
+                ImGui.SameLine();
                 ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), details.Name);
                 ImGui.SetWindowFontScale(1.0f);
                 ImGui.Spacing();

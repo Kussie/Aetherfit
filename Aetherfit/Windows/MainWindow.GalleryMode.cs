@@ -30,6 +30,9 @@ public partial class MainWindow
     private HashSet<string> cachedFilterTags = new(StringComparer.OrdinalIgnoreCase);
     private GallerySortField cachedSortField;
     private bool cachedSortAscending = true;
+    private bool cachedFilterFavourites;
+    private int favouriteVersion;
+    private int cachedFavouriteVersion = -1;
 
     private void DrawCoverModePane()
     {
@@ -104,7 +107,9 @@ public partial class MainWindow
         cachedSortAscending != gallerySortAscending ||
         cachedFilterImage != filterImage ||
         cachedFilterName != filterName ||
-        !cachedFilterTags.SetEquals(filterTags);
+        !cachedFilterTags.SetEquals(filterTags) ||
+        cachedFilterFavourites != filterFavourites ||
+        cachedFavouriteVersion != favouriteVersion;
 
     private void RebuildGalleryCache()
     {
@@ -118,6 +123,8 @@ public partial class MainWindow
         cachedFilterImage = filterImage;
         cachedFilterName = filterName;
         cachedFilterTags = new HashSet<string>(filterTags, StringComparer.OrdinalIgnoreCase);
+        cachedFilterFavourites = filterFavourites;
+        cachedFavouriteVersion = favouriteVersion;
     }
 
     private void DrawCoverGrid()
@@ -148,21 +155,37 @@ public partial class MainWindow
 
     private void SortGalleryDesigns(List<DesignLeaf> designs)
     {
+        var favourites = plugin.Configuration.FavouriteDesigns;
         var asc = gallerySortAscending;
         switch (gallerySortField)
         {
             case GallerySortField.Name:
                 designs.Sort((a, b) =>
                 {
+                    var fa = favourites.Contains(a.Id);
+                    var fb = favourites.Contains(b.Id);
+                    if (fa != fb) return fa ? -1 : 1;
                     var cmp = NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName);
                     return asc ? cmp : -cmp;
                 });
                 break;
             case GallerySortField.LastModified:
-                designs.Sort((a, b) => CompareDates(GetLastEdit(a.Id), GetLastEdit(b.Id), asc));
+                designs.Sort((a, b) =>
+                {
+                    var fa = favourites.Contains(a.Id);
+                    var fb = favourites.Contains(b.Id);
+                    if (fa != fb) return fa ? -1 : 1;
+                    return CompareDates(GetLastEdit(a.Id), GetLastEdit(b.Id), asc);
+                });
                 break;
             case GallerySortField.Created:
-                designs.Sort((a, b) => CompareDates(GetCreatedAt(a.Id), GetCreatedAt(b.Id), asc));
+                designs.Sort((a, b) =>
+                {
+                    var fa = favourites.Contains(a.Id);
+                    var fb = favourites.Contains(b.Id);
+                    if (fa != fb) return fa ? -1 : 1;
+                    return CompareDates(GetCreatedAt(a.Id), GetCreatedAt(b.Id), asc);
+                });
                 break;
         }
     }
@@ -276,6 +299,7 @@ public partial class MainWindow
         }
 
         var imageHovered = ImGui.IsItemHovered();
+        var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
 
         var hasArrows = additionalPaths.Count > 0;
         var canPrev = imgIdx > 0;
@@ -296,6 +320,14 @@ public partial class MainWindow
                         && mouse.X >= rightMin.X && mouse.X <= rightMax.X
                         && mouse.Y >= rightMin.Y && mouse.Y <= rightMax.Y;
 
+        var starSize = 24f * ImGuiHelpers.GlobalScale;
+        var starMargin = 4f * ImGuiHelpers.GlobalScale;
+        var starMin = new Vector2(thumbStart.X + thumbWidth - starSize - starMargin, thumbStart.Y + starMargin);
+        var starMax = new Vector2(starMin.X + starSize, starMin.Y + starSize);
+        var overStar = imageHovered
+            && mouse.X >= starMin.X && mouse.X <= starMax.X
+            && mouse.Y >= starMin.Y && mouse.Y <= starMax.Y;
+
         if (imageHovered && hasArrows)
         {
             var dl = ImGui.GetWindowDrawList();
@@ -308,7 +340,16 @@ public partial class MainWindow
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
             if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             {
-                if (overLeft)
+                if (overStar)
+                {
+                    if (isFavourite)
+                        plugin.Configuration.FavouriteDesigns.Remove(design.Id);
+                    else
+                        plugin.Configuration.FavouriteDesigns.Add(design.Id);
+                    plugin.Configuration.Save();
+                    favouriteVersion++;
+                }
+                else if (overLeft)
                     galleryImageIndex[design.Id] = imgIdx - 1;
                 else if (overRight)
                     galleryImageIndex[design.Id] = imgIdx + 1;
@@ -317,9 +358,11 @@ public partial class MainWindow
                 else
                     clicked = true;
             }
-            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !overLeft && !overRight)
+            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !overLeft && !overRight && !overStar)
                 doubleClicked = true;
-            if (!overLeft && !overRight)
+            if (overStar)
+                ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
+            else if (!overLeft && !overRight)
                 DrawCoverCellTooltip(design);
         }
 
@@ -328,6 +371,22 @@ public partial class MainWindow
             var dl = ImGui.GetWindowDrawList();
             var hl = ImGui.ColorConvertFloat4ToU32(new Vector4(1.0f, 0.85f, 0.4f, 1f));
             dl.AddRect(thumbStart, thumbStart + thumbVec, hl, 4f, ImDrawFlags.None, 2.5f);
+        }
+
+        if (isFavourite || imageHovered)
+        {
+            var dl = ImGui.GetWindowDrawList();
+            var bgAlpha = overStar ? 0.85f : 0.55f;
+            dl.AddRectFilled(starMin, starMax,
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, bgAlpha)), 3f);
+            var starChar = isFavourite ? "★" : "☆";
+            var starColor = isFavourite
+                ? ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.85f, 0.1f, 1f))
+                : ImGui.ColorConvertFloat4ToU32(new Vector4(0.7f, 0.7f, 0.72f, 0.9f));
+            var starTextSize = ImGui.CalcTextSize(starChar);
+            var starCenter = (starMin + starMax) * 0.5f;
+            dl.AddText(new Vector2(starCenter.X - starTextSize.X * 0.5f, starCenter.Y - starTextSize.Y * 0.5f),
+                starColor, starChar);
         }
 
         var label = design.DisplayName;

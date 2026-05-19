@@ -69,7 +69,3 @@ Thumbnail View:
 
 ![Screenshot 2026-05-15 145347.png](Screenshots/Screenshot%202026-05-15%20145347.png)
 
----
-
-## AI Usage Disclaimer
-AI was used to generate the logo as my art skills are non existent.

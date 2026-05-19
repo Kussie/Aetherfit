@@ -38,6 +38,8 @@ public class Configuration : IPluginConfiguration
     // Legacy: replaced by GalleryFitMode. Migrated on first plugin load if it was set to true.
     public bool GalleryFitWholeImage { get; set; } = false;
 
+    public HashSet<Guid> FavouriteDesigns { get; set; } = new();
+
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
     
@@ -121,7 +123,7 @@ public class CachedEquipmentSlot
 [Serializable]
 public class CachedBonusItem
 {
-    // This was annoying to figure out turns out they are "BonusItems" not normal slots for Facewear
+    // This was annoying to figure out turns out facewear are "BonusItems" not normal slots for Facewear
     public string Slot { get; set; } = string.Empty;
     public ulong ItemId { get; set; }
     public bool Apply { get; set; }

@@ -17,12 +17,14 @@ public partial class MainWindow
     private string filterName = string.Empty;
     private readonly HashSet<string> filterTags = new(StringComparer.OrdinalIgnoreCase);
     private ImageFilterMode filterImage = ImageFilterMode.All;
+    private bool filterFavourites;
     private List<string> availableTagsForFilter = new();
     private string tagSearchText = string.Empty;
 
     private bool HasAnyFilter => filterName.Length > 0
                               || filterTags.Count > 0
-                              || filterImage != ImageFilterMode.All;
+                              || filterImage != ImageFilterMode.All
+                              || filterFavourites;
 
     private void DrawFilterUi(bool defaultOpen = false)
     {
@@ -59,6 +61,8 @@ public partial class MainWindow
             filterImage = (ImageFilterMode)imageIdx;
         ImGui.PopItemWidth();
 
+        ImGui.Checkbox("Show favourites only", ref filterFavourites);
+
         using (ImRaii.Disabled(!HasAnyFilter))
         {
             if (ImGui.SmallButton("Clear filters"))
@@ -66,6 +70,7 @@ public partial class MainWindow
                 filterName = string.Empty;
                 filterTags.Clear();
                 filterImage = ImageFilterMode.All;
+                filterFavourites = false;
             }
         }
     }
@@ -194,6 +199,9 @@ public partial class MainWindow
             if (filterImage == ImageFilterMode.HasImage && !hasImage) return false;
             if (filterImage == ImageFilterMode.NoImage && hasImage) return false;
         }
+
+        if (filterFavourites && !plugin.Configuration.FavouriteDesigns.Contains(design.Id))
+            return false;
 
         return true;
     }
