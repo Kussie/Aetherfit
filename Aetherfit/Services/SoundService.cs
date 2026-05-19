@@ -5,7 +5,7 @@ using FFXIVClientStructs.FFXIV.Client.UI;
 namespace Aetherfit.Services;
 
 [SupportedOSPlatform("windows")]
-internal static class Sounds
+internal static class SoundService
 {
     private const int ApplySoundId = 9;
     private const int RevertSoundId = 8;

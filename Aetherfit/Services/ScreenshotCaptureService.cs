@@ -4,7 +4,7 @@ using System.Drawing.Imaging;
 
 namespace Aetherfit.Services;
 
-internal static class ScreenshotCapture
+internal static class ScreenshotCaptureService
 {
     public static (byte[] Png, int Width, int Height) CaptureGameWindow()
         => D3D11CaptureService.CaptureFrame();

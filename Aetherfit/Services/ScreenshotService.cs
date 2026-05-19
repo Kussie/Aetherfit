@@ -23,7 +23,7 @@ public sealed class ScreenshotService
             Plugin.PluginInterface.UiBuilder.Draw -= CaptureOnNextDraw;
             try
             {
-                var (png, _, _) = ScreenshotCapture.CaptureGameWindow();
+                var (png, _, _) = ScreenshotCaptureService.CaptureGameWindow();
                 var dir = EnsureImagesDir();
                 var path = Path.Combine(dir, $"capture_{Guid.NewGuid():N}.png");
                 File.WriteAllBytes(path, png);
@@ -43,7 +43,7 @@ public sealed class ScreenshotService
     {
         var dir = EnsureImagesDir();
         var croppedPath = Path.Combine(dir, $"crop_{Guid.NewGuid():N}.png");
-        ScreenshotCapture.CropAndSave(tempCapturePath, croppedPath, x, y, w, h);
+        ScreenshotCaptureService.CropAndSave(tempCapturePath, croppedPath, x, y, w, h);
         return croppedPath;
     }
     

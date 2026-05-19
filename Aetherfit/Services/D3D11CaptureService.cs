@@ -7,26 +7,16 @@ using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 
 namespace Aetherfit.Services;
 
-// Captures the game's current backbuffer directly from the D3D11 swap chain, bypassing GDI.
-// This works correctly on Linux via Wine/DXVK where GDI-based capture returns a black frame.
-//
-// Access path:
-//   Device.Instance() -> SwapChain* -> void* DXGISwapChain (offset 104)
-//   Device.Instance() -> void* D3D11DeviceContext           (offset 920240, ID3D11DeviceContext4*)
-//   ID3D11Device* obtained via ID3D11DeviceChild::GetDevice (vtable slot 3) on the context
+// Reads the game's backbuffer directly via D3D11, bypassing GDI so it works on Wine/DXVK.
 internal static unsafe class D3D11CaptureService
 {
     private static readonly Guid IID_ID3D11Texture2D = new(
         0x6f15aaf2, 0xd208, 0x4e89, 0x9a, 0xb4, 0x48, 0x95, 0x35, 0xd3, 0x4f, 0x9c);
 
-    private const uint DxgiFormatR8G8B8A8Unorm     = 28;
-    private const uint DxgiFormatR8G8B8A8UnormSrgb = 29;
-    private const uint DxgiFormatB8G8R8A8Unorm     = 87;
-    private const uint DxgiFormatB8G8R8A8UnormSrgb = 91;
-
-    private const uint D3D11UsageStaging    = 3;
-    private const uint D3D11CpuAccessRead   = 0x0002_0000;
-    private const uint D3D11MapRead         = 1;
+    private const uint FmtR8G8B8A8     = 28;
+    private const uint FmtR8G8B8A8Srgb = 29;
+    private const uint FmtB8G8R8A8     = 87;
+    private const uint FmtB8G8R8A8Srgb = 91;
 
     public static (byte[] Png, int Width, int Height) CaptureFrame()
     {
@@ -44,7 +34,7 @@ internal static unsafe class D3D11CaptureService
         if (swapChain == 0) throw new InvalidOperationException("IDXGISwapChain pointer is null.");
         if (context   == 0) throw new InvalidOperationException("ID3D11DeviceContext pointer is null.");
 
-        // GetDevice (vtable slot 3) adds a reference — must Release when done.
+        // GetDevice adds a ref — must Release when done.
         nint device = 0;
         VtGetDevice(context, &device);
         if (device == 0)
@@ -80,8 +70,7 @@ internal static unsafe class D3D11CaptureService
                 throw new NotSupportedException(
                     $"MSAA backbuffer (sample count {desc.SampleDesc.Count}) is not supported. Disable MSAA in-game.");
 
-            if (desc.Format is not (DxgiFormatB8G8R8A8Unorm or DxgiFormatB8G8R8A8UnormSrgb
-                                 or DxgiFormatR8G8B8A8Unorm or DxgiFormatR8G8B8A8UnormSrgb))
+            if (desc.Format is not (FmtB8G8R8A8 or FmtB8G8R8A8Srgb or FmtR8G8B8A8 or FmtR8G8B8A8Srgb))
                 throw new NotSupportedException($"Unsupported backbuffer format ({desc.Format}). Expected B8G8R8A8 or R8G8B8A8.");
 
             var stagingDesc = new D3D11Texture2DDesc
@@ -92,9 +81,9 @@ internal static unsafe class D3D11CaptureService
                 ArraySize      = 1,
                 Format         = desc.Format,
                 SampleDesc     = new SampleDesc { Count = 1, Quality = 0 },
-                Usage          = D3D11UsageStaging,
+                Usage          = 3,          // D3D11_USAGE_STAGING
                 BindFlags      = 0,
-                CpuAccessFlags = D3D11CpuAccessRead,
+                CpuAccessFlags = 0x0002_0000, // D3D11_CPU_ACCESS_READ
                 MiscFlags      = 0,
             };
 
@@ -108,7 +97,7 @@ internal static unsafe class D3D11CaptureService
                 VtCopyResource(context, staging, backbuffer);
 
                 D3D11MappedSubresource mapped = default;
-                int mapHr = VtMap(context, staging, 0, D3D11MapRead, 0, &mapped);
+                int mapHr = VtMap(context, staging, 0, 1, 0, &mapped); // D3D11_MAP_READ = 1
                 if (mapHr < 0)
                     throw new InvalidOperationException($"ID3D11DeviceContext::Map failed (0x{mapHr:X8}).");
 
@@ -135,9 +124,8 @@ internal static unsafe class D3D11CaptureService
 
     private static byte[] ToPng(int width, int height, uint format, uint rowPitch, void* srcData)
     {
-        // R8G8B8A8 sources need R and B swapped to match GDI's Format32bppArgb (BGRA in memory).
-        // B8G8R8A8 sources are already in BGRA order and can be copied directly.
-        bool swapRB = format is DxgiFormatR8G8B8A8Unorm or DxgiFormatR8G8B8A8UnormSrgb;
+        // GDI's Format32bppArgb is BGRA in memory, so RGBA sources need R and B swapped.
+        bool swapRB = format is FmtR8G8B8A8 or FmtR8G8B8A8Srgb;
 
         using var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
         var bits = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
@@ -145,28 +133,18 @@ internal static unsafe class D3D11CaptureService
         {
             var src = (byte*)srcData;
             var dst = (byte*)bits.Scan0;
-            int dstStride = bits.Stride;
 
             for (int y = 0; y < height; y++)
             {
                 byte* srcRow = src + y * rowPitch;
-                byte* dstRow = dst + y * dstStride;
+                byte* dstRow = dst + y * bits.Stride;
 
                 for (int x = 0; x < width; x++)
                 {
-                    if (swapRB)
-                    {
-                        dstRow[x * 4 + 0] = srcRow[x * 4 + 2]; // B <- R
-                        dstRow[x * 4 + 1] = srcRow[x * 4 + 1]; // G = G
-                        dstRow[x * 4 + 2] = srcRow[x * 4 + 0]; // R <- B
-                    }
-                    else
-                    {
-                        dstRow[x * 4 + 0] = srcRow[x * 4 + 0]; // B = B
-                        dstRow[x * 4 + 1] = srcRow[x * 4 + 1]; // G = G
-                        dstRow[x * 4 + 2] = srcRow[x * 4 + 2]; // R = R
-                    }
-                    dstRow[x * 4 + 3] = 255; // force fully opaque
+                    dstRow[x * 4 + 0] = swapRB ? srcRow[x * 4 + 2] : srcRow[x * 4 + 0];
+                    dstRow[x * 4 + 1] = srcRow[x * 4 + 1];
+                    dstRow[x * 4 + 2] = swapRB ? srcRow[x * 4 + 0] : srcRow[x * 4 + 2];
+                    dstRow[x * 4 + 3] = 255;
                 }
             }
         }
@@ -180,23 +158,7 @@ internal static unsafe class D3D11CaptureService
         return ms.ToArray();
     }
 
-    // -------------------------------------------------------------------------
-    // COM vtable helpers
-    //
-    // COM objects are laid out as: [ptr to vtable][fields...]
-    //   vtable: [fn0][fn1][fn2]...
-    //
-    // Slot indices follow the D3D11 interface inheritance chain:
-    //   IUnknown               : 0=QueryInterface  1=AddRef       2=Release
-    //   ID3D11DeviceChild      : 3=GetDevice        4-6=private data helpers
-    //   IDXGIObject            : 3-6 (parallel hierarchy, not used here)
-    //   IDXGIDeviceSubObject   : 7=GetDevice
-    //   IDXGISwapChain         : 8=Present  9=GetBuffer  ...
-    //   ID3D11Resource         : 7=GetType  8-9=eviction priority
-    //   ID3D11Texture2D        : 10=GetDesc
-    //   ID3D11Device           : 5=CreateTexture2D  ...
-    //   ID3D11DeviceContext    : 14=Map  15=Unmap  47=CopyResource
-    // -------------------------------------------------------------------------
+    // COM vtable helpers — slot indices per d3d11.h / dxgi.h inheritance chains.
 
     private static void VtRelease(nint com)
     {
@@ -225,10 +187,6 @@ internal static unsafe class D3D11CaptureService
     private static void VtUnmap(nint ctx, nint resource, uint subresource)
         => ((delegate* unmanaged<nint, nint, uint, void>*)(*(nint*)ctx))[15](ctx, resource, subresource);
 
-    // -------------------------------------------------------------------------
-    // D3D11 struct definitions (must match d3d11.h layout exactly)
-    // -------------------------------------------------------------------------
-
     [StructLayout(LayoutKind.Sequential)]
     private struct D3D11Texture2DDesc
     {
@@ -236,9 +194,9 @@ internal static unsafe class D3D11CaptureService
         public uint Height;
         public uint MipLevels;
         public uint ArraySize;
-        public uint Format;          // DXGI_FORMAT
+        public uint Format;
         public SampleDesc SampleDesc;
-        public uint Usage;           // D3D11_USAGE
+        public uint Usage;
         public uint BindFlags;
         public uint CpuAccessFlags;
         public uint MiscFlags;

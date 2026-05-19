@@ -207,7 +207,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
             var h = (int)Math.Abs(selEnd.Y - selStart.Y);
 
             var croppedPath = plugin.Screenshot.CropTempToOutput(capturedImagePath, x, y, w, h);
-            Sounds.PlayCapture();
+            SoundService.PlayCapture();
 
             // Take the callback locally; closing the window nulls onConfirmed via OnClose.
             var cb = onConfirmed;
