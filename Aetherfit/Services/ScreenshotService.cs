@@ -12,9 +12,15 @@ public sealed class ScreenshotService
         Action<Exception> onError)
     {
         onBeforeCapture();
-
+        
         Plugin.Framework.RunOnTick(() =>
         {
+            Plugin.PluginInterface.UiBuilder.Draw += CaptureOnNextDraw;
+        }, delayTicks: 3);
+
+        void CaptureOnNextDraw()
+        {
+            Plugin.PluginInterface.UiBuilder.Draw -= CaptureOnNextDraw;
             try
             {
                 var (png, _, _) = ScreenshotCapture.CaptureGameWindow();
@@ -30,10 +36,9 @@ public sealed class ScreenshotService
                 Plugin.Log.Warning(ex, "Screenshot capture failed");
                 onError(ex);
             }
-        }, delayTicks: 3);
+        }
     }
-
-    // Synchronous. Returns the absolute path to crop_{guid}.png. Throws on failure.
+    
     public string CropTempToOutput(string tempCapturePath, int x, int y, int w, int h)
     {
         var dir = EnsureImagesDir();
@@ -41,8 +46,7 @@ public sealed class ScreenshotService
         ScreenshotCapture.CropAndSave(tempCapturePath, croppedPath, x, y, w, h);
         return croppedPath;
     }
-
-    // Best-effort delete; logs warnings and never throws. Caller must have finished reading the file before calling this (synchronous-ordering contract).
+    
     public void CleanupTemp(string? path)
     {
         if (string.IsNullOrEmpty(path))

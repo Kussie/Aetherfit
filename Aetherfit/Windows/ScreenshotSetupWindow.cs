@@ -90,7 +90,7 @@ public sealed class ScreenshotSetupWindow : Window, IDisposable
     {
         errorMessage = null;
 
-        // Hold the callback locally so OnClose nulling onConfirmed doesn't lose it.
+        // Hold the callback locally so OnClose doesn't lose it.
         var cb = onConfirmed;
         if (cb == null)
             return;

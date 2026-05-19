@@ -16,6 +16,10 @@ It adds the following functionality:
 - The ability to apply a random design (Or random design based on tags) to a character when logging in.
 
 ---
+
+***Important Note***, this has only been tested on the FFXIV client on Windows.  Whilst the bulk of the plugin should work no matter what, the direct screenshot capture might not work on other clients/operating systems.
+
+---
 ## For Users
 
 ### Installation
