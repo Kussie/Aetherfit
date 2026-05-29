@@ -233,6 +233,11 @@ public partial class MainWindow
                 ImGui.SameLine();
                 ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), details.Name);
                 ImGui.SetWindowFontScale(1.0f);
+
+                if (ImGui.Button("Open in Glamourer"))
+                    plugin.Glamourer.OpenInGlamourer(id, details.Name);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Open this design in Glamourer's design window");
                 ImGui.Spacing();
 
                 DrawSubheader("Tags");

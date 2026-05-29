@@ -12,6 +12,7 @@ public sealed class GlamourerService
     private readonly GetDesignJObject getDesignJObject;
     private readonly ApplyDesign applyDesign;
     private readonly RevertState revertState;
+    private readonly OpenDesign openDesign;
 
     public GlamourerService()
     {
@@ -19,6 +20,7 @@ public sealed class GlamourerService
         getDesignJObject = new GetDesignJObject(Plugin.PluginInterface);
         applyDesign = new ApplyDesign(Plugin.PluginInterface);
         revertState = new RevertState(Plugin.PluginInterface);
+        openDesign = new OpenDesign(Plugin.PluginInterface);
     }
 
     public sealed record DesignInfo(Guid Id, string DisplayName, string FullPath, uint Color);
@@ -74,6 +76,20 @@ public sealed class GlamourerService
         {
             Plugin.ChatGui.PrintError($"[Aetherfit] Apply failed: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to apply Glamourer design {Id}", id);
+        }
+    }
+
+    public void OpenInGlamourer(Guid id, string designName)
+    {
+        try
+        {
+            openDesign.Invoke(id);
+            Plugin.Log.Info("Opened design {Name} ({Id}) in Glamourer", designName, id);
+        }
+        catch (Exception ex)
+        {
+            Plugin.ChatGui.PrintError($"[Aetherfit] Open in Glamourer failed: {ex.Message}");
+            Plugin.Log.Warning(ex, "Failed to open Glamourer design {Id}", id);
         }
     }
 
