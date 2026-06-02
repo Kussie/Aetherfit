@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Aetherfit.Services;
@@ -234,7 +236,7 @@ public partial class MainWindow
                 ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), details.Name);
                 ImGui.SetWindowFontScale(1.0f);
 
-                if (ImGui.Button("Open in Glamourer"))
+                if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.ExternalLinkAlt, "Open in Glamourer"))
                     plugin.Glamourer.OpenInGlamourer(id, details.Name);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Open this design in Glamourer's design window");
