@@ -49,6 +49,9 @@ public partial class MainWindow
             return;
         }
 
+        ImGui.Checkbox("Group by job association", ref groupByJob);
+        ImGui.Spacing();
+
         DrawFilterUi();
         ImGui.Spacing();
         ImGui.Separator();
@@ -73,7 +76,12 @@ public partial class MainWindow
         var spacing = ImGui.GetStyle().ItemSpacing;
         hoveredDesignForTooltip = null;
         using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(spacing.X, spacing.Y + 3)))
-            DrawTree(root, hasFilter);
+        {
+            if (groupByJob)
+                DrawJobTree(hasFilter);
+            else
+                DrawTree(root, hasFilter);
+        }
 
         if (hoveredDesignForTooltip is { } hovered)
             DrawDesignLeafTooltip(hovered);

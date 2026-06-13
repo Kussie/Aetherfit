@@ -20,6 +20,9 @@ public partial class MainWindow : Window, IDisposable
     private Guid? selectedDesign;
     private DesignLeaf? hoveredDesignForTooltip;
 
+    // Session-only: when true the Edit Mode tree groups designs by job association instead of folder path.
+    private bool groupByJob;
+
     // When a filter is active we force every matching tree node open and keep note of the previous state so it can be restored whe nthe filters are cleared
     private readonly Dictionary<uint, bool> treeOpenSnapshot = new();
     private bool wasFilterActive;
@@ -51,6 +54,7 @@ public partial class MainWindow : Window, IDisposable
     public override void OnOpen()
     {
         coverMode = plugin.Configuration.DefaultToCoverMode;
+        groupByJob = false;
         RefreshDesigns();
     }
 
@@ -135,25 +139,8 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
-        var newRoot = new FolderNode();
-        foreach (var design in result.Designs)
-        {
-            var folderSegments = SplitFolderPath(design.FullPath);
-            var node = newRoot;
-            foreach (var segment in folderSegments)
-            {
-                if (!node.Folders.TryGetValue(segment, out var child))
-                {
-                    child = new FolderNode();
-                    node.Folders[segment] = child;
-                }
-                node = child;
-            }
-            node.Designs.Add(new DesignLeaf(design.Id, design.DisplayName, design.FullPath, design.Color));
-        }
-
-        SortNodeDesigns(newRoot);
-        root = newRoot;
+        root = BuildFolderTree(result.Designs
+            .Select(d => new DesignLeaf(d.Id, d.DisplayName, d.FullPath, d.Color)));
         designsCount = result.Designs.Count;
         designsError = null;
 
@@ -172,6 +159,28 @@ public partial class MainWindow : Window, IDisposable
             selectedDesign = null;
 
         plugin.Configuration.Save();
+    }
+
+    private static FolderNode BuildFolderTree(IEnumerable<DesignLeaf> leaves)
+    {
+        var newRoot = new FolderNode();
+        foreach (var leaf in leaves)
+        {
+            var node = newRoot;
+            foreach (var segment in SplitFolderPath(leaf.FullPath))
+            {
+                if (!node.Folders.TryGetValue(segment, out var child))
+                {
+                    child = new FolderNode();
+                    node.Folders[segment] = child;
+                }
+                node = child;
+            }
+            node.Designs.Add(leaf);
+        }
+
+        SortNodeDesigns(newRoot);
+        return newRoot;
     }
 
     private static IEnumerable<string> SplitFolderPath(string fullPath)
