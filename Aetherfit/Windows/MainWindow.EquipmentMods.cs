@@ -18,6 +18,8 @@ public partial class MainWindow
 
     private bool equipmentPanelOpen = true;
     private bool modsPanelOpen = true;
+    private bool coverImagePanelOpen = true;
+    private bool additionalImagesPanelOpen = true;
 
     private static readonly (EquipmentSlot Slot, string Label)[] SlotDisplay =
     {
@@ -77,7 +79,7 @@ public partial class MainWindow
         ImGui.Spacing();
     }
 
-    private static bool DrawCollapsibleSubheader(string label, ref bool open)
+    private static bool DrawCollapsibleSubheader(string label, ref bool open, string? helpText = null)
     {
         // Custom header to recover CollapsingHeader's framed look while keeping the label near-aligned with the TextColored subheaders above it, otherwise the spacing looks off and it really annoys me
         var style = ImGui.GetStyle();
@@ -106,6 +108,25 @@ public partial class MainWindow
         var chevSize = ImGui.CalcTextSize(chevron);
         draw.AddText(new Vector2(rectMax.X - chevSize.X - style.FramePadding.X, textY),
             ImGui.GetColorU32(SectionHeader), chevron);
+
+        if (helpText != null)
+        {
+            const string marker = "(?)";
+            var markerSize = ImGui.CalcTextSize(marker);
+            // Sit the help marker just left of the chevron.
+            var markerPos = new Vector2(rectMax.X - chevSize.X - markerSize.X - (style.FramePadding.X * 2f), textY);
+            draw.AddText(markerPos, ImGui.GetColorU32(ImGuiCol.TextDisabled), marker);
+
+            var hoverMax = new Vector2(markerPos.X + markerSize.X, markerPos.Y + markerSize.Y);
+            if (ImGui.IsMouseHoveringRect(markerPos, hoverMax))
+            {
+                ImGui.BeginTooltip();
+                ImGui.PushTextWrapPos(ImGui.GetFontSize() * 30f);
+                ImGui.TextUnformatted(helpText);
+                ImGui.PopTextWrapPos();
+                ImGui.EndTooltip();
+            }
+        }
 
         return open;
     }

@@ -73,6 +73,7 @@ public sealed class Plugin : IDalamudPlugin
             HelpMessage = "/aetherfit — toggle the Aetherfit window.\n"
                         + "/aetherfit random — apply a random outfit.\n"
                         + "/aetherfit tag <tag1,tag2,...> — apply a random outfit matching any of the tags.\n"
+                        + "/aetherfit job — apply a random outfit associated with your current job.\n"
                         + "/aetherfit revert — revert appearance to the game state."
         });
 
@@ -131,6 +132,14 @@ public sealed class Plugin : IDalamudPlugin
             {
                 var tags = rest.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 var err = MainWindow.ApplyRandomByTags(tags);
+                if (err != null)
+                    ChatGui.PrintError($"[Aetherfit] {err}");
+                break;
+            }
+
+            case "job":
+            {
+                var err = MainWindow.ApplyRandomByCurrentJob();
                 if (err != null)
                     ChatGui.PrintError($"[Aetherfit] {err}");
                 break;

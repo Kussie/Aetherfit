@@ -70,6 +70,38 @@ public class ConfigWindow : Window, IDisposable
         ImGui.Spacing();
 
         DrawLoginSection();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        DrawCommandsSection();
+    }
+
+    private static void DrawCommandsSection()
+    {
+        ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Chat commands");
+        ImGui.TextDisabled("These can also be used in game macros.");
+        ImGui.Spacing();
+
+        DrawCommand("/aetherfit", "Open or close the main Aetherfit window.");
+        DrawCommand("/aetherfit random", "Apply a random design from your entire collection.");
+        DrawCommand("/aetherfit tag <tag1,tag2,...>",
+            "Apply a random design that has all of the listed tags. Separate multiple tags with commas.");
+        DrawCommand("/aetherfit job",
+            "Apply a random design associated with your current job. Set associations per-design in the design details pane.");
+        DrawCommand("/aetherfit revert", "Revert your character's appearance back to the game's state.");
+    }
+
+    private static void DrawCommand(string command, string description)
+    {
+        ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), command);
+        ImGui.Indent();
+        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(ImGuiCol.TextDisabled));
+        ImGui.TextWrapped(description);
+        ImGui.PopStyleColor();
+        ImGui.Unindent();
+        ImGui.Spacing();
     }
 
     private void DrawLoginSection()

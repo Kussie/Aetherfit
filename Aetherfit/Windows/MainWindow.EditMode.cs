@@ -213,6 +213,7 @@ public partial class MainWindow
             if (body.Success)
             {
                 var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(id);
+                var rowTopY = ImGui.GetCursorPosY();
                 ImGui.SetWindowFontScale(1.5f);
                 ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
                 ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1f, 1f, 1f, 0.08f));
@@ -232,15 +233,24 @@ public partial class MainWindow
                 ImGui.PopStyleColor(4);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
+                var rowHeight = ImGui.GetItemRectSize().Y;
+
                 ImGui.SameLine();
+                ImGui.SetWindowFontScale(1.5f);
+                ImGui.SetCursorPosY(rowTopY + ((rowHeight - ImGui.GetTextLineHeight()) * 0.5f));
                 ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), details.Name);
                 ImGui.SetWindowFontScale(1.0f);
 
-                if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.ExternalLinkAlt, "Open in Glamourer"))
+                ImGui.SameLine();
+                ImGui.SetCursorPosY(rowTopY + ((rowHeight - ImGui.GetFrameHeight()) * 0.5f));
+                if (ImGuiComponents.IconButton(FontAwesomeIcon.ExternalLinkAlt))
                     plugin.Glamourer.OpenInGlamourer(id, details.Name);
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Open this design in Glamourer's design window");
+                    ImGui.SetTooltip("Open in Glamourer");
+
                 ImGui.Spacing();
+
+                DrawJobAssociations(id);
 
                 DrawSubheader("Tags");
                 ImGui.Indent();
@@ -268,17 +278,21 @@ public partial class MainWindow
                 ImGui.Unindent();
                 ImGui.Spacing();
 
-                DrawSubheader("Cover Image", ImageHelpText);
-                ImGui.Indent();
-                DrawOutfitImageBlock(id);
-                ImGui.Unindent();
-                ImGui.Spacing();
+                if (DrawCollapsibleSubheader("Cover Image", ref coverImagePanelOpen, ImageHelpText))
+                {
+                    ImGui.Indent();
+                    DrawOutfitImageBlock(id);
+                    ImGui.Unindent();
+                    ImGui.Spacing();
+                }
 
-                DrawSubheader("Additional Images", ImageHelpText);
-                ImGui.Indent();
-                DrawAdditionalImagesBlock(id);
-                ImGui.Unindent();
-                ImGui.Spacing();
+                if (DrawCollapsibleSubheader("Additional Images", ref additionalImagesPanelOpen, ImageHelpText))
+                {
+                    ImGui.Indent();
+                    DrawAdditionalImagesBlock(id);
+                    ImGui.Unindent();
+                    ImGui.Spacing();
+                }
 
                 DrawEquipmentPanel(details);
                 DrawModsPanel(details);

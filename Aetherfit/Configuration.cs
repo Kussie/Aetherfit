@@ -40,6 +40,10 @@ public class Configuration : IPluginConfiguration
 
     public HashSet<Guid> FavouriteDesigns { get; set; } = new();
 
+    // User-authored associations between a design and one or more ClassJob RowIds. Stored here (not on CachedOutfit)
+    // because CachedOutfits is wholly replaced from Glamourer metadata on every Refresh.
+    public Dictionary<Guid, List<uint>> DesignJobAssociations { get; set; } = new();
+
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
     
@@ -49,6 +53,17 @@ public class Configuration : IPluginConfiguration
     public void Save()
     {
         Plugin.PluginInterface.SavePluginConfig(this);
+    }
+
+    public List<uint> GetJobAssociations(Guid id)
+        => DesignJobAssociations.TryGetValue(id, out var jobs) ? jobs : new();
+
+    public void SetJobAssociations(Guid id, List<uint> jobs)
+    {
+        if (jobs.Count == 0)
+            DesignJobAssociations.Remove(id);
+        else
+            DesignJobAssociations[id] = jobs;
     }
 
     public CharacterLoginSettings GetOrCreateLoginSettings(ulong contentId)

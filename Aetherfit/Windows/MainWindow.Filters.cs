@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Services;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
@@ -16,6 +17,7 @@ public partial class MainWindow
 
     private string filterName = string.Empty;
     private readonly HashSet<string> filterTags = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<uint> filterJobs = new();
     private ImageFilterMode filterImage = ImageFilterMode.All;
     private bool filterFavourites;
     private List<string> availableTagsForFilter = new();
@@ -23,6 +25,7 @@ public partial class MainWindow
 
     private bool HasAnyFilter => filterName.Length > 0
                               || filterTags.Count > 0
+                              || filterJobs.Count > 0
                               || filterImage != ImageFilterMode.All
                               || filterFavourites;
 
@@ -43,8 +46,10 @@ public partial class MainWindow
         ImGui.PopItemWidth();
 
         DrawSelectedTagPills();
+        DrawSelectedJobPills();
 
-        var tagsLabel = filterTags.Count == 0 ? "Filter by tag(s)..." : "Add tag...";
+        var hasTagOrJob = filterTags.Count > 0 || filterJobs.Count > 0;
+        var tagsLabel = hasTagOrJob ? "Add tag or job..." : "Filter by tag(s) or job...";
         if (ImGui.Button(tagsLabel, new Vector2(-1, 0)))
         {
             RebuildAvailableFilterTags();
@@ -69,6 +74,7 @@ public partial class MainWindow
             {
                 filterName = string.Empty;
                 filterTags.Clear();
+                filterJobs.Clear();
                 filterImage = ImageFilterMode.All;
                 filterFavourites = false;
             }
@@ -126,6 +132,30 @@ public partial class MainWindow
             filterTags.Remove(toRemove);
     }
 
+    private void DrawSelectedJobPills()
+    {
+        if (filterJobs.Count == 0) return;
+
+        var style = ImGui.GetStyle();
+        var spacing = style.ItemSpacing.X;
+        var availRight = ImGui.GetWindowPos().X + ImGui.GetContentRegionMax().X;
+        var cursorStart = ImGui.GetCursorScreenPos().X;
+        var lineRight = cursorStart;
+        var first = true;
+
+        uint? toRemove = null;
+        foreach (var job in filterJobs.OrderBy(j => j))
+        {
+            var width = MeasureJobPill(job);
+            PlacePillItem(width, ref first, ref lineRight, cursorStart, spacing, availRight);
+            if (DrawJobPill(job))
+                toRemove = job;
+        }
+
+        if (toRemove is { } remove)
+            filterJobs.Remove(remove);
+    }
+
     private void RebuildAvailableFilterTags()
     {
         availableTagsForFilter = plugin.Configuration.CachedOutfits.Values
@@ -145,31 +175,64 @@ public partial class MainWindow
             ImGui.SetKeyboardFocusHere();
 
         ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##tagSearch", "Search tags...", ref tagSearchText, 64);
+        ImGui.InputTextWithHint("##tagSearch", "Search tags or jobs...", ref tagSearchText, 64);
         ImGui.Separator();
 
-        var unselected = availableTagsForFilter
+        var unselectedTags = availableTagsForFilter
             .Where(t => !filterTags.Contains(t) &&
                         (tagSearchText.Length == 0 ||
                          t.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
-        if (unselected.Count == 0)
+        var unselectedJobs = plugin.GameData.GetSelectableJobs()
+            .Where(j => !filterJobs.Contains(j.RowId) &&
+                        (tagSearchText.Length == 0 ||
+                         j.Name.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (unselectedTags.Count == 0 && unselectedJobs.Count == 0)
         {
-            ImGui.TextDisabled(tagSearchText.Length > 0 ? "No matching tags." : "All tags are selected.");
+            ImGui.TextDisabled(tagSearchText.Length > 0 ? "No matching tags or jobs." : "All tags and jobs are selected.");
         }
         else
         {
             var rowHeight = ImGui.GetTextLineHeightWithSpacing();
-            var listHeight = Math.Min(unselected.Count, 8) * rowHeight;
-            using var scroll = ImRaii.Child("TagList", new Vector2(220 * ImGuiHelpers.GlobalScale, listHeight), false);
+            // Account for the role headings interleaved with the job rows when sizing the list.
+            var jobRows = unselectedJobs.Count + unselectedJobs.Select(j => j.Role).Distinct().Count();
+            var totalRows = unselectedTags.Count + jobRows;
+            var listHeight = Math.Min(totalRows, 10) * rowHeight;
+            using var scroll = ImRaii.Child("TagJobList", new Vector2(240 * ImGuiHelpers.GlobalScale, listHeight), false);
             if (scroll.Success)
             {
-                foreach (var tag in unselected)
+                foreach (var tag in unselectedTags)
                 {
                     if (ImGui.Selectable(tag))
                     {
                         filterTags.Add(tag);
+                        tagSearchText = string.Empty;
+                    }
+                }
+
+                var lineH = ImGui.GetTextLineHeight();
+                JobRole? lastRole = null;
+                foreach (var job in unselectedJobs)
+                {
+                    if (lastRole != job.Role)
+                    {
+                        ImGui.TextDisabled(GameDataService.RoleLabel(job.Role));
+                        lastRole = job.Role;
+                    }
+
+                    var icon = plugin.GameData.GetJobIcon(job.RowId);
+                    if (icon != null)
+                    {
+                        ImGui.Image(icon.Handle, new Vector2(lineH, lineH));
+                        ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
+                    }
+
+                    if (ImGui.Selectable($"{job.Name}##filterjob{job.RowId}"))
+                    {
+                        filterJobs.Add(job.RowId);
                         tagSearchText = string.Empty;
                     }
                 }
@@ -191,6 +254,12 @@ public partial class MainWindow
         {
             if (cached == null || cached.Tags.Count == 0) return false;
             if (!filterTags.All(t => cached.Tags.Contains(t, StringComparer.OrdinalIgnoreCase))) return false;
+        }
+
+        if (filterJobs.Count > 0)
+        {
+            var jobs = plugin.Configuration.GetJobAssociations(design.Id);
+            if (!filterJobs.Any(jobs.Contains)) return false;
         }
 
         if (filterImage != ImageFilterMode.All)

@@ -162,6 +162,12 @@ public partial class MainWindow : Window, IDisposable
         var validIds = new HashSet<Guid>(result.Designs.Select(d => d.Id));
         plugin.ImageStorage.CleanupRemovedDesigns(validIds);
 
+        var staleJobAssociations = plugin.Configuration.DesignJobAssociations.Keys
+            .Where(k => !validIds.Contains(k))
+            .ToList();
+        foreach (var stale in staleJobAssociations)
+            plugin.Configuration.DesignJobAssociations.Remove(stale);
+
         if (selectedDesign is { } sid && !validIds.Contains(sid))
             selectedDesign = null;
 
@@ -347,6 +353,35 @@ public partial class MainWindow : Window, IDisposable
         if (matching.Count == 0)
         {
             var msg = $"No designs match tags: {string.Join(", ", tags)}";
+            Plugin.Log.Info(msg);
+            return msg;
+        }
+
+        var pick = matching[Random.Shared.Next(matching.Count)];
+        selectedDesign = pick;
+        ApplyDesignById(pick);
+        return null;
+    }
+
+    public string? ApplyRandomByCurrentJob()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+        {
+            var msg = "Log in to a character first.";
+            Plugin.Log.Info(msg);
+            return msg;
+        }
+
+        var jobId = Plugin.PlayerState.ClassJob.RowId;
+        var matching = plugin.Configuration.DesignJobAssociations
+            .Where(kv => kv.Value.Contains(jobId) && plugin.Configuration.CachedOutfits.ContainsKey(kv.Key))
+            .Select(kv => kv.Key)
+            .ToList();
+
+        if (matching.Count == 0)
+        {
+            var jobName = plugin.GameData.ResolveJobName(jobId);
+            var msg = $"No designs associated with your current job ({jobName}).";
             Plugin.Log.Info(msg);
             return msg;
         }

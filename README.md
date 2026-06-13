@@ -36,6 +36,8 @@ You can then access the plugin by typing `/aetherfit` in chat.
 
 `/aetherfit <tags>` - Apply a random design from your entire collection of designs with the specified tag, multiple tags can be specified by separating them with a comma.
 
+`/aetherfit job` - Apply a random design associated with your current job. Job associations are set per-design in the design details pane.
+
 `/aetherfit revert` - Revert your character to the games state
 
 ---
