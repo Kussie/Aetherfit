@@ -40,7 +40,6 @@ public sealed class GallerySharingService
             var snapshot = new SharedGallery
             {
                 SharerLabel = string.IsNullOrWhiteSpace(sharerLabel) ? "Shared Gallery" : sharerLabel,
-                SharerContentId = Plugin.PlayerState.IsLoaded ? Plugin.PlayerState.ContentId : 0,
                 CreatedAt = DateTimeOffset.Now,
             };
 
@@ -132,7 +131,6 @@ public sealed class GallerySharingService
         {
             OriginKey = originKey,
             SharerLabel = snapshot.SharerLabel,
-            SharerContentId = snapshot.SharerContentId,
             CreatedAt = snapshot.CreatedAt,
         };
 

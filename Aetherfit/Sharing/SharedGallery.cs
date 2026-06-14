@@ -13,7 +13,6 @@ public sealed class SharedGallery
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public string SharerLabel { get; set; } = string.Empty;
-    public ulong SharerContentId { get; set; }   // FFXIV ContentId of the character that exported the bundle
     public DateTimeOffset CreatedAt { get; set; }
     public List<SharedDesign> Designs { get; set; } = new();
 }
@@ -46,7 +45,6 @@ public sealed class ForeignGallery
 {
     public string OriginKey { get; init; } = string.Empty;
     public string SharerLabel { get; init; } = string.Empty;
-    public ulong SharerContentId { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public List<ForeignDesign> Designs { get; init; } = new();
 }
