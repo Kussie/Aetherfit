@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
@@ -80,7 +81,7 @@ public class ConfigWindow : Window, IDisposable
 
     private static void DrawCommandsSection()
     {
-        ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Chat commands");
+        ImGui.TextColored(UiTheme.SectionHeader, "Chat commands");
         ImGui.TextDisabled("These can also be used in game macros.");
         ImGui.Spacing();
 
@@ -95,7 +96,7 @@ public class ConfigWindow : Window, IDisposable
 
     private static void DrawCommand(string command, string description)
     {
-        ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), command);
+        ImGui.TextColored(UiTheme.GoldAccent, command);
         ImGui.Indent();
         ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(ImGuiCol.TextDisabled));
         ImGui.TextWrapped(description);
@@ -107,7 +108,7 @@ public class ConfigWindow : Window, IDisposable
     private void DrawLoginSection()
     {
         var ps = Plugin.PlayerState;
-        ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "On login");
+        ImGui.TextColored(UiTheme.SectionHeader, "On login");
 
         if (!ps.IsLoaded)
         {
@@ -143,7 +144,7 @@ public class ConfigWindow : Window, IDisposable
     private static void DrawCharacterLine()
     {
         var ps = Plugin.PlayerState;
-        ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.85f, 1.0f), "Character:");
+        ImGui.TextColored(UiTheme.SectionHeader, "Character:");
         ImGui.SameLine();
         if (!ps.IsLoaded)
         {
@@ -205,32 +206,11 @@ public class ConfigWindow : Window, IDisposable
 
         foreach (var tag in settings.LoginTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
         {
-            var label = $"{tag} ×";
-            var btnWidth = ImGui.CalcTextSize(label).X + (framePadX * 2);
+            var btnWidth = ImGui.CalcTextSize($"{tag} ×").X + (framePadX * 2);
+            Pills.PlaceItem(btnWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
 
-            if (first)
-            {
-                lineRight = cursorStart + btnWidth;
-                first = false;
-            }
-            else if (lineRight + spacing + btnWidth <= availRight)
-            {
-                ImGui.SameLine();
-                lineRight += spacing + btnWidth;
-            }
-            else
-            {
-                lineRight = cursorStart + btnWidth;
-            }
-
-            ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 8f * ImGuiHelpers.GlobalScale);
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.22f, 0.38f, 0.60f, 0.72f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.55f, 0.20f, 0.20f, 0.85f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.65f, 0.14f, 0.14f, 1.00f));
-            if (ImGui.Button($"{label}##{tag}"))
+            if (Pills.DrawRemovable(tag, tag))
                 toRemove = tag;
-            ImGui.PopStyleColor(3);
-            ImGui.PopStyleVar();
 
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip($"Remove \"{tag}\"");

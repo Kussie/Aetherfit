@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
@@ -13,8 +14,8 @@ public partial class MainWindow
     private static readonly Vector4 OffColor = new(0.88f, 0.32f, 0.32f, 1.0f);
     private static readonly Vector4 UnsetColor = new(0.55f, 0.55f, 0.55f, 1.0f);
     private static readonly Vector4 AppliedTextColor = new(1.0f, 1.0f, 1.0f, 1.0f);
-    private static readonly Vector4 SectionHeader = new(0.85f, 0.85f, 0.85f, 1.0f);
-    private static readonly Vector4 ModLinkColor = new(0.55f, 0.78f, 1.0f, 1.0f);
+    private static readonly Vector4 SectionHeader = UiTheme.SectionHeader;
+    private static readonly Vector4 ModLinkColor = UiTheme.ModLink;
 
     private bool equipmentPanelOpen = true;
     private bool modsPanelOpen = true;

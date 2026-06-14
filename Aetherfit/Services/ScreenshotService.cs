@@ -57,7 +57,7 @@ public sealed class ScreenshotService
 
     private static string EnsureImagesDir()
     {
-        var dir = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images");
+        var dir = ImageStorageService.ImagesDirectoryPath;
         Directory.CreateDirectory(dir);
         return dir;
     }

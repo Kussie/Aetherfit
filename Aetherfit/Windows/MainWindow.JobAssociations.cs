@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
+using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
@@ -15,9 +16,9 @@ public partial class MainWindow
 {
     private const string AddJobPopupId = "AddJobPopup";
 
-    private static readonly Vector4 JobPillColor = new(0.22f, 0.38f, 0.60f, 0.72f);
-    private static readonly Vector4 JobPillHovered = new(0.55f, 0.20f, 0.20f, 0.85f);
-    private static readonly Vector4 JobPillActive = new(0.65f, 0.14f, 0.14f, 1.00f);
+    private static readonly Vector4 JobPillColor = UiTheme.PillBase;
+    private static readonly Vector4 JobPillHovered = UiTheme.PillHovered;
+    private static readonly Vector4 JobPillActive = UiTheme.PillActive;
 
     private void DrawJobAssociations(Guid id)
     {
@@ -38,14 +39,14 @@ public partial class MainWindow
         foreach (var job in jobs)
         {
             var width = MeasureJobPill(job);
-            PlacePillItem(width, ref first, ref lineRight, cursorStart, spacing, availRight);
+            Pills.PlaceItem(width, ref first, ref lineRight, cursorStart, spacing, availRight);
             if (DrawJobPill(job))
                 toRemove = job;
         }
 
         // Trailing "+" add button, wrapped onto a new line if it would overflow.
         var addWidth = ImGui.GetFrameHeight();
-        PlacePillItem(addWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
+        Pills.PlaceItem(addWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
         if (ImGuiComponents.IconButton(FontAwesomeIcon.Plus))
             ImGui.OpenPopup(AddJobPopupId);
         if (ImGui.IsItemHovered())
@@ -62,25 +63,6 @@ public partial class MainWindow
 
         ImGui.Unindent();
         ImGui.Spacing();
-    }
-
-    private static void PlacePillItem(float width, ref bool first, ref float lineRight,
-        float cursorStart, float spacing, float availRight)
-    {
-        if (first)
-        {
-            lineRight = cursorStart + width;
-            first = false;
-        }
-        else if (lineRight + spacing + width <= availRight)
-        {
-            ImGui.SameLine();
-            lineRight += spacing + width;
-        }
-        else
-        {
-            lineRight = cursorStart + width;
-        }
     }
 
     private float MeasureJobPill(uint job)
@@ -103,7 +85,7 @@ public partial class MainWindow
 
         var p0 = ImGui.GetCursorScreenPos();
 
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 8f * ImGuiHelpers.GlobalScale);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);
         ImGui.PushStyleVar(ImGuiStyleVar.ButtonTextAlign, new Vector2(1f, 0.5f));
         ImGui.PushStyleColor(ImGuiCol.Button, JobPillColor);
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, JobPillHovered);

@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
+using System.Linq;
 
 namespace Aetherfit.Services;
 
@@ -8,6 +10,47 @@ internal static class ScreenshotCaptureService
 {
     public static (byte[] Png, int Width, int Height) CaptureGameWindow()
         => D3D11CaptureService.CaptureFrame();
+
+    // Downscales an image to fit within maxDimension (longest side) and re-encodes it as JPEG. Used to produce
+    // lightweight preview copies for shared galleries, where full-resolution PNG screenshots are needlessly large.
+    public static byte[] EncodePreviewJpeg(string sourcePath, int maxDimension, long quality)
+    {
+        using var src = new Bitmap(sourcePath);
+
+        var longest = Math.Max(src.Width, src.Height);
+        var scale = longest > maxDimension ? (double)maxDimension / longest : 1.0;
+
+        Bitmap image = src;
+        var resized = false;
+        if (scale < 1.0)
+        {
+            var w = Math.Max(1, (int)Math.Round(src.Width * scale));
+            var h = Math.Max(1, (int)Math.Round(src.Height * scale));
+            image = new Bitmap(w, h, PixelFormat.Format24bppRgb);
+            using (var g = Graphics.FromImage(image))
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode   = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                g.DrawImage(src, new Rectangle(0, 0, w, h));
+            }
+            resized = true;
+        }
+
+        try
+        {
+            var codec = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
+            using var encParams = new EncoderParameters(1);
+            encParams.Param[0] = new EncoderParameter(Encoder.Quality, quality);
+            using var ms = new MemoryStream();
+            image.Save(ms, codec, encParams);
+            return ms.ToArray();
+        }
+        finally
+        {
+            if (resized)
+                image.Dispose();
+        }
+    }
 
     public static void CropAndSave(string sourcePath, string targetPath, int x, int y, int w, int h)
     {

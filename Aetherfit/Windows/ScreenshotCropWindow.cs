@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Numerics;
 using Aetherfit.Services;
+using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 
@@ -164,7 +165,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
         dl.AddRectFilled(new Vector2(imgMin.X, rectMin.Y), new Vector2(rectMin.X, rectMax.Y), dim);
         dl.AddRectFilled(new Vector2(rectMax.X, rectMin.Y), new Vector2(imgMax.X, rectMax.Y), dim);
 
-        var color = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.85f, 0.4f, 1f));
+        var color = ImGui.ColorConvertFloat4ToU32(UiTheme.GoldAccent);
         dl.AddRect(rectMin, rectMax, color, 0f, ImDrawFlags.None, 2f);
     }
 

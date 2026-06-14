@@ -5,6 +5,7 @@ using Dalamud.Plugin;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using Aetherfit.Services;
+using Aetherfit.Sharing;
 using Aetherfit.Windows;
 
 namespace Aetherfit;
@@ -29,6 +30,7 @@ public sealed class Plugin : IDalamudPlugin
     public GameDataService GameData { get; init; }
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
+    public GallerySharingService GallerySharing { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
@@ -36,6 +38,7 @@ public sealed class Plugin : IDalamudPlugin
     public ImageViewerWindow ImageViewer { get; init; }
     public ScreenshotSetupWindow ScreenshotSetup { get; init; }
     public ScreenshotCropWindow ScreenshotCrop { get; init; }
+    public ForeignGalleryWindow ForeignGallery { get; init; }
 
     private bool mainWindowOpenBeforeCapture;
 
@@ -56,17 +59,23 @@ public sealed class Plugin : IDalamudPlugin
         GameData = new GameDataService();
         ImageStorage = new ImageStorageService(Configuration);
         Screenshot = new ScreenshotService();
+        GallerySharing = new GallerySharingService(Configuration, ImageStorage);
+
+        // Clear any foreign gallery images left over from a previous session (e.g. after a crash) so they don't accumulate.
+        ImageStorage.ClearAllForeign();
 
         ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
         ImageViewer = new ImageViewerWindow();
         ScreenshotSetup = new ScreenshotSetupWindow(this);
         ScreenshotCrop = new ScreenshotCropWindow(this);
+        ForeignGallery = new ForeignGalleryWindow(this);
         WindowSystem.AddWindow(ConfigWindow);
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ImageViewer);
         WindowSystem.AddWindow(ScreenshotSetup);
         WindowSystem.AddWindow(ScreenshotCrop);
+        WindowSystem.AddWindow(ForeignGallery);
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
@@ -100,6 +109,7 @@ public sealed class Plugin : IDalamudPlugin
         ImageViewer.Dispose();
         ScreenshotSetup.Dispose();
         ScreenshotCrop.Dispose();
+        ForeignGallery.Dispose();
 
         CommandManager.RemoveHandler(CommandName);
     }

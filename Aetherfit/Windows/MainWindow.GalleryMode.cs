@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
+using Aetherfit.Sharing;
+using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
@@ -36,19 +39,13 @@ public partial class MainWindow
 
     private void DrawCoverModePane()
     {
-        ImGui.SetWindowFontScale(1.25f);
-        ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), "Glamourer Designs");
+        ImGui.SetWindowFontScale(UiTheme.HeaderFontScale);
+        ImGui.TextColored(UiTheme.GoldAccent, "Glamourer Designs");
         ImGui.SetWindowFontScale(1.0f);
         ImGui.Separator();
 
         if (ImGui.Button("<< Edit Mode", new Vector2(-1, 0)))
             coverMode = false;
-
-        if (ImGui.Button("Refresh"))
-            RefreshDesigns();
-        ImGui.SameLine();
-        ImGui.TextDisabled($"{designsCount} design(s)");
-
         ImGui.Separator();
 
         if (designsError != null)
@@ -75,6 +72,49 @@ public partial class MainWindow
         using var gridChild = ImRaii.Child("CoverGridScroll", Vector2.Zero, false);
         if (gridChild.Success)
             DrawCoverGrid();
+    }
+
+    private void OpenExportGalleryDialog()
+    {
+        var label = Plugin.PlayerState.IsLoaded && !string.IsNullOrWhiteSpace(Plugin.PlayerState.CharacterName)
+            ? Plugin.PlayerState.CharacterName
+            : "Shared Gallery";
+        var filters = $"Aetherfit Gallery{{{GallerySharingService.FileExtension}}}";
+        var defaultName = SanitizeFileName(label) + GallerySharingService.FileExtension;
+        fileDialog.SaveFileDialog(
+            "Export Gallery",
+            filters,
+            defaultName,
+            GallerySharingService.FileExtension,
+            (success, path) =>
+            {
+                if (success && !string.IsNullOrEmpty(path))
+                    plugin.GallerySharing.ExportToFile(label, path);
+            });
+    }
+
+    private void OpenImportGalleryDialog()
+    {
+        var filters = $"Aetherfit Gallery{{{GallerySharingService.FileExtension}}}";
+        fileDialog.OpenFileDialog(
+            "Import Gallery",
+            filters,
+            (success, paths) =>
+            {
+                if (!success || paths.Count == 0)
+                    return;
+                var foreign = plugin.GallerySharing.ImportFromFile(paths[0]);
+                if (foreign != null)
+                    plugin.ForeignGallery.Show(foreign);
+            },
+            1);
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        foreach (var c in Path.GetInvalidFileNameChars())
+            name = name.Replace(c, '_');
+        return string.IsNullOrWhiteSpace(name) ? "gallery" : name;
     }
 
     private void DrawGallerySortControls()
@@ -221,11 +261,7 @@ public partial class MainWindow
         if (coverPath != null) images.Add(coverPath);
         images.AddRange(additionalPaths);
 
-        if (!galleryImageIndex.TryGetValue(design.Id, out var imgIdx) || imgIdx < 0 || imgIdx >= images.Count)
-        {
-            imgIdx = 0;
-            galleryImageIndex[design.Id] = 0;
-        }
+        var imgIdx = GalleryDraw.ResolveImageIndex(galleryImageIndex, design.Id, images.Count);
         var currentImage = images.Count > 0 ? images[imgIdx] : null;
 
         var clicked = false;
@@ -236,66 +272,14 @@ public partial class MainWindow
         {
             var tex = Plugin.TextureProvider.GetFromFile(currentImage).GetWrapOrEmpty();
             if (tex.Width > 0 && tex.Height > 0)
-            {
-                switch (plugin.Configuration.GalleryFitMode)
-                {
-                    case GalleryFitMode.Letterbox:
-                    {
-                        // Letterbox the image to fit
-                        ImGui.InvisibleButton("##cellHit", thumbVec);
-                        var dl = ImGui.GetWindowDrawList();
-                        var bg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.22f, 0.22f, 0.25f, 1f));
-                        dl.AddRectFilled(thumbStart, thumbStart + thumbVec, bg, 4f);
-
-                        var scale = Math.Min(thumbWidth / tex.Width, thumbHeight / tex.Height);
-                        var fitted = new Vector2(tex.Width * scale, tex.Height * scale);
-                        var offset = (thumbVec - fitted) * 0.5f;
-                        dl.AddImage(tex.Handle, thumbStart + offset, thumbStart + offset + fitted);
-                        break;
-                    }
-                    case GalleryFitMode.Stretch:
-                    {
-                        // Distort the image to fill the entire cell; aspect ratio is not preserved.
-                        ImGui.Image(tex.Handle, thumbVec);
-                        break;
-                    }
-                    default:
-                    {
-                        // Crop: preserve aspect ratio, trim the overflow via UVs.
-                        float uMin = 0f, uMax = 1f, vMin = 0f, vMax = 1f;
-                        var texAspect = tex.Width / (float)tex.Height;
-                        if (texAspect > containerAspect)
-                        {
-                            var keep = containerAspect / texAspect;
-                            uMin = (1f - keep) * 0.5f;
-                            uMax = 1f - uMin;
-                        }
-                        else if (texAspect < containerAspect)
-                        {
-                            var keep = texAspect / containerAspect;
-                            vMin = (1f - keep) * 0.5f;
-                            vMax = 1f - vMin;
-                        }
-                        ImGui.Image(tex.Handle, thumbVec, new Vector2(uMin, vMin), new Vector2(uMax, vMax));
-                        break;
-                    }
-                }
-            }
+                GalleryDraw.DrawFittedImage(tex, thumbStart, thumbVec, thumbWidth, thumbHeight, containerAspect,
+                    plugin.Configuration.GalleryFitMode);
             else
-            {
                 ImGui.Dummy(thumbVec);
-            }
         }
         else
         {
-            ImGui.InvisibleButton("##placeholder", thumbVec);
-            var dl = ImGui.GetWindowDrawList();
-            var fill = ImGui.ColorConvertFloat4ToU32(new Vector4(0.22f, 0.22f, 0.25f, 1f));
-            dl.AddRectFilled(thumbStart, thumbStart + thumbVec, fill, 4f);
-            const string text = "No Image";
-            var textSize = ImGui.CalcTextSize(text);
-            var textPos = thumbStart + (thumbVec - textSize) * 0.5f;
-            dl.AddText(textPos, ImGui.ColorConvertFloat4ToU32(new Vector4(0.65f, 0.65f, 0.68f, 1f)), text);
+            GalleryDraw.DrawNoImagePlaceholder(thumbStart, thumbVec);
         }
 
         var imageHovered = ImGui.IsItemHovered();
@@ -331,8 +315,8 @@ public partial class MainWindow
         if (imageHovered && hasArrows)
         {
             var dl = ImGui.GetWindowDrawList();
-            if (canPrev) DrawGalleryChevron(dl, leftMin, leftMax, isLeft: true, hovered: overLeft);
-            if (canNext) DrawGalleryChevron(dl, rightMin, rightMax, isLeft: false, hovered: overRight);
+            if (canPrev) GalleryDraw.DrawChevron(dl, leftMin, leftMax, isLeft: true, hovered: overLeft);
+            if (canNext) GalleryDraw.DrawChevron(dl, rightMin, rightMax, isLeft: false, hovered: overRight);
         }
 
         if (imageHovered)
@@ -369,7 +353,7 @@ public partial class MainWindow
         if (selectedDesign == design.Id)
         {
             var dl = ImGui.GetWindowDrawList();
-            var hl = ImGui.ColorConvertFloat4ToU32(new Vector4(1.0f, 0.85f, 0.4f, 1f));
+            var hl = ImGui.ColorConvertFloat4ToU32(UiTheme.GoldAccent);
             dl.AddRect(thumbStart, thumbStart + thumbVec, hl, 4f, ImDrawFlags.None, 2.5f);
         }
 
@@ -414,35 +398,6 @@ public partial class MainWindow
         {
             selectedDesign = design.Id;
             ApplyDesignById(design.Id);
-        }
-    }
-
-    private static void DrawGalleryChevron(ImDrawListPtr dl, Vector2 min, Vector2 max, bool isLeft, bool hovered)
-    {
-        var bgAlpha = hovered ? 0.85f : 0.55f;
-        var bg = ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, bgAlpha));
-        dl.AddRectFilled(min, max, bg, 4f);
-
-        var center = (min + max) * 0.5f;
-        var size = Math.Min(max.X - min.X, max.Y - min.Y);
-        var halfH = size * 0.25f;
-        var halfW = size * 0.18f;
-        var color = ImGui.ColorConvertFloat4ToU32(Vector4.One);
-        if (isLeft)
-        {
-            dl.AddTriangleFilled(
-                new Vector2(center.X - halfW, center.Y),
-                new Vector2(center.X + halfW, center.Y + halfH),
-                new Vector2(center.X + halfW, center.Y - halfH),
-                color);
-        }
-        else
-        {
-            dl.AddTriangleFilled(
-                new Vector2(center.X + halfW, center.Y),
-                new Vector2(center.X - halfW, center.Y - halfH),
-                new Vector2(center.X - halfW, center.Y + halfH),
-                color);
         }
     }
 

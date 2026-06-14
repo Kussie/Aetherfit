@@ -9,6 +9,7 @@ public sealed class ImageStorageService
 {
     public const int MaxAdditionalImages = 5;
     private const string AdditionalImagesSubdir = "additional";
+    private const string ForeignSubdir = "foreign";
 
     private readonly Configuration configuration;
     private readonly Dictionary<Guid, string?> coverPathCache = [];
@@ -19,11 +20,22 @@ public sealed class ImageStorageService
         this.configuration = configuration;
     }
 
-    public string ImagesDirectory =>
+    // Root "images" folder under the plugin config dir. Static so other services (e.g. screenshots) share the path.
+    public static string ImagesDirectoryPath =>
         Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images");
+
+    public string ImagesDirectory => ImagesDirectoryPath;
 
     public string AdditionalImagesDirectory =>
         Path.Combine(ImagesDirectory, AdditionalImagesSubdir);
+
+    // Root for imported (read-only) galleries. Each imported gallery gets its own subfolder keyed by an origin key,
+    // kept wholly separate from the user's own images so it can be purged without touching local data.
+    public string ForeignRootDirectory =>
+        Path.Combine(ImagesDirectory, ForeignSubdir);
+
+    public string ForeignDirectory(string originKey) =>
+        Path.Combine(ForeignRootDirectory, originKey);
 
     public bool HasCover(Guid id) => configuration.OutfitImages.ContainsKey(id);
 
@@ -74,9 +86,7 @@ public sealed class ImageStorageService
             var imagesDir = EnsureImagesDirectory();
             DeleteCoverFilesFor(id, imagesDir);
 
-            var ext = Path.GetExtension(sourcePath).ToLowerInvariant();
-            if (string.IsNullOrEmpty(ext))
-                ext = ".png";
+            var ext = NormalizeExtension(Path.GetExtension(sourcePath));
             var targetName = id.ToString("N") + ext;
             var targetPath = Path.Combine(imagesDir, targetName);
             File.Copy(sourcePath, targetPath, overwrite: true);
@@ -126,9 +136,7 @@ public sealed class ImageStorageService
                 return;
 
             var imagesDir = EnsureAdditionalImagesDirectory();
-            var ext = Path.GetExtension(sourcePath).ToLowerInvariant();
-            if (string.IsNullOrEmpty(ext))
-                ext = ".png";
+            var ext = NormalizeExtension(Path.GetExtension(sourcePath));
 
             var targetName = $"{id:N}_{Guid.NewGuid():N}{ext}";
             var targetPath = Path.Combine(imagesDir, targetName);
@@ -160,19 +168,108 @@ public sealed class ImageStorageService
         if (list.Count == 0)
             configuration.OutfitAdditionalImages.Remove(id);
 
+        DeleteFileQuietly(Path.Combine(AdditionalImagesDirectory, filename));
+
+        configuration.Save();
+        additionalPathsCache.Remove(id);
+    }
+
+    // Writes decoded images for one imported design into the foreign cache and returns their on-disk paths so the
+    // read-only viewer can render them via TextureProvider.GetFromFile. The original extension is preserved so the
+    // bytes decode correctly. Returns (coverPath or null, additionalPaths).
+    public (string? Cover, List<string> Additional) WriteForeignImages(
+        string originKey, Guid sourceId,
+        (byte[] Bytes, string Ext)? cover,
+        IReadOnlyList<(byte[] Bytes, string Ext)> additional)
+    {
+        var dir = ForeignDirectory(originKey);
+        Directory.CreateDirectory(dir);
+
+        string? coverPath = null;
+        if (cover is { } c && c.Bytes.Length > 0)
+        {
+            try
+            {
+                coverPath = Path.Combine(dir, $"{sourceId:N}{NormalizeExtension(c.Ext)}");
+                File.WriteAllBytes(coverPath, c.Bytes);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Warning(ex, "Failed to write foreign cover for {Id}", sourceId);
+                coverPath = null;
+            }
+        }
+
+        var additionalPaths = new List<string>();
+        for (var i = 0; i < additional.Count; i++)
+        {
+            var (bytes, ext) = additional[i];
+            if (bytes.Length == 0) continue;
+            try
+            {
+                var path = Path.Combine(dir, $"{sourceId:N}_{i}{NormalizeExtension(ext)}");
+                File.WriteAllBytes(path, bytes);
+                additionalPaths.Add(path);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Warning(ex, "Failed to write foreign additional image for {Id}", sourceId);
+            }
+        }
+
+        return (coverPath, additionalPaths);
+    }
+
+    public void ClearForeign(string originKey)
+    {
+        if (string.IsNullOrEmpty(originKey))
+            return;
         try
         {
-            var path = Path.Combine(AdditionalImagesDirectory, filename);
+            var dir = ForeignDirectory(originKey);
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to clear foreign gallery cache {Origin}", originKey);
+        }
+    }
+
+    public void ClearAllForeign()
+    {
+        try
+        {
+            if (Directory.Exists(ForeignRootDirectory))
+                Directory.Delete(ForeignRootDirectory, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to clear foreign gallery cache root");
+        }
+    }
+
+    // Lower-cases an extension and ensures a leading dot, falling back to ".png" when missing.
+    public static string NormalizeExtension(string? ext)
+    {
+        if (string.IsNullOrWhiteSpace(ext))
+            return ".png";
+        ext = ext.ToLowerInvariant();
+        return ext.StartsWith('.') ? ext : "." + ext;
+    }
+
+    // Deletes a file if present, logging (but swallowing) any failure so callers don't have to repeat the boilerplate.
+    private static void DeleteFileQuietly(string path)
+    {
+        try
+        {
             if (File.Exists(path))
                 File.Delete(path);
         }
         catch (Exception ex)
         {
-            Plugin.Log.Warning(ex, "Failed to delete additional image {File}", filename);
+            Plugin.Log.Warning(ex, "Failed to delete {File}", path);
         }
-
-        configuration.Save();
-        additionalPathsCache.Remove(id);
     }
 
     public void CleanupRemovedDesigns(IReadOnlySet<Guid> validIds)
@@ -197,18 +294,7 @@ public sealed class ImageStorageService
             if (configuration.OutfitAdditionalImages.TryGetValue(id, out var filenames))
             {
                 foreach (var name in filenames)
-                {
-                    try
-                    {
-                        var path = Path.Combine(additionalDir, name);
-                        if (File.Exists(path))
-                            File.Delete(path);
-                    }
-                    catch (Exception ex)
-                    {
-                        Plugin.Log.Warning(ex, "Failed to delete additional image {File}", name);
-                    }
-                }
+                    DeleteFileQuietly(Path.Combine(additionalDir, name));
             }
             configuration.OutfitAdditionalImages.Remove(id);
         }
@@ -240,10 +326,7 @@ public sealed class ImageStorageService
             return;
         var prefix = id.ToString("N");
         foreach (var file in Directory.EnumerateFiles(imagesDir, prefix + ".*"))
-        {
-            try { File.Delete(file); }
-            catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to delete {File}", file); }
-        }
+            DeleteFileQuietly(file);
     }
 
     // Filenames in our image dirs encode the design Guid as the prefix before any underscore
@@ -262,8 +345,7 @@ public sealed class ImageStorageService
                 continue;
             if (validIds.Contains(fileId))
                 continue;
-            try { File.Delete(path); }
-            catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to delete orphan file {File}", path); }
+            DeleteFileQuietly(path);
         }
     }
 }

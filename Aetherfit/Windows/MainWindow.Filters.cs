@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
+using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
@@ -97,32 +98,11 @@ public partial class MainWindow
 
         foreach (var tag in filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
         {
-            var label = $"{tag} ×";
-            var btnWidth = ImGui.CalcTextSize(label).X + framePadX * 2;
+            var btnWidth = ImGui.CalcTextSize($"{tag} ×").X + framePadX * 2;
+            Pills.PlaceItem(btnWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
 
-            if (first)
-            {
-                lineRight = cursorStart + btnWidth;
-                first = false;
-            }
-            else if (lineRight + spacing + btnWidth <= availRight)
-            {
-                ImGui.SameLine();
-                lineRight += spacing + btnWidth;
-            }
-            else
-            {
-                lineRight = cursorStart + btnWidth;
-            }
-
-            ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 8f * ImGuiHelpers.GlobalScale);
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.22f, 0.38f, 0.60f, 0.72f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.55f, 0.20f, 0.20f, 0.85f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.65f, 0.14f, 0.14f, 1.00f));
-            if (ImGui.Button($"{label}##{tag}"))
+            if (Pills.DrawRemovable(tag, tag))
                 toRemove = tag;
-            ImGui.PopStyleColor(3);
-            ImGui.PopStyleVar();
 
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip($"Remove \"{tag}\"");
@@ -147,7 +127,7 @@ public partial class MainWindow
         foreach (var job in filterJobs.OrderBy(j => j))
         {
             var width = MeasureJobPill(job);
-            PlacePillItem(width, ref first, ref lineRight, cursorStart, spacing, availRight);
+            Pills.PlaceItem(width, ref first, ref lineRight, cursorStart, spacing, availRight);
             if (DrawJobPill(job))
                 toRemove = job;
         }

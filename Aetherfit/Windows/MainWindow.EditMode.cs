@@ -7,6 +7,7 @@ using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Aetherfit.Services;
+using Aetherfit.Ui;
 
 namespace Aetherfit.Windows;
 
@@ -20,20 +21,13 @@ public partial class MainWindow
 
     private void DrawLeftPane()
     {
-        ImGui.SetWindowFontScale(1.25f);
-        ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), "Glamourer Designs");
+        ImGui.SetWindowFontScale(UiTheme.HeaderFontScale);
+        ImGui.TextColored(UiTheme.GoldAccent, "Glamourer Designs");
         ImGui.SetWindowFontScale(1.0f);
         ImGui.Separator();
 
         if (ImGui.Button("Gallery Mode >>", new Vector2(-1, 0)))
             coverMode = true;
-
-        if (ImGui.Button("Refresh"))
-            RefreshDesigns();
-
-        ImGui.SameLine();
-        ImGui.TextDisabled($"{designsCount} design(s)");
-
         ImGui.Separator();
 
         if (designsError != null)
@@ -246,7 +240,7 @@ public partial class MainWindow
                 ImGui.SameLine();
                 ImGui.SetWindowFontScale(1.5f);
                 ImGui.SetCursorPosY(rowTopY + ((rowHeight - ImGui.GetTextLineHeight()) * 0.5f));
-                ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1.0f), details.Name);
+                ImGui.TextColored(UiTheme.GoldAccent, details.Name);
                 ImGui.SetWindowFontScale(1.0f);
 
                 ImGui.SameLine();
@@ -267,7 +261,7 @@ public partial class MainWindow
                     for (var i = 0; i < details.Tags.Count; i++)
                     {
                         if (i > 0) ImGui.SameLine();
-                        ImGui.TextColored(new Vector4(0.55f, 0.78f, 1.0f, 1.0f), details.Tags[i]);
+                        ImGui.TextColored(UiTheme.ModLink, details.Tags[i]);
                     }
                 }
                 else

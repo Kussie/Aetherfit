@@ -61,6 +61,10 @@ public partial class MainWindow : Window, IDisposable
     public override void Draw()
     {
         var style = ImGui.GetStyle();
+
+        DrawTopToolbar();
+        ImGui.Separator();
+
         var bottomRowHeight = ImGui.GetFrameHeight() + style.ItemSpacing.Y;
         var bodyHeight = Math.Max(0, ImGui.GetContentRegionAvail().Y - bottomRowHeight - style.ItemSpacing.Y);
 
@@ -105,7 +109,7 @@ public partial class MainWindow : Window, IDisposable
             var lineTop   = splitterScreenPos.Y;
             var lineBot   = splitterScreenPos.Y + bodyHeight;
             var lineColor = (splitHovered || splitActive)
-                ? ImGui.ColorConvertFloat4ToU32(new Vector4(1.00f, 0.85f, 0.40f, 1.00f))
+                ? ImGui.ColorConvertFloat4ToU32(Ui.UiTheme.GoldAccent)
                 : ImGui.ColorConvertFloat4ToU32(new Vector4(0.45f, 0.45f, 0.50f, 0.90f));
             var lineThick = splitActive ? 2.5f : (splitHovered ? 2.0f : 1.5f);
             ImGui.GetWindowDrawList().AddLine(
@@ -155,6 +159,8 @@ public partial class MainWindow : Window, IDisposable
         foreach (var stale in staleJobAssociations)
             plugin.Configuration.DesignJobAssociations.Remove(stale);
 
+        plugin.Configuration.FavouriteDesigns.RemoveWhere(id => !validIds.Contains(id));
+
         if (selectedDesign is { } sid && !validIds.Contains(sid))
             selectedDesign = null;
 
@@ -200,26 +206,45 @@ public partial class MainWindow : Window, IDisposable
             SortNodeDesigns(child);
     }
 
+    // Top toolbar shown in every mode: gallery actions, the design count, and settings.
+    private void DrawTopToolbar()
+    {
+        if (ImGui.Button("Refresh"))
+            RefreshDesigns();
+        ImGui.SameLine();
+        ImGui.TextDisabled($"{designsCount} design(s)");
+        ImGui.SameLine();
+
+        if (ImGui.Button("Export"))
+            OpenExportGalleryDialog();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Export this gallery to a shareable .afgallery file (images + basic info).");
+        ImGui.SameLine();
+
+        if (ImGui.Button("Import"))
+            OpenImportGalleryDialog();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Open another user's exported .afgallery file in a read-only viewer.");
+        ImGui.SameLine();
+
+        if (ImGui.Button("Settings"))
+            plugin.ToggleConfigUi();
+    }
+
     private void DrawBottomButtons()
     {
         var style = ImGui.GetStyle();
-        const string settingsLabel = "Settings";
         const string revertLabel = "Revert Appearance";
         const string applyLabel = "Apply Selected";
         const string randomLabel = "Apply Random";
         const string byTagLabel = "Apply Random By Tag(s)";
 
         var pad = style.FramePadding.X * 2 + 8 * ImGuiHelpers.GlobalScale;
-        var settingsW = ImGui.CalcTextSize(settingsLabel).X + pad;
         var revertW = ImGui.CalcTextSize(revertLabel).X + pad;
         var applyW = ImGui.CalcTextSize(applyLabel).X + pad;
         var randomW = ImGui.CalcTextSize(randomLabel).X + pad;
         var byTagW = ImGui.CalcTextSize(byTagLabel).X + pad;
         var rightTotal = applyW + randomW + byTagW + 2 * style.ItemSpacing.X;
-
-        if (ImGui.Button(settingsLabel, new Vector2(settingsW, 0)))
-            plugin.ToggleConfigUi();
-        ImGui.SameLine();
 
         if (ImGui.Button(revertLabel, new Vector2(revertW, 0)))
             RevertAppearance();
@@ -408,60 +433,4 @@ public partial class MainWindow : Window, IDisposable
     }
 
     private sealed record DesignLeaf(Guid Id, string DisplayName, string FullPath, uint Color);
-
-    private sealed class NaturalStringComparer : IComparer<string>
-    {
-        public static readonly NaturalStringComparer OrdinalIgnoreCase = new();
-
-        public int Compare(string? x, string? y)
-        {
-            if (ReferenceEquals(x, y)) return 0;
-            if (x is null) return -1;
-            if (y is null) return 1;
-
-            int i = 0, j = 0;
-            while (i < x.Length && j < y.Length)
-            {
-                var cx = x[i];
-                var cy = y[j];
-
-                if (char.IsDigit(cx) && char.IsDigit(cy))
-                {
-                    var xStart = i;
-                    while (i < x.Length && char.IsDigit(x[i])) i++;
-                    var yStart = j;
-                    while (j < y.Length && char.IsDigit(y[j])) j++;
-
-                    var xDigit = xStart;
-                    while (xDigit < i - 1 && x[xDigit] == '0') xDigit++;
-                    var yDigit = yStart;
-                    while (yDigit < j - 1 && y[yDigit] == '0') yDigit++;
-
-                    var xLen = i - xDigit;
-                    var yLen = j - yDigit;
-
-                    if (xLen != yLen) return xLen - yLen;
-                    for (var k = 0; k < xLen; k++)
-                    {
-                        var d = x[xDigit + k] - y[yDigit + k];
-                        if (d != 0) return d;
-                    }
-
-                    var leadX = xDigit - xStart;
-                    var leadY = yDigit - yStart;
-                    if (leadX != leadY) return leadX - leadY;
-                }
-                else
-                {
-                    var ux = char.ToUpperInvariant(cx);
-                    var uy = char.ToUpperInvariant(cy);
-                    if (ux != uy) return ux - uy;
-                    i++;
-                    j++;
-                }
-            }
-
-            return (x.Length - i) - (y.Length - j);
-        }
-    }
 }

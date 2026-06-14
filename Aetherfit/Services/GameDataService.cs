@@ -62,17 +62,35 @@ public sealed class GameDataService
 
     public GameDataService()
     {
-        try { itemSheet = Plugin.DataManager.GetExcelSheet<Item>(); }
-        catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to load Item excel sheet"); }
+        itemSheet = TryLoadSheet<Item>();
+        stainSheet = TryLoadSheet<Stain>();
+        glassesSheet = TryLoadSheet<Glasses>();
+        classJobSheet = TryLoadSheet<ClassJob>();
+    }
 
-        try { stainSheet = Plugin.DataManager.GetExcelSheet<Stain>(); }
-        catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to load Stain excel sheet"); }
+    private static ExcelSheet<T>? TryLoadSheet<T>() where T : struct, IExcelRow<T>
+    {
+        try
+        {
+            return Plugin.DataManager.GetExcelSheet<T>();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to load {Sheet} excel sheet", typeof(T).Name);
+            return null;
+        }
+    }
 
-        try { glassesSheet = Plugin.DataManager.GetExcelSheet<Glasses>(); }
-        catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to load Glasses excel sheet"); }
+    // Cache-then-lookup helper shared by the Resolve* methods: returns the cached value or computes, caches, and returns it.
+    private static TValue Resolve<TKey, TValue>(ConcurrentDictionary<TKey, TValue> cache, TKey key, Func<TKey, TValue> lookup)
+        where TKey : notnull
+    {
+        if (cache.TryGetValue(key, out var cached))
+            return cached;
 
-        try { classJobSheet = Plugin.DataManager.GetExcelSheet<ClassJob>(); }
-        catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to load ClassJob excel sheet"); }
+        var value = lookup(key);
+        cache[key] = value;
+        return value;
     }
 
     public static string RoleLabel(JobRole role) => role switch
@@ -94,15 +112,7 @@ public sealed class GameDataService
             .ThenBy(j => j.RowId)
             .ToList();
 
-    public string ResolveJobName(uint rowId)
-    {
-        if (jobNameCache.TryGetValue(rowId, out var cached))
-            return cached;
-
-        var name = LookupJobName(rowId);
-        jobNameCache[rowId] = name;
-        return name;
-    }
+    public string ResolveJobName(uint rowId) => Resolve(jobNameCache, rowId, LookupJobName);
 
     // Display names for jobs that may not yet exist in the live ClassJob sheet (e.g. upcoming limited jobs).
     private static readonly IReadOnlyDictionary<uint, string> JobNameFallbacks = new Dictionary<uint, string>
@@ -140,12 +150,7 @@ public sealed class GameDataService
         if (itemId == 0)
             return "Nothing";
 
-        if (itemNameCache.TryGetValue(itemId, out var cached))
-            return cached;
-
-        var name = LookupItemName(itemId);
-        itemNameCache[itemId] = name;
-        return name;
+        return Resolve(itemNameCache, itemId, LookupItemName);
     }
 
     private string LookupItemName(ulong itemId)
@@ -166,12 +171,7 @@ public sealed class GameDataService
         if (stainId == 0)
             return ("None", 0u);
 
-        if (stainCache.TryGetValue(stainId, out var cached))
-            return cached;
-
-        var info = LookupStain(stainId);
-        stainCache[stainId] = info;
-        return info;
+        return Resolve(stainCache, stainId, LookupStain);
     }
 
     private (string Name, uint Color) LookupStain(byte stainId)
@@ -193,12 +193,7 @@ public sealed class GameDataService
         if (bonusId == 0)
             return "Nothing";
 
-        if (glassesNameCache.TryGetValue(bonusId, out var cached))
-            return cached;
-
-        var name = LookupBonusItemName(slotKey, bonusId);
-        glassesNameCache[bonusId] = name;
-        return name;
+        return Resolve(glassesNameCache, bonusId, id => LookupBonusItemName(slotKey, id));
     }
 
     private string LookupBonusItemName(string slotKey, ulong bonusId)
