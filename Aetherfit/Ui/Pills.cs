@@ -2,11 +2,11 @@ using Dalamud.Bindings.ImGui;
 
 namespace Aetherfit.Ui;
 
-// Shared helpers for the small "pill" chips used for tags and jobs across the windows.
+// The little tag/job chips shared across the windows.
 internal static class Pills
 {
-    // Wrapping placement: keeps the next pill on the current line if it fits within availRight, otherwise wraps.
-    // `first`/`lineRight` are threaded across calls by the caller to track the running line width.
+    // Lays pills out left to right and wraps to a new line when the next one won't fit. The caller hangs onto
+    // first/lineRight between calls so we know where the current line ended.
     public static void PlaceItem(float width, ref bool first, ref float lineRight,
         float cursorStart, float spacing, float availRight)
     {
@@ -26,7 +26,7 @@ internal static class Pills
         }
     }
 
-    // Draws a removable text pill rendered as "label ×" and returns true when clicked. `id` keeps the ImGui id unique.
+    // A chip that reads "label ×". Returns true when clicked, i.e. the user wants it gone. id just keeps ImGui happy.
     public static bool DrawRemovable(string label, string id)
     {
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);

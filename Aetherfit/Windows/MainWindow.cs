@@ -206,7 +206,7 @@ public partial class MainWindow : Window, IDisposable
             SortNodeDesigns(child);
     }
 
-    // Top toolbar shown in every mode: gallery actions, the design count, and settings.
+    // The toolbar across the top, the same in both modes: gallery actions, the design count, and settings.
     private void DrawTopToolbar()
     {
         if (ImGui.Button("Refresh"))

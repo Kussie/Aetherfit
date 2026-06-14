@@ -11,8 +11,8 @@ using Dalamud.Interface.Windowing;
 
 namespace Aetherfit.Windows;
 
-// Read-only viewer for an imported gallery. Renders images + basic info only and deliberately exposes NO apply,
-// favourite, edit, or job-editing actions, so a foreign gallery can never be applied or mutated.
+// Look-but-don't-touch viewer for an imported gallery: just images and the basic info. There's no apply, favourite,
+// edit, or job button anywhere in here, so someone else's gallery can't be applied or changed by accident.
 public sealed class ForeignGalleryWindow : Window, IDisposable
 {
     private const int CoverColumns = 4;
@@ -43,7 +43,7 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
 
     public void Show(ForeignGallery foreign)
     {
-        // Purge any previously imported gallery's cached images before swapping in the new one.
+        // Throw away the last import's cached images before we bring in the new one.
         if (gallery != null)
             plugin.ImageStorage.ClearForeign(gallery.OriginKey);
 
@@ -160,33 +160,32 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
 
     private void DrawSelectedFilterPills()
     {
-        string? tagToRemove = null;
+        string? dropTag = null;
         foreach (var tag in filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
-        {
-            if (Pills.DrawRemovable(tag, $"foreignFilterTag{tag}"))
-                tagToRemove = tag;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"Remove \"{tag}\"");
-            ImGui.SameLine();
-        }
-        if (tagToRemove != null)
-            filterTags.Remove(tagToRemove);
+            if (DrawFilterPill(tag, $"tag{tag}"))
+                dropTag = tag;
+        if (dropTag != null)
+            filterTags.Remove(dropTag);
 
-        uint? jobToRemove = null;
+        uint? dropJob = null;
         foreach (var job in filterJobs.OrderBy(j => j))
-        {
-            var name = plugin.GameData.ResolveJobName(job);
-            if (Pills.DrawRemovable(name, $"foreignFilterJob{job}"))
-                jobToRemove = job;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"Remove \"{name}\"");
-            ImGui.SameLine();
-        }
-        if (jobToRemove is { } removeJob)
-            filterJobs.Remove(removeJob);
+            if (DrawFilterPill(plugin.GameData.ResolveJobName(job), $"job{job}"))
+                dropJob = job;
+        if (dropJob is { } removed)
+            filterJobs.Remove(removed);
 
         if (filterTags.Count > 0 || filterJobs.Count > 0)
             ImGui.NewLine();
+    }
+
+    // One chip on the active-filter row. Returns true when the user clicks it to take that filter off.
+    private static bool DrawFilterPill(string label, string id)
+    {
+        var clicked = Pills.DrawRemovable(label, id);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"Remove \"{label}\"");
+        ImGui.SameLine();
+        return clicked;
     }
 
     private void DrawAddFilterPopup()
@@ -401,7 +400,7 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         ImGui.EndTooltip();
     }
 
-    // Renders tags as wrapping, non-interactive coloured chips within maxWidth.
+    // Tags as plain coloured chips (no clicking), wrapping inside maxWidth.
     private static void DrawTagPills(IReadOnlyList<string> tags, float maxWidth)
     {
         var dl = ImGui.GetWindowDrawList();
@@ -435,7 +434,7 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         ImGui.Dummy(new Vector2(maxWidth, (y - origin.Y) + pillH));
     }
 
-    // Renders job associations as wrapping icon + name pairs within maxWidth.
+    // Job icons with their names beside them, wrapping inside maxWidth.
     private void DrawJobAssociations(IReadOnlyList<uint> jobs, float maxWidth)
     {
         var lineH = ImGui.GetTextLineHeight();

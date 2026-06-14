@@ -6,14 +6,14 @@ using Dalamud.Interface.Textures.TextureWraps;
 
 namespace Aetherfit.Ui;
 
-// Shared drawing primitives for the gallery thumbnail grids (local gallery and the read-only shared gallery).
-// Only the pieces that are byte-for-byte identical between the two live here; per-window interaction stays put.
+// The parts of a thumbnail cell that the local and shared galleries draw identically. Anything the two do
+// differently (favourite stars, click handling, etc.) stays in their own windows.
 internal static class GalleryDraw
 {
     private const float ThumbRounding = 4f;
 
-    // Draws a texture into a thumbnail cell honouring the configured fit mode. The last submitted ImGui item is the
-    // image (or the letterbox hit-button), so callers may use ImGui.IsItemHovered() immediately after.
+    // Draws the thumbnail in whichever fit mode is set. Leaves the image (or, for letterbox, the hit-button) as the
+    // last item so the caller can check IsItemHovered() right after.
     public static void DrawFittedImage(IDalamudTextureWrap tex, Vector2 thumbStart, Vector2 thumbVec,
         float thumbWidth, float thumbHeight, float containerAspect, GalleryFitMode fitMode)
     {
@@ -60,7 +60,7 @@ internal static class GalleryDraw
         }
     }
 
-    // Draws the "No Image" placeholder box. The invisible button is the last item, so IsItemHovered() works after.
+    // The grey "No Image" box. Invisible button stays the last item so IsItemHovered() still works afterwards.
     public static void DrawNoImagePlaceholder(Vector2 thumbStart, Vector2 thumbVec)
     {
         ImGui.InvisibleButton("##placeholder", thumbVec);
@@ -102,7 +102,7 @@ internal static class GalleryDraw
         }
     }
 
-    // Returns the current (clamped) carousel index for a cell, resetting to 0 when it is out of range.
+    // Which carousel image a cell is showing, snapping back to the first one if the saved index no longer fits.
     public static int ResolveImageIndex(Dictionary<Guid, int> indices, Guid id, int imageCount)
     {
         if (!indices.TryGetValue(id, out var idx) || idx < 0 || idx >= imageCount)

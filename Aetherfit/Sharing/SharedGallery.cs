@@ -3,9 +3,9 @@ using System.Collections.Generic;
 
 namespace Aetherfit.Sharing;
 
-// Wire format for a shared, read-only gallery bundle (".afgallery"). Kept independent of Configuration/CachedOutfit
-// so the on-disk format can evolve separately. Deliberately carries only "basic info" (name, description, tags,
-// jobs) plus images — no equipment/mod data, because shared designs are never applied on the viewer's machine.
+// What goes inside a ".afgallery" bundle. Separate from Configuration/CachedOutfit on purpose, so we can change the
+// file format without touching the live config. Only carries the basic info (name, description, tags, jobs) and
+// images — no equipment or mods, since the viewer only looks at shared designs, it never applies them.
 [Serializable]
 public sealed class SharedGallery
 {
@@ -21,18 +21,17 @@ public sealed class SharedGallery
 [Serializable]
 public sealed class SharedDesign
 {
-    public Guid SourceId { get; set; }               // opaque key from the sharer; used only for dedupe/file naming
+    public Guid SourceId { get; set; }               // the sharer's design id — we only use it to name files / dedupe
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public List<string> Tags { get; set; } = new();
-    public List<uint> Jobs { get; set; } = new();    // ClassJob RowIds — universal game data, portable across clients
+    public List<uint> Jobs { get; set; } = new();    // ClassJob RowIds; these are the same on everyone's client
     public SharedImage? Cover { get; set; }
     public List<SharedImage> AdditionalImages { get; set; } = new();
 }
 
-// An image referenced by the bundle. Ext preserves the original encoding so the bytes decode correctly.
-// Newer (zip) bundles store the bytes as a separate zip entry named by Entry, avoiding base64 inflation.
-// Older bundles embedded the bytes inline as base64 in Data; both are still read on import.
+// One image in a bundle. Zip bundles point at a zip entry (Entry); the old inline bundles stuffed the bytes
+// straight into Data as base64. We still read both. Ext is just the original extension so the bytes decode right.
 [Serializable]
 public sealed class SharedImage
 {
@@ -41,8 +40,8 @@ public sealed class SharedImage
     public string? Data { get; set; }   // base64 of the raw image bytes (legacy inline bundles)
 }
 
-// In-memory materialised form the read-only viewer renders. Images have been decoded to a sandboxed cache dir
-// (keyed by OriginKey) so the existing TextureProvider.GetFromFile(path) rendering path works unchanged.
+// The unpacked version the viewer actually draws. Images have already been written out to a cache folder (named
+// by OriginKey) so we can hand their paths to TextureProvider.GetFromFile like any other image.
 public sealed class ForeignGallery
 {
     public string OriginKey { get; init; } = string.Empty;

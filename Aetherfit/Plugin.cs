@@ -61,7 +61,7 @@ public sealed class Plugin : IDalamudPlugin
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage);
 
-        // Clear any foreign gallery images left over from a previous session (e.g. after a crash) so they don't accumulate.
+        // Clean up any imported-gallery images a previous session left behind (e.g. if we crashed before tidying up).
         ImageStorage.ClearAllForeign();
 
         ConfigWindow = new ConfigWindow(this);

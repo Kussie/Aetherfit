@@ -3,29 +3,28 @@ using Dalamud.Interface.Utility;
 
 namespace Aetherfit.Ui;
 
-// Single source of truth for the colours, rounding, and scales shared across Aetherfit's windows. These were
-// previously copy-pasted as raw Vector4 literals (or re-declared per file); keep new shared values here.
+// Colours and sizes the windows share. Kept in one place so they don't slowly drift apart when reused.
 internal static class UiTheme
 {
-    // Warm gold used for headers, selection highlights, and the splitter accent.
+    // Gold for headers, the selected-cell outline, and the splitter when you grab it.
     public static readonly Vector4 GoldAccent = new(1.0f, 0.85f, 0.4f, 1.0f);
 
-    // "Pill" chips (tags, job associations, login tags): base / hover (remove) / active.
+    // Tag/job chips. Hover turns red because hovering a chip means "click to remove me".
     public static readonly Vector4 PillBase = new(0.22f, 0.38f, 0.60f, 0.72f);
     public static readonly Vector4 PillHovered = new(0.55f, 0.20f, 0.20f, 0.85f);
     public static readonly Vector4 PillActive = new(0.65f, 0.14f, 0.14f, 1.00f);
 
-    // Gallery thumbnail placeholder (the "No Image" box) background and text.
+    // The "No Image" box behind empty thumbnails.
     public static readonly Vector4 PlaceholderBg = new(0.22f, 0.22f, 0.25f, 1f);
     public static readonly Vector4 PlaceholderText = new(0.65f, 0.65f, 0.68f, 1f);
 
-    // Detail-panel section heading text and the mod "open in Penumbra" link text.
+    // Section headings, and the blue mod link in the detail panel.
     public static readonly Vector4 SectionHeader = new(0.85f, 0.85f, 0.85f, 1.0f);
     public static readonly Vector4 ModLink = new(0.55f, 0.78f, 1.0f, 1.0f);
 
-    // Font scale used for the large window headers.
+    // The big "Glamourer Designs" header.
     public const float HeaderFontScale = 1.25f;
 
-    // Corner radius for pill chips (scaled to the current global UI scale).
+    // Pill corner radius, scaled with the UI.
     public static float PillRounding => 8f * ImGuiHelpers.GlobalScale;
 }

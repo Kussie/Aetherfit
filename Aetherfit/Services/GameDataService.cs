@@ -81,7 +81,7 @@ public sealed class GameDataService
         }
     }
 
-    // Cache-then-lookup helper shared by the Resolve* methods: returns the cached value or computes, caches, and returns it.
+    // Shared by the Resolve* methods below: hand back the cached value, or look it up once and remember it.
     private static TValue Resolve<TKey, TValue>(ConcurrentDictionary<TKey, TValue> cache, TKey key, Func<TKey, TValue> lookup)
         where TKey : notnull
     {

@@ -20,7 +20,7 @@ public sealed class ImageStorageService
         this.configuration = configuration;
     }
 
-    // Root "images" folder under the plugin config dir. Static so other services (e.g. screenshots) share the path.
+    // The top-level "images" folder. Static so other services (e.g. screenshots) can point at the same place.
     public static string ImagesDirectoryPath =>
         Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "images");
 
@@ -29,8 +29,8 @@ public sealed class ImageStorageService
     public string AdditionalImagesDirectory =>
         Path.Combine(ImagesDirectory, AdditionalImagesSubdir);
 
-    // Root for imported (read-only) galleries. Each imported gallery gets its own subfolder keyed by an origin key,
-    // kept wholly separate from the user's own images so it can be purged without touching local data.
+    // Where imported galleries live. Each gets its own subfolder (by origin key), well away from the user's own
+    // images so we can wipe it without touching anything local.
     public string ForeignRootDirectory =>
         Path.Combine(ImagesDirectory, ForeignSubdir);
 
@@ -174,9 +174,8 @@ public sealed class ImageStorageService
         additionalPathsCache.Remove(id);
     }
 
-    // Writes decoded images for one imported design into the foreign cache and returns their on-disk paths so the
-    // read-only viewer can render them via TextureProvider.GetFromFile. The original extension is preserved so the
-    // bytes decode correctly. Returns (coverPath or null, additionalPaths).
+    // Dumps one imported design's images into the foreign cache and hands back their paths, ready for
+    // TextureProvider.GetFromFile. We keep the original extension so the bytes still decode.
     public (string? Cover, List<string> Additional) WriteForeignImages(
         string originKey, Guid sourceId,
         (byte[] Bytes, string Ext)? cover,
@@ -249,7 +248,7 @@ public sealed class ImageStorageService
         }
     }
 
-    // Lower-cases an extension and ensures a leading dot, falling back to ".png" when missing.
+    // Lower-cases an extension and makes sure it has a leading dot. No extension at all? Assume ".png".
     public static string NormalizeExtension(string? ext)
     {
         if (string.IsNullOrWhiteSpace(ext))
@@ -258,7 +257,7 @@ public sealed class ImageStorageService
         return ext.StartsWith('.') ? ext : "." + ext;
     }
 
-    // Deletes a file if present, logging (but swallowing) any failure so callers don't have to repeat the boilerplate.
+    // Delete a file if it's there, and shrug off (just log) any failure. Saves repeating this try/catch everywhere.
     private static void DeleteFileQuietly(string path)
     {
         try

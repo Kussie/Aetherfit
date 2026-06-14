@@ -9,16 +9,15 @@ using Newtonsoft.Json;
 
 namespace Aetherfit.Sharing;
 
-// Builds shareable ".afgallery" bundles from the local gallery and imports them back as read-only foreign galleries.
-// A bundle is a zip archive: a "gallery.json" manifest plus the raw image bytes as separate entries. Storing images
-// raw (already-compressed png/jpg/webp) avoids the ~33% base64 inflation that bloated large galleries.
-// For backward compatibility, import also reads the older formats: gzip-wrapped JSON and plain JSON with inline base64.
+// Writes and reads ".afgallery" bundles. A bundle is just a zip: a "gallery.json" manifest plus the image bytes as
+// separate entries. We keep the images raw (they're already png/jpg, base64 would have padded them ~33% bigger).
+// Import still understands the two earlier formats too — gzip'd JSON, and plain JSON with the images inline as base64.
 public sealed class GallerySharingService
 {
     public const string FileExtension = ".afgallery";
     private const string ManifestEntryName = "gallery.json";
 
-    // Shared galleries are a showcase, not an archive: downscale + re-encode images to keep bundles small.
+    // A shared gallery is a showcase, not a backup, so shrink the images down before they go in.
     private const int MaxImageDimension = 1600;
     private const long JpegQuality = 85;
 
@@ -45,7 +44,7 @@ public sealed class GallerySharingService
                 CreatedAt = DateTimeOffset.Now,
             };
 
-            // Designs reference their images by zip entry name; the (downscaled) bytes are written as entries below.
+            // Each design just names its image entries; the shrunk bytes get written into the zip further down.
             var imageEntries = new List<(string Entry, byte[] Bytes)>();
             foreach (var (id, outfit) in configuration.CachedOutfits)
             {
@@ -140,11 +139,11 @@ public sealed class GallerySharingService
         foreach (var design in snapshot.Designs)
         {
             var cover = DecodeImage(design.Cover, archive);
-            var additional = (design.AdditionalImages ?? new List<SharedImage>())
-                .Select(img => DecodeImage(img, archive))
-                .Where(d => d != null)
-                .Select(d => d!.Value)
-                .ToList();
+
+            var additional = new List<(byte[] Bytes, string Ext)>();
+            foreach (var img in design.AdditionalImages ?? new())
+                if (DecodeImage(img, archive) is { } bytes)
+                    additional.Add(bytes);
 
             var (coverPath, additionalPaths) =
                 imageStorage.WriteForeignImages(originKey, design.SourceId, cover, additional);
@@ -154,8 +153,8 @@ public sealed class GallerySharingService
                 SourceId = design.SourceId,
                 Name = design.Name,
                 Description = design.Description,
-                Tags = design.Tags ?? new List<string>(),
-                Jobs = design.Jobs ?? new List<uint>(),
+                Tags = design.Tags ?? new(),
+                Jobs = design.Jobs ?? new(),
                 CoverPath = coverPath,
                 AdditionalPaths = additionalPaths,
             });
@@ -174,7 +173,7 @@ public sealed class GallerySharingService
             Plugin.ChatGui.Print("[Aetherfit] This gallery was made with a newer version of Aetherfit; some details may not show correctly.");
     }
 
-    // Resolves an image's bytes either from a zip entry (newer bundles) or from inline base64 (legacy bundles).
+    // Pulls an image's bytes out of the zip entry (new bundles) or the inline base64 (old ones), whichever it has.
     private static (byte[] Bytes, string Ext)? DecodeImage(SharedImage? image, ZipArchive? archive)
     {
         if (image == null)
@@ -204,8 +203,8 @@ public sealed class GallerySharingService
         }
     }
 
-    // Produces a lightweight preview copy of an image for the bundle, falling back to the original bytes if the
-    // image can't be re-encoded (e.g. an unexpected format). Returns null when there is no usable image.
+    // Makes the small preview copy that goes in the bundle. If re-encoding chokes on some odd format we just ship the
+    // original bytes instead. Null means there's no image to ship.
     private static (byte[] Bytes, string Ext)? EncodeForBundle(string? path)
     {
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
@@ -233,7 +232,7 @@ public sealed class GallerySharingService
 
         foreach (var (entryName, bytes) in images)
         {
-            // Bytes are already compressed (jpeg); store without re-deflating to save time for ~no size gain.
+            // Already jpeg, so don't bother deflating them again — it'd cost time and save basically nothing.
             var entry = archive.CreateEntry(entryName, CompressionLevel.NoCompression);
             using var entryStream = entry.Open();
             entryStream.Write(bytes, 0, bytes.Length);
@@ -243,7 +242,7 @@ public sealed class GallerySharingService
     private static bool IsZip(byte[] raw) =>
         raw.Length >= 2 && raw[0] == 0x50 && raw[1] == 0x4B; // "PK"
 
-    // Reads legacy bundle bytes as UTF-8 JSON, transparently gunzipping if the gzip magic bytes are present.
+    // Reads an old (non-zip) bundle as UTF-8 JSON, un-gzipping first if it starts with the gzip magic bytes.
     private static string DecodeText(byte[] raw)
     {
         if (raw.Length >= 2 && raw[0] == 0x1F && raw[1] == 0x8B)

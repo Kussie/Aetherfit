@@ -11,8 +11,8 @@ internal static class ScreenshotCaptureService
     public static (byte[] Png, int Width, int Height) CaptureGameWindow()
         => D3D11CaptureService.CaptureFrame();
 
-    // Downscales an image to fit within maxDimension (longest side) and re-encodes it as JPEG. Used to produce
-    // lightweight preview copies for shared galleries, where full-resolution PNG screenshots are needlessly large.
+    // Shrinks an image to maxDimension on its longest side and saves it as JPEG. Used for shared-gallery previews,
+    // where a full-size PNG screenshot is way more than anyone needs.
     public static byte[] EncodePreviewJpeg(string sourcePath, int maxDimension, long quality)
     {
         using var src = new Bitmap(sourcePath);
