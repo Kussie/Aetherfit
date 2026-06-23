@@ -29,6 +29,9 @@ public partial class MainWindow
     private int designListGeneration;
     private int cachedGeneration = -1;
     private string cachedFilterName = string.Empty;
+    private bool cachedSearchDesignName;
+    private bool cachedSearchModName;
+    private bool cachedSearchEquipmentName;
     private ImageFilterMode cachedFilterImage;
     private HashSet<string> cachedFilterTags = new(StringComparer.OrdinalIgnoreCase);
     private GallerySortField cachedSortField;
@@ -147,6 +150,9 @@ public partial class MainWindow
         cachedSortAscending != gallerySortAscending ||
         cachedFilterImage != filterImage ||
         cachedFilterName != filterName ||
+        cachedSearchDesignName != searchDesignName ||
+        cachedSearchModName != searchModName ||
+        cachedSearchEquipmentName != searchEquipmentName ||
         !cachedFilterTags.SetEquals(filterTags) ||
         cachedFilterFavourites != filterFavourites ||
         cachedFavouriteVersion != favouriteVersion;
@@ -162,6 +168,9 @@ public partial class MainWindow
         cachedSortAscending = gallerySortAscending;
         cachedFilterImage = filterImage;
         cachedFilterName = filterName;
+        cachedSearchDesignName = searchDesignName;
+        cachedSearchModName = searchModName;
+        cachedSearchEquipmentName = searchEquipmentName;
         cachedFilterTags = new HashSet<string>(filterTags, StringComparer.OrdinalIgnoreCase);
         cachedFilterFavourites = filterFavourites;
         cachedFavouriteVersion = favouriteVersion;

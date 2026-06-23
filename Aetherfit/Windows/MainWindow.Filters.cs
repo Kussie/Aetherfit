@@ -17,6 +17,9 @@ public partial class MainWindow
     private const string FilterTagsPopupId = "FilterTagsPopup";
 
     private string filterName = string.Empty;
+    private bool searchDesignName = true;   // preserves current default behaviour
+    private bool searchModName;
+    private bool searchEquipmentName;
     private readonly HashSet<string> filterTags = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<uint> filterJobs = new();
     private ImageFilterMode filterImage = ImageFilterMode.All;
@@ -46,6 +49,14 @@ public partial class MainWindow
         ImGui.InputTextWithHint("##nameFilter", "Filter by name...", ref filterName, 64);
         ImGui.PopItemWidth();
 
+        ImGui.TextDisabled("Search In:");
+        ImGui.SameLine();
+        DrawSearchScopeToggle("D", "Search design name", ref searchDesignName);
+        ImGui.SameLine();
+        DrawSearchScopeToggle("M", "Search mod names", ref searchModName);
+        ImGui.SameLine();
+        DrawSearchScopeToggle("E", "Search equipment names", ref searchEquipmentName);
+
         DrawSelectedTagPills();
         DrawSelectedJobPills();
 
@@ -74,12 +85,33 @@ public partial class MainWindow
             if (ImGui.SmallButton("Clear filters"))
             {
                 filterName = string.Empty;
+                searchDesignName = true;
+                searchModName = false;
+                searchEquipmentName = false;
                 filterTags.Clear();
                 filterJobs.Clear();
                 filterImage = ImageFilterMode.All;
                 filterFavourites = false;
             }
         }
+    }
+
+    // Compact letter toggle (D/M/E) standing in for a long checkbox label; the full meaning lives in the tooltip.
+    private static void DrawSearchScopeToggle(string letter, string tooltip, ref bool enabled)
+    {
+        var size = ImGui.GetFrameHeight();
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);
+        ImGui.PushStyleColor(ImGuiCol.Button,
+            enabled ? UiTheme.PillBase : new Vector4(0.20f, 0.20f, 0.22f, 0.6f));
+        ImGui.PushStyleColor(ImGuiCol.Text,
+            enabled ? UiTheme.GoldAccent : UiTheme.PlaceholderText);
+        if (ImGui.Button($"{letter}##scope{letter}", new Vector2(size, size)))
+            enabled = !enabled;
+        ImGui.PopStyleColor(2);
+        ImGui.PopStyleVar();
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
     }
 
     private void DrawSelectedTagPills()
@@ -224,10 +256,39 @@ public partial class MainWindow
             ImGui.CloseCurrentPopup();
     }
 
+    private bool NameFilterMatches(DesignLeaf design, CachedOutfit? cached)
+    {
+        // No scope enabled => the name filter is inert rather than matching nothing.
+        if (!searchDesignName && !searchModName && !searchEquipmentName)
+            return true;
+
+        if (searchDesignName
+            && design.DisplayName.Contains(filterName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (searchModName && cached != null
+            && cached.Mods.Any(m => m.Name.Contains(filterName, StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        if (searchEquipmentName && cached != null)
+        {
+            if (cached.Equipment.Any(s =>
+                    plugin.GameData.ResolveItemName(s.ItemId)
+                        .Contains(filterName, StringComparison.OrdinalIgnoreCase)))
+                return true;
+
+            if (cached.BonusItems.Any(b =>
+                    plugin.GameData.ResolveBonusItemName(b.Slot, b.ItemId)
+                        .Contains(filterName, StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        return false;
+    }
+
     private bool DesignMatchesFilters(DesignLeaf design, CachedOutfit? cached)
     {
-        if (filterName.Length > 0
-            && design.DisplayName.IndexOf(filterName, StringComparison.OrdinalIgnoreCase) < 0)
+        if (filterName.Length > 0 && !NameFilterMatches(design, cached))
             return false;
 
         if (filterTags.Count > 0)
