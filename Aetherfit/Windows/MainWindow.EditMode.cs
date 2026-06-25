@@ -301,7 +301,7 @@ public partial class MainWindow
                 }
 
                 DrawEquipmentPanel(id, details);
-                DrawCustomizationsPanel(details);
+                DrawCustomizationsPanel(id, details);
                 DrawModsPanel(details);
             }
         }

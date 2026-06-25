@@ -19,8 +19,12 @@ public partial class MainWindow
     private static readonly Vector4 SectionHeader = UiTheme.SectionHeader;
     private static readonly Vector4 ModLinkColor = UiTheme.ModLink;
 
-    // Per-design map of item name -> the mod changing it. Built the first time we draw a design, cleared on refresh.
-    private readonly Dictionary<Guid, IReadOnlyDictionary<string, string>> affectedByCache = new();
+    // Per-design mod attributions, built the first time we draw a design and cleared on refresh.
+    private readonly Dictionary<Guid, AffectedBy> affectedByCache = new();
+
+    // Which mod (if any) is responsible for parts of a design's look: item name -> mod for equipment,
+    // plus the mod changing the applied hairstyle.
+    private sealed record AffectedBy(IReadOnlyDictionary<string, string> Items, string? Hairstyle);
 
     private bool equipmentPanelOpen = true;
     private bool customizationsPanelOpen = true;
@@ -57,7 +61,7 @@ public partial class MainWindow
         ImGui.Indent();
         var slotMap = BuildSlotMap(details.Equipment);
         var bonusMap = BuildBonusMap(details.BonusItems);
-        var affectedBy = GetAffectedByMap(id, details);
+        var affectedBy = GetAffectedBy(id, details).Items;
 
         var slotLabelWidth = LabelColumnWidth(details);
 
@@ -82,7 +86,7 @@ public partial class MainWindow
         ImGui.Spacing();
     }
 
-    private void DrawCustomizationsPanel(CachedOutfit details)
+    private void DrawCustomizationsPanel(Guid id, CachedOutfit details)
     {
         // We only cache the customizations a design actually applies, so if there are none there's nothing to show.
         if (details.Customizations.Count == 0)
@@ -95,6 +99,7 @@ public partial class MainWindow
 
         // Reuse the equipment panel's column width so the values line up across both sections.
         var labelWidth = LabelColumnWidth(details);
+        var hairstyleMod = GetAffectedBy(id, details).Hairstyle;
 
         foreach (var c in details.Customizations)
         {
@@ -111,6 +116,12 @@ public partial class MainWindow
             {
                 ImGui.TextColored(AppliedTextColor, c.Value);
                 DrawCustomizationColorSwatch(c, details);
+            }
+
+            if (c.Key == "Hairstyle" && hairstyleMod != null)
+            {
+                ImGui.SameLine();
+                ImGui.TextColored(UnsetColor, $"(Appearance affected by {hairstyleMod})");
             }
         }
 
@@ -213,20 +224,20 @@ public partial class MainWindow
         return map;
     }
 
-    private IReadOnlyDictionary<string, string> GetAffectedByMap(Guid id, CachedOutfit details)
+    private AffectedBy GetAffectedBy(Guid id, CachedOutfit details)
     {
         if (affectedByCache.TryGetValue(id, out var cached))
             return cached;
 
-        var map = BuildAffectedByMap(details);
-        affectedByCache[id] = map;
-        return map;
+        var affected = BuildAffectedBy(details);
+        affectedByCache[id] = affected;
+        return affected;
     }
 
-    // Works out which mod is responsible for each equipment/bonus item the design uses. Only enabled
-    // mods count, and when more than one changes the same item the highest priority wins. OrderByDescending
-    // is stable, so mods sharing a priority keep the order Glamourer listed them in.
-    private IReadOnlyDictionary<string, string> BuildAffectedByMap(CachedOutfit details)
+    // Works out which mod is responsible for the design's equipment items and applied hairstyle. Only
+    // enabled mods count, and when more than one changes the same thing the highest priority wins.
+    // OrderByDescending is stable, so mods sharing a priority keep the order Glamourer listed them in.
+    private AffectedBy BuildAffectedBy(CachedOutfit details)
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -245,8 +256,15 @@ public partial class MainWindow
                 designItemNames.Add(name);
         }
 
-        if (designItemNames.Count == 0)
-            return map;
+        // The applied hairstyle, if any. Customizations only holds applied entries, so its presence here
+        // already means "set to be changed". HairChangedItemFragment is what a matching Penumbra key contains.
+        var hairstyle = details.Customizations.FirstOrDefault(c => c.Key == "Hairstyle");
+        var hairFragment = hairstyle == null ? null : HairChangedItemFragment(details);
+        var hairValue = hairstyle?.RawValue ?? 0;
+        string? hairstyleMod = null;
+
+        if (designItemNames.Count == 0 && hairFragment == null)
+            return new AffectedBy(map, null);
 
         foreach (var mod in details.Mods.Where(m => m.State == ModState.Enabled).OrderByDescending(m => m.Priority))
         {
@@ -260,10 +278,59 @@ public partial class MainWindow
                 if (!map.ContainsKey(itemName) && changed.Contains(itemName))
                     map[itemName] = displayName;
             }
+
+            if (hairstyleMod == null && hairFragment != null && changed.Any(k => HairKeyMatches(k, hairFragment, hairValue)))
+                hairstyleMod = displayName;
         }
 
-        return map;
+        return new AffectedBy(map, hairstyleMod);
     }
+
+    // Penumbra names a hair changed-item "Customization: {ModelRace} {Gender} Hair {modelId}" (see
+    // Penumbra.GameData ObjectIdentification). We rebuild the "{ModelRace} {Gender} Hair {value}" middle
+    // from the design's clan/gender + hairstyle value; the hairstyle customize value is the hair model id.
+    // Returns null when we can't resolve the race/gender (then we just don't attribute the hairstyle).
+    private static string? HairChangedItemFragment(CachedOutfit details)
+    {
+        var race = ClanToModelRace(details.CustomizeClan);
+        var gender = details.CustomizeGender switch { 0 => "Male", 1 => "Female", _ => null };
+        return race == null || gender == null ? null : $"{race} {gender} Hair ";
+    }
+
+    // True when a Penumbra changed-item key is the design's hairstyle: the right race/gender/Hair fragment
+    // and a trailing model id equal to the hairstyle value (parsed as an int so zero-padding doesn't matter).
+    private static bool HairKeyMatches(string key, string fragment, int expectedId)
+    {
+        if (!key.StartsWith("Customization:", StringComparison.Ordinal))
+            return false;
+
+        var at = key.IndexOf(fragment, StringComparison.Ordinal);
+        if (at < 0)
+            return false;
+
+        var idText = key[(at + fragment.Length)..].Trim();
+        // The id is the last token; guard against anything trailing it.
+        var space = idText.IndexOf(' ');
+        if (space >= 0)
+            idText = idText[..space];
+        return int.TryParse(idText, out var modelId) && modelId == expectedId;
+    }
+
+    // Glamourer clan (subrace, 1-16) -> the ModelRace name Penumbra uses in changed-item keys. Hyur splits
+    // into Midlander/Highlander; the other races collapse their two tribes onto one model base.
+    private static string? ClanToModelRace(int clan) => clan switch
+    {
+        1 => "Midlander",
+        2 => "Highlander",
+        3 or 4 => "Elezen",
+        5 or 6 => "Lalafell",
+        7 or 8 => "Miqo'te",
+        9 or 10 => "Roegadyn",
+        11 or 12 => "Au Ra",
+        13 or 14 => "Hrothgar",
+        15 or 16 => "Viera",
+        _ => null,
+    };
 
     private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry,
         IReadOnlyDictionary<string, string> affectedBy)
