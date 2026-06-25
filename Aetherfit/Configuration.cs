@@ -1,6 +1,7 @@
 using Dalamud.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Aetherfit;
 
@@ -54,6 +55,14 @@ public class Configuration : IPluginConfiguration
     {
         Plugin.PluginInterface.SavePluginConfig(this);
     }
+
+    // Every tag used across cached outfits, de-duplicated case-insensitively and sorted for display.
+    public List<string> DistinctSortedTags()
+        => CachedOutfits.Values
+            .SelectMany(o => o.Tags)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     public List<uint> GetJobAssociations(Guid id)
         => DesignJobAssociations.TryGetValue(id, out var jobs) ? jobs : new();

@@ -275,7 +275,7 @@ public partial class MainWindow : Window, IDisposable
         if (ImGui.Button(randomLabel, new Vector2(randomW, 0)))
         {
             var err = ApplyRandomDesign();
-            if (err != null) Plugin.ChatGui.PrintError($"[Aetherfit] {err}");
+            if (err != null) Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{err}");
         }
         ImGui.SameLine();
 
@@ -292,11 +292,7 @@ public partial class MainWindow : Window, IDisposable
 
     private void RebuildAvailableTags()
     {
-        availableTagsForPopup = plugin.Configuration.CachedOutfits.Values
-            .SelectMany(o => o.Tags)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        availableTagsForPopup = plugin.Configuration.DistinctSortedTags();
 
         selectedTagsForApply.RemoveWhere(t => !availableTagsForPopup.Contains(t, StringComparer.OrdinalIgnoreCase));
     }
@@ -346,7 +342,7 @@ public partial class MainWindow : Window, IDisposable
             if (ImGui.Button("Apply Random Matching Design"))
             {
                 var err = ApplyRandomByTags(selectedTagsForApply);
-                if (err != null) Plugin.ChatGui.PrintError($"[Aetherfit] {err}");
+                if (err != null) Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{err}");
                 ImGui.CloseCurrentPopup();
             }
         }

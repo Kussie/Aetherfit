@@ -285,9 +285,7 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         var thumbVec = new Vector2(thumbWidth, thumbHeight);
         var containerAspect = thumbWidth / thumbHeight;
 
-        var images = new List<string>();
-        if (design.CoverPath != null) images.Add(design.CoverPath);
-        images.AddRange(design.AdditionalPaths);
+        var images = GalleryDraw.BuildImageList(design.CoverPath, design.AdditionalPaths);
 
         var imgIdx = GalleryDraw.ResolveImageIndex(imageIndex, design.SourceId, images.Count);
         var currentImage = images.Count > 0 ? images[imgIdx] : null;

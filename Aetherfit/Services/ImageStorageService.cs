@@ -96,7 +96,7 @@ public sealed class ImageStorageService
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"[Aetherfit] Failed to set image: {ex.Message}");
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to set image: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to set image for {Id} from {Path}", id, sourcePath);
         }
         finally
@@ -147,7 +147,7 @@ public sealed class ImageStorageService
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"[Aetherfit] Failed to add image: {ex.Message}");
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to add image: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to add additional image for {Id} from {Path}", id, sourcePath);
         }
         finally

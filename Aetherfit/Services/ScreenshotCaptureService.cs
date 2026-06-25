@@ -29,8 +29,7 @@ internal static class ScreenshotCaptureService
             image = new Bitmap(w, h, PixelFormat.Format24bppRgb);
             using (var g = Graphics.FromImage(image))
             {
-                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                g.PixelOffsetMode   = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                ApplyHighQuality(g);
                 g.DrawImage(src, new Rectangle(0, 0, w, h));
             }
             resized = true;
@@ -64,10 +63,16 @@ internal static class ScreenshotCaptureService
         using var dst = new Bitmap(w, h, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(dst))
         {
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-            g.PixelOffsetMode   = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            ApplyHighQuality(g);
             g.DrawImage(src, new Rectangle(0, 0, w, h), new Rectangle(x, y, w, h), GraphicsUnit.Pixel);
         }
         dst.Save(targetPath, ImageFormat.Png);
+    }
+
+    // Bicubic + high-quality pixel offset, so down-scaled previews and crops stay sharp.
+    private static void ApplyHighQuality(Graphics g)
+    {
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        g.PixelOffsetMode   = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
     }
 }

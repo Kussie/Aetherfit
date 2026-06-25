@@ -78,12 +78,12 @@ public sealed class GallerySharingService
             }
 
             WriteBundle(path, snapshot, imageEntries);
-            Plugin.ChatGui.Print($"[Aetherfit] Exported {snapshot.Designs.Count} design(s) to {Path.GetFileName(path)}.");
+            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Exported {snapshot.Designs.Count} design(s) to {Path.GetFileName(path)}.");
             return true;
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"[Aetherfit] Failed to export gallery: {ex.Message}");
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to export gallery: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to export gallery to {Path}", path);
             return false;
         }
@@ -118,7 +118,7 @@ public sealed class GallerySharingService
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"[Aetherfit] Failed to import gallery: {ex.Message}");
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to import gallery: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to import gallery from {Path}", path);
             return null;
         }
@@ -168,7 +168,7 @@ public sealed class GallerySharingService
     private static void WarnIfNewer(SharedGallery snapshot)
     {
         if (snapshot.FormatVersion > SharedGallery.CurrentFormatVersion)
-            Plugin.ChatGui.Print("[Aetherfit] This gallery was made with a newer version of Aetherfit; some details may not show correctly.");
+            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}This gallery was made with a newer version of Aetherfit; some details may not show correctly.");
     }
 
     // Pulls an image's bytes out of the zip entry (new bundles) or the inline base64 (old ones), whichever it has.

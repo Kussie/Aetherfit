@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Services;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -234,13 +235,13 @@ public partial class MainWindow
         foreach (var e in details.Equipment)
         {
             var name = plugin.GameData.ResolveItemName(e.ItemId);
-            if (name != "Nothing")
+            if (name != GameDataService.NothingItemName)
                 designItemNames.Add(name);
         }
         foreach (var b in details.BonusItems)
         {
             var name = plugin.GameData.ResolveBonusItemName(b.Slot, b.ItemId);
-            if (name != "Nothing")
+            if (name != GameDataService.NothingItemName)
                 designItemNames.Add(name);
         }
 
@@ -253,7 +254,7 @@ public partial class MainWindow
             if (changed.Count == 0)
                 continue;
 
-            var displayName = string.IsNullOrWhiteSpace(mod.Name) ? mod.Directory : mod.Name;
+            var displayName = ModDisplayName(mod);
             foreach (var itemName in designItemNames)
             {
                 if (!map.ContainsKey(itemName) && changed.Contains(itemName))
@@ -316,7 +317,7 @@ public partial class MainWindow
     private static void DrawAffectedBySuffix(bool applied, string itemName,
         IReadOnlyDictionary<string, string> affectedBy)
     {
-        if (!applied || itemName == "Nothing")
+        if (!applied || itemName == GameDataService.NothingItemName)
             return;
         if (!affectedBy.TryGetValue(itemName, out var modName))
             return;
@@ -417,12 +418,16 @@ public partial class MainWindow
         ImGui.Spacing();
     }
 
+    // A mod's display name, falling back to its directory when Glamourer didn't store a name.
+    private static string ModDisplayName(CachedMod mod)
+        => string.IsNullOrWhiteSpace(mod.Name) ? mod.Directory : mod.Name;
+
     private void DrawModRow(CachedMod mod)
     {
         DrawModStateIcon(mod.State);
         ImGui.SameLine();
 
-        var label = string.IsNullOrWhiteSpace(mod.Name) ? mod.Directory : mod.Name;
+        var label = ModDisplayName(mod);
         if (string.IsNullOrWhiteSpace(label))
             label = "(unnamed mod)";
 

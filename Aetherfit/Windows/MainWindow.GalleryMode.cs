@@ -272,9 +272,7 @@ public partial class MainWindow
 
         var coverPath = plugin.ImageStorage.GetCoverPath(design.Id);
         var additionalPaths = plugin.ImageStorage.GetAdditionalPaths(design.Id);
-        var images = new List<string>();
-        if (coverPath != null) images.Add(coverPath);
-        images.AddRange(additionalPaths);
+        var images = GalleryDraw.BuildImageList(coverPath, additionalPaths);
 
         var imgIdx = GalleryDraw.ResolveImageIndex(galleryImageIndex, design.Id, images.Count);
         var currentImage = images.Count > 0 ? images[imgIdx] : null;

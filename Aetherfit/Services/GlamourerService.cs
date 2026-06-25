@@ -69,12 +69,12 @@ public sealed class GlamourerService
         {
             var result = applyDesign.Invoke(id, 0, 0);
             SoundService.PlayApply();
-            Plugin.ChatGui.Print($"[Aetherfit] Applied \"{designName}\": {result}");
+            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\": {result}");
             Plugin.Log.Info("Applied design {Name} ({Id}): {Result}", designName, id, result);
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"[Aetherfit] Apply failed: {ex.Message}");
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Apply failed: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to apply Glamourer design {Id}", id);
         }
     }
@@ -88,7 +88,7 @@ public sealed class GlamourerService
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"[Aetherfit] Open in Glamourer failed: {ex.Message}");
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Open in Glamourer failed: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to open Glamourer design {Id}", id);
         }
     }
@@ -99,12 +99,12 @@ public sealed class GlamourerService
         {
             var result = revertState.Invoke(0);
             SoundService.PlayRevert();
-            Plugin.ChatGui.Print($"[Aetherfit] Reverted appearance to game state: {result}");
+            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Reverted appearance to game state: {result}");
             Plugin.Log.Info("Reverted appearance to game state: {Result}", result);
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"[Aetherfit] Revert failed: {ex.Message}");
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Revert failed: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to revert appearance");
         }
     }

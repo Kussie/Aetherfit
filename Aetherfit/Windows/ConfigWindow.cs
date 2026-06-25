@@ -167,10 +167,7 @@ public class ConfigWindow : Window, IDisposable
 
     private void DrawLoginTagPicker(CharacterLoginSettings settings)
     {
-        availableLoginTags = [.. plugin.Configuration.CachedOutfits.Values
-            .SelectMany(o => o.Tags)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)];
+        availableLoginTags = plugin.Configuration.DistinctSortedTags();
 
         if (availableLoginTags.Count == 0)
         {
@@ -194,33 +191,14 @@ public class ConfigWindow : Window, IDisposable
     {
         if (settings.LoginTags.Count == 0) return;
 
-        var style = ImGui.GetStyle();
-        var spacing = style.ItemSpacing.X;
-        var framePadX = style.FramePadding.X;
-        var availRight = ImGui.GetWindowPos().X + ImGui.GetContentRegionMax().X;
-        var cursorStart = ImGui.GetCursorScreenPos().X;
-        var lineRight = cursorStart;
-
-        var first = true;
-        string? toRemove = null;
-
-        foreach (var tag in settings.LoginTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
-        {
-            var btnWidth = ImGui.CalcTextSize($"{tag} ×").X + (framePadX * 2);
-            Pills.PlaceItem(btnWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
-
-            if (Pills.DrawRemovable(tag, tag))
-                toRemove = tag;
-
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"Remove \"{tag}\"");
-        }
-
-        if (toRemove != null)
-        {
-            settings.LoginTags.RemoveAll(t => string.Equals(t, toRemove, StringComparison.OrdinalIgnoreCase));
-            plugin.Configuration.Save();
-        }
+        Pills.DrawRemovableRow(
+            settings.LoginTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase),
+            tag => tag,
+            tag =>
+            {
+                settings.LoginTags.RemoveAll(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase));
+                plugin.Configuration.Save();
+            });
     }
 
     private void DrawLoginTagsPopup(CharacterLoginSettings settings)

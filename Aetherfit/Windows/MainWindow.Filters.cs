@@ -150,30 +150,10 @@ public partial class MainWindow
     {
         if (filterTags.Count == 0) return;
 
-        var style = ImGui.GetStyle();
-        var spacing = style.ItemSpacing.X;
-        var framePadX = style.FramePadding.X;
-        var availRight = ImGui.GetWindowPos().X + ImGui.GetContentRegionMax().X;
-        var cursorStart = ImGui.GetCursorScreenPos().X;
-        var lineRight = cursorStart;
-
-        bool first = true;
-        string? toRemove = null;
-
-        foreach (var tag in filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
-        {
-            var btnWidth = ImGui.CalcTextSize($"{tag} ×").X + framePadX * 2;
-            Pills.PlaceItem(btnWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
-
-            if (Pills.DrawRemovable(tag, tag))
-                toRemove = tag;
-
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"Remove \"{tag}\"");
-        }
-
-        if (toRemove != null)
-            filterTags.Remove(toRemove);
+        Pills.DrawRemovableRow(
+            filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase),
+            tag => tag,
+            tag => filterTags.Remove(tag));
     }
 
     private void DrawSelectedJobPills()
@@ -202,11 +182,7 @@ public partial class MainWindow
 
     private void RebuildAvailableFilterTags()
     {
-        availableTagsForFilter = plugin.Configuration.CachedOutfits.Values
-            .SelectMany(o => o.Tags)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        availableTagsForFilter = plugin.Configuration.DistinctSortedTags();
     }
 
     private void DrawFilterTagsPopup()

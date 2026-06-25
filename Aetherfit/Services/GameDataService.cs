@@ -25,6 +25,9 @@ public readonly record struct JobInfo(uint RowId, string Name, JobRole Role);
 
 public sealed class GameDataService
 {
+    // What the Resolve*ItemName methods return when there's no item in a slot or the id won't resolve.
+    public const string NothingItemName = "Nothing";
+
     private readonly ExcelSheet<Item>? itemSheet;
     private readonly ExcelSheet<Stain>? stainSheet;
     private readonly ExcelSheet<Glasses>? glassesSheet;
@@ -148,7 +151,7 @@ public sealed class GameDataService
     public string ResolveItemName(ulong itemId)
     {
         if (itemId == 0)
-            return "Nothing";
+            return NothingItemName;
 
         return Resolve(itemNameCache, itemId, LookupItemName);
     }
@@ -163,7 +166,7 @@ public sealed class GameDataService
             if (!string.IsNullOrWhiteSpace(text))
                 return text;
         }
-        return "Nothing";
+        return NothingItemName;
     }
 
     public (string Name, uint Color) ResolveStain(byte stainId)
@@ -191,7 +194,7 @@ public sealed class GameDataService
     public string ResolveBonusItemName(string slotKey, ulong bonusId)
     {
         if (bonusId == 0)
-            return "Nothing";
+            return NothingItemName;
 
         return Resolve(glassesNameCache, bonusId, id => LookupBonusItemName(slotKey, id));
     }
@@ -207,7 +210,7 @@ public sealed class GameDataService
             if (!string.IsNullOrWhiteSpace(text))
                 return text;
         }
-        return "Nothing";
+        return NothingItemName;
     }
 
     // --- Character-creation colour palette (chara/xls/charamake/human.cmp) ---------------------

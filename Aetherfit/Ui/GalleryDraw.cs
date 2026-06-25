@@ -102,6 +102,16 @@ internal static class GalleryDraw
         }
     }
 
+    // The cell's carousel images: cover first (when present), then the additional shots.
+    public static List<string> BuildImageList(string? cover, IReadOnlyList<string> additional)
+    {
+        var images = new List<string>(additional.Count + 1);
+        if (cover != null)
+            images.Add(cover);
+        images.AddRange(additional);
+        return images;
+    }
+
     // Which carousel image a cell is showing, snapping back to the first one if the saved index no longer fits.
     public static int ResolveImageIndex(Dictionary<Guid, int> indices, Guid id, int imageCount)
     {

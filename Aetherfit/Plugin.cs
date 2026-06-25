@@ -22,6 +22,9 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
 
+    // Prefix on every chat message we print, so players can tell our output apart.
+    public const string ChatPrefix = "[Aetherfit] ";
+
     private const string CommandName = "/aetherfit";
 
     public Configuration Configuration { get; init; }
@@ -133,7 +136,7 @@ public sealed class Plugin : IDalamudPlugin
             {
                 var err = MainWindow.ApplyRandomDesign();
                 if (err != null)
-                    ChatGui.PrintError($"[Aetherfit] {err}");
+                    ChatGui.PrintError($"{ChatPrefix}{err}");
                 break;
             }
 
@@ -143,7 +146,7 @@ public sealed class Plugin : IDalamudPlugin
                 var tags = rest.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 var err = MainWindow.ApplyRandomByTags(tags);
                 if (err != null)
-                    ChatGui.PrintError($"[Aetherfit] {err}");
+                    ChatGui.PrintError($"{ChatPrefix}{err}");
                 break;
             }
 
@@ -151,7 +154,7 @@ public sealed class Plugin : IDalamudPlugin
             {
                 var err = MainWindow.ApplyRandomByCurrentJob();
                 if (err != null)
-                    ChatGui.PrintError($"[Aetherfit] {err}");
+                    ChatGui.PrintError($"{ChatPrefix}{err}");
                 break;
             }
 
@@ -186,7 +189,7 @@ public sealed class Plugin : IDalamudPlugin
             };
 
             if (err != null)
-                ChatGui.PrintError($"[Aetherfit] {err}");
+                ChatGui.PrintError($"{ChatPrefix}{err}");
         }, TimeSpan.FromSeconds(3));
     }
 
