@@ -43,7 +43,7 @@ public sealed class GameDataService
         [19] = JobRole.Tank, [21] = JobRole.Tank, [32] = JobRole.Tank, [37] = JobRole.Tank,
         // Healers
         [24] = JobRole.Healer, [28] = JobRole.Healer, [33] = JobRole.Healer, [40] = JobRole.Healer,
-        // Melee DPS ([43] = Beastmaster, the upcoming limited job; provisional role until officially classified)
+        // Melee DPS
         [20] = JobRole.Melee, [22] = JobRole.Melee, [30] = JobRole.Melee,
         [34] = JobRole.Melee, [39] = JobRole.Melee, [41] = JobRole.Melee, [43] = JobRole.Melee,
         // Physical Ranged DPS
@@ -212,11 +212,11 @@ public sealed class GameDataService
 
     // --- Character-creation colour palette (chara/xls/charamake/human.cmp) ---------------------
     //
-    // Colour-type customizations (skin, hair, eyes, etc.) store a palette index, not an RGB value.
-    // Resolving an index requires the game's human.cmp colour map. Skin and hair palettes are also
-    // selected by the character's clan (subrace) and gender. The byte offsets below mirror the
-    // CmpData layout used by Penumbra.GameData / Glamourer's ColorParameters; each colour is 4 bytes
-    // of RGBA. See https://github.com/Ottermandias/Penumbra.GameData (Files/CmpData.cs).
+    // Colour customizations (skin, hair, eyes, ...) only store a palette index, not an actual colour, so
+    // to draw a swatch we have to read the game's human.cmp colour map. Skin and hair also depend on the
+    // character's clan (subrace) and gender. The offsets below match the CmpData layout from
+    // Penumbra.GameData / Glamourer's ColorParameters; every colour is 4 RGBA bytes.
+    // See https://github.com/Ottermandias/Penumbra.GameData (Files/CmpData.cs).
 
     private const int Rgba = 4;
     private const int FullColors = 256 * Rgba;     // FullColors block: 256 colours
@@ -246,8 +246,9 @@ public sealed class GameDataService
     private bool cmpLoadAttempted;
 
     /// <summary>
-    /// Resolves a colour-type customization (skin, hair, eyes, lips, etc.) to a packed 0xRRGGBB colour
-    /// for previewing. Returns false for non-colour customizations or out-of-range/unavailable values.
+    /// Turns a colour customization (skin, hair, eyes, lips, ...) into a packed 0xRRGGBB colour for the
+    /// preview swatch. Returns false if it isn't a colour parameter, the value is out of range, or the
+    /// cmp file couldn't be read.
     /// </summary>
     public bool TryResolveCustomizeColor(string key, int value, int clan, int gender, out uint rgb)
     {
@@ -261,7 +262,8 @@ public sealed class GameDataService
         if (offset < 0 || offset + Rgba > data.Length)
             return false;
 
-        // Stored as RGBA bytes; pack to 0xRRGGBB to match the dye swatch helper (Stain.Color format).
+        // The cmp stores RGBA bytes; pack them into 0xRRGGBB so we can reuse the dye swatch helper
+        // (same format as Stain.Color).
         rgb = (uint)((data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2]);
         return true;
     }
@@ -291,7 +293,7 @@ public sealed class GameDataService
         }
     }
 
-    // Full 192-entry single tables (eyes, highlights, features).
+    // The plain 192-colour tables that everyone shares (eyes, highlights, features).
     private static bool TrySingle(int tableBase, int value, out int offset)
     {
         offset = -1;
@@ -301,7 +303,7 @@ public sealed class GameDataService
         return true;
     }
 
-    // Lip / face-paint split into 96 "dark" (values 0-95) and 96 "light" (values 128-223) colours.
+    // Lips and face paint are split into 96 "dark" colours (values 0-95) and 96 "light" ones (128-223).
     private static bool TryDouble(int darkBase, int lightBase, int value, out int offset)
     {
         offset = -1;

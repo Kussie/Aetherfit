@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
@@ -16,6 +17,9 @@ public partial class MainWindow
     private static readonly Vector4 AppliedTextColor = new(1.0f, 1.0f, 1.0f, 1.0f);
     private static readonly Vector4 SectionHeader = UiTheme.SectionHeader;
     private static readonly Vector4 ModLinkColor = UiTheme.ModLink;
+
+    // Per-design map of item name -> the mod changing it. Built the first time we draw a design, cleared on refresh.
+    private readonly Dictionary<Guid, IReadOnlyDictionary<string, string>> affectedByCache = new();
 
     private bool equipmentPanelOpen = true;
     private bool customizationsPanelOpen = true;
@@ -44,7 +48,7 @@ public partial class MainWindow
         ("Glasses", "Facewear Accessory"),
     };
 
-    private void DrawEquipmentPanel(CachedOutfit details)
+    private void DrawEquipmentPanel(Guid id, CachedOutfit details)
     {
         if (!DrawCollapsibleSubheader("Equipment", ref equipmentPanelOpen))
             return;
@@ -52,19 +56,20 @@ public partial class MainWindow
         ImGui.Indent();
         var slotMap = BuildSlotMap(details.Equipment);
         var bonusMap = BuildBonusMap(details.BonusItems);
+        var affectedBy = GetAffectedByMap(id, details);
 
         var slotLabelWidth = LabelColumnWidth(details);
 
         foreach (var (slot, label) in SlotDisplay)
         {
             slotMap.TryGetValue(slot, out var entry);
-            DrawEquipmentRow(label, slotLabelWidth, entry);
+            DrawEquipmentRow(label, slotLabelWidth, entry, affectedBy);
         }
 
         foreach (var (slotKey, label) in BonusSlotDisplay)
         {
             bonusMap.TryGetValue(slotKey, out var entry);
-            DrawBonusRow(label, slotLabelWidth, entry);
+            DrawBonusRow(label, slotLabelWidth, entry, affectedBy);
         }
 
         ImGui.Spacing();
@@ -78,7 +83,7 @@ public partial class MainWindow
 
     private void DrawCustomizationsPanel(CachedOutfit details)
     {
-        // Only the design's applied appearance customizations are cached; nothing to show otherwise.
+        // We only cache the customizations a design actually applies, so if there are none there's nothing to show.
         if (details.Customizations.Count == 0)
             return;
 
@@ -87,7 +92,7 @@ public partial class MainWindow
 
         ImGui.Indent();
 
-        // Share the equipment panel's column width so the values line up between the two sections.
+        // Reuse the equipment panel's column width so the values line up across both sections.
         var labelWidth = LabelColumnWidth(details);
 
         foreach (var c in details.Customizations)
@@ -177,8 +182,8 @@ public partial class MainWindow
         return open;
     }
 
-    // Width of the label column, shared by the Equipment and Customizations panels so their value
-    // columns line up. Spans every equipment/bonus slot plus the customizations present on this design.
+    // The label column width, shared by the Equipment and Customizations panels so their values line up.
+    // Measures every equipment/bonus slot label plus whatever customizations this design has.
     private static float LabelColumnWidth(CachedOutfit details)
     {
         var width = 0f;
@@ -207,7 +212,60 @@ public partial class MainWindow
         return map;
     }
 
-    private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry)
+    private IReadOnlyDictionary<string, string> GetAffectedByMap(Guid id, CachedOutfit details)
+    {
+        if (affectedByCache.TryGetValue(id, out var cached))
+            return cached;
+
+        var map = BuildAffectedByMap(details);
+        affectedByCache[id] = map;
+        return map;
+    }
+
+    // Works out which mod is responsible for each equipment/bonus item the design uses. Only enabled
+    // mods count, and when more than one changes the same item the highest priority wins. OrderByDescending
+    // is stable, so mods sharing a priority keep the order Glamourer listed them in.
+    private IReadOnlyDictionary<string, string> BuildAffectedByMap(CachedOutfit details)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        // Gather the item names this design actually uses - those are the only ones worth matching against.
+        var designItemNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var e in details.Equipment)
+        {
+            var name = plugin.GameData.ResolveItemName(e.ItemId);
+            if (name != "Nothing")
+                designItemNames.Add(name);
+        }
+        foreach (var b in details.BonusItems)
+        {
+            var name = plugin.GameData.ResolveBonusItemName(b.Slot, b.ItemId);
+            if (name != "Nothing")
+                designItemNames.Add(name);
+        }
+
+        if (designItemNames.Count == 0)
+            return map;
+
+        foreach (var mod in details.Mods.Where(m => m.State == ModState.Enabled).OrderByDescending(m => m.Priority))
+        {
+            var changed = plugin.Penumbra.GetChangedItemNames(mod.Directory, mod.Name);
+            if (changed.Count == 0)
+                continue;
+
+            var displayName = string.IsNullOrWhiteSpace(mod.Name) ? mod.Directory : mod.Name;
+            foreach (var itemName in designItemNames)
+            {
+                if (!map.ContainsKey(itemName) && changed.Contains(itemName))
+                    map[itemName] = displayName;
+            }
+        }
+
+        return map;
+    }
+
+    private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry,
+        IReadOnlyDictionary<string, string> affectedBy)
     {
         var applied = entry?.Apply == true;
         var labelColor = applied ? AppliedTextColor : UnsetColor;
@@ -228,9 +286,12 @@ public partial class MainWindow
 
         DrawStainSwatch(entry.Stain, entry.ApplyStain && applied);
         DrawStainSwatch(entry.Stain2, entry.ApplyStain && applied);
+
+        DrawAffectedBySuffix(applied, itemName, affectedBy);
     }
 
-    private void DrawBonusRow(string label, float labelWidth, CachedBonusItem? entry)
+    private void DrawBonusRow(string label, float labelWidth, CachedBonusItem? entry,
+        IReadOnlyDictionary<string, string> affectedBy)
     {
         var applied = entry?.Apply == true;
         var labelColor = applied ? AppliedTextColor : UnsetColor;
@@ -248,6 +309,20 @@ public partial class MainWindow
 
         var itemName = plugin.GameData.ResolveBonusItemName(entry.Slot, entry.ItemId);
         ImGui.TextColored(labelColor, itemName);
+
+        DrawAffectedBySuffix(applied, itemName, affectedBy);
+    }
+
+    private static void DrawAffectedBySuffix(bool applied, string itemName,
+        IReadOnlyDictionary<string, string> affectedBy)
+    {
+        if (!applied || itemName == "Nothing")
+            return;
+        if (!affectedBy.TryGetValue(itemName, out var modName))
+            return;
+
+        ImGui.SameLine();
+        ImGui.TextColored(UnsetColor, $"(Appearance affected by {modName})");
     }
 
     private void DrawStainSwatch(byte stainId, bool active)

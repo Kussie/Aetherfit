@@ -24,6 +24,9 @@ public partial class MainWindow
     private readonly HashSet<uint> filterJobs = new();
     private ImageFilterMode filterImage = ImageFilterMode.All;
     private bool filterFavourites;
+    // Vanilla = no mods attached, Modded = has mods. Only one can be on at a time (see DrawFilterControls).
+    private bool filterVanillaOnly;
+    private bool filterModdedOnly;
     private List<string> availableTagsForFilter = new();
     private string tagSearchText = string.Empty;
 
@@ -31,19 +34,30 @@ public partial class MainWindow
                               || filterTags.Count > 0
                               || filterJobs.Count > 0
                               || filterImage != ImageFilterMode.All
-                              || filterFavourites;
+                              || filterFavourites
+                              || filterVanillaOnly
+                              || filterModdedOnly;
 
-    private void DrawFilterUi(bool defaultOpen = false)
+    // A cheap stamp that changes whenever any filter input does. The design-view tree uses it to re-expand
+    // matches only when the filter actually changes, instead of forcing everything open every frame.
+    private string FilterSignature => string.Join('|',
+        filterName,
+        searchDesignName, searchModName, searchEquipmentName,
+        (int)filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly,
+        string.Join(',', filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase)),
+        string.Join(',', filterJobs.OrderBy(j => j)));
+
+    private void DrawFilterUi(bool defaultOpen = false, bool inlineModFilters = false)
     {
         var flags = defaultOpen ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
         if (!ImGui.CollapsingHeader("Filters", flags))
             return;
 
-        DrawFilterControls();
+        DrawFilterControls(inlineModFilters);
         DrawFilterTagsPopup();
     }
 
-    private void DrawFilterControls()
+    private void DrawFilterControls(bool inlineModFilters)
     {
         ImGui.PushItemWidth(-1);
         ImGui.InputTextWithHint("##nameFilter", "Filter by name...", ref filterName, 64);
@@ -80,6 +94,22 @@ public partial class MainWindow
 
         ImGui.Checkbox("Show favourites only", ref filterFavourites);
 
+        // Vanilla and Modded are mutually exclusive - ticking one unticks the other (both can be off).
+        // Side by side in the gallery's wider filter pane, stacked in the narrower design view.
+        if (inlineModFilters)
+            ImGui.SameLine();
+        if (ImGui.Checkbox("Vanilla only", ref filterVanillaOnly) && filterVanillaOnly)
+            filterModdedOnly = false;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show only designs with no mod associations");
+
+        if (inlineModFilters)
+            ImGui.SameLine();
+        if (ImGui.Checkbox("Modded only", ref filterModdedOnly) && filterModdedOnly)
+            filterVanillaOnly = false;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show only designs with mod associations");
+
         using (ImRaii.Disabled(!HasAnyFilter))
         {
             if (ImGui.SmallButton("Clear filters"))
@@ -92,6 +122,8 @@ public partial class MainWindow
                 filterJobs.Clear();
                 filterImage = ImageFilterMode.All;
                 filterFavourites = false;
+                filterVanillaOnly = false;
+                filterModdedOnly = false;
             }
         }
     }
@@ -312,6 +344,13 @@ public partial class MainWindow
 
         if (filterFavourites && !plugin.Configuration.FavouriteDesigns.Contains(design.Id))
             return false;
+
+        if (filterVanillaOnly || filterModdedOnly)
+        {
+            var hasMods = cached != null && cached.Mods.Count > 0;
+            if (filterVanillaOnly && hasMods) return false;
+            if (filterModdedOnly && !hasMods) return false;
+        }
 
         return true;
     }

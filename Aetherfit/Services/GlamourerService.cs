@@ -188,8 +188,8 @@ public sealed class GlamourerService
         return result;
     }
 
-    // Ordered for display. Toggle entries store a flag (0/non-zero), everything else a raw index.
-    // A few keys (Race/Gender/Clan) are formatted into their in-game names; see FormatCustomizeValue.
+    // Listed in the order we want to show them. Toggle rows hold a flag (0 / non-zero); everything else
+    // is a raw index. Race/Gender/Clan get turned into their in-game names - see FormatCustomizeValue.
     private static readonly (string Key, string Label, bool IsToggle)[] CustomizeDisplay =
     {
         ("Race",              "Race",                false),
@@ -231,7 +231,7 @@ public sealed class GlamourerService
         ("Wetness",           "Wetness",             true),
     };
 
-    // In-game names for the fixed enum customizations, keyed by their customize value.
+    // The fixed enum customizations have proper in-game names, keyed by their raw customize value.
     private static readonly IReadOnlyDictionary<int, string> RaceNames = new Dictionary<int, string>
     {
         [1] = "Hyur", [2] = "Elezen", [3] = "Lalafell", [4] = "Miqo'te",
@@ -267,9 +267,9 @@ public sealed class GlamourerService
             if (!ReadBool(entry["Apply"]))
                 continue;
 
-            // Glamourer always serialises BodyType as applied with the default value (1), even when
-            // the design's UI toggle is off, and exposes no separate apply-mask. Treat the default as
-            // "not customised" so it doesn't appear on every design; a genuine non-default still shows.
+            // Glamourer always writes BodyType out as applied with value 1, even when the toggle is off
+            // in its UI, and there's no separate flag to tell the two apart. So treat the default (1) as
+            // "not really set" - otherwise it'd show up on every single design. A non-default still shows.
             if (key == "BodyType" && ReadUInt64(entry["Value"]) == 1)
                 continue;
 
@@ -278,7 +278,7 @@ public sealed class GlamourerService
             string value;
             if (isToggle)
             {
-                // Toggles serialise either as a bool (Wetness) or a flag byte (0 / 128).
+                // Toggles come through either as a bool (Wetness) or a flag byte (0 / 128).
                 var on = ReadBool(entry["Value"]) || rawValue != 0;
                 value = on ? "On" : "Off";
             }

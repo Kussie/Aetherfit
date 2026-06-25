@@ -37,6 +37,8 @@ public partial class MainWindow
     private GallerySortField cachedSortField;
     private bool cachedSortAscending = true;
     private bool cachedFilterFavourites;
+    private bool cachedFilterVanillaOnly;
+    private bool cachedFilterModdedOnly;
     private int favouriteVersion;
     private int cachedFavouriteVersion = -1;
 
@@ -64,7 +66,7 @@ public partial class MainWindow
             return;
         }
 
-        DrawFilterUi(defaultOpen: true);
+        DrawFilterUi(defaultOpen: true, inlineModFilters: true);
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -155,6 +157,8 @@ public partial class MainWindow
         cachedSearchEquipmentName != searchEquipmentName ||
         !cachedFilterTags.SetEquals(filterTags) ||
         cachedFilterFavourites != filterFavourites ||
+        cachedFilterVanillaOnly != filterVanillaOnly ||
+        cachedFilterModdedOnly != filterModdedOnly ||
         cachedFavouriteVersion != favouriteVersion;
 
     private void RebuildGalleryCache()
@@ -173,6 +177,8 @@ public partial class MainWindow
         cachedSearchEquipmentName = searchEquipmentName;
         cachedFilterTags = new HashSet<string>(filterTags, StringComparer.OrdinalIgnoreCase);
         cachedFilterFavourites = filterFavourites;
+        cachedFilterVanillaOnly = filterVanillaOnly;
+        cachedFilterModdedOnly = filterModdedOnly;
         cachedFavouriteVersion = favouriteVersion;
     }
 

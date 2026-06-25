@@ -91,9 +91,11 @@ public partial class MainWindow
         return ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.SpanAvailWidth);
     }
 
-    // Mirrors DrawTree's behaviour: while a filter is active, force the node open and remember its
-    // pre-filter state so it can be restored when filters clear. GetID(label) matches the id TreeNodeEx
-    // derives from the same "name##suffix" label (## keeps the full string in the id hash).
+    // Shared by DrawTree and the job tree. While a filter is active we remember each node's pre-filter
+    // open state (so we can put it back once the filter clears) and pop it open on the frame the filter
+    // just changed - that reveals the matches without us fighting the user every time they collapse
+    // something. GetID(label) lines up with the id TreeNodeEx builds from the same "name##suffix" label;
+    // the ## keeps the whole string in the hash.
     private void ForceOpenIfFiltering(string label, bool hasFilter)
     {
         if (!hasFilter) return;
@@ -101,7 +103,10 @@ public partial class MainWindow
         var id = ImGui.GetID(label);
         if (!treeOpenSnapshot.ContainsKey(id))
             treeOpenSnapshot[id] = ImGui.GetStateStorage().GetInt(id, 0) != 0;
-        ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+
+        // Only pop open right after the filter changed, otherwise leave folders alone so they collapse.
+        if (expandTreesForFilter)
+            ImGui.SetNextItemOpen(true, ImGuiCond.Always);
     }
 
     private static void CollectAllLeaves(FolderNode node, List<DesignLeaf> acc)

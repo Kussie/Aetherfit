@@ -66,6 +66,13 @@ public partial class MainWindow
         }
         wasFilterActive = hasFilter;
 
+        // Only auto-expand on the frame the filter actually changes - that way the user can still collapse
+        // folders while a filter just sits there unchanged.
+        var signature = FilterSignature;
+        if (hasFilter && signature != filterSignature)
+            expandTreesForFilter = true;
+        filterSignature = signature;
+
         // Widen the vertical gap between rows so the mouse rarely sits on the seam between two items and reports both as hovered in the same frame.
         var spacing = ImGui.GetStyle().ItemSpacing;
         hoveredDesignForTooltip = null;
@@ -77,6 +84,9 @@ public partial class MainWindow
                 DrawTree(root, hasFilter);
         }
 
+        // Tree's drawn, so we're done with the one-shot expand request - clear it for next frame.
+        expandTreesForFilter = false;
+
         if (hoveredDesignForTooltip is { } hovered)
             DrawDesignLeafTooltip(hovered);
     }
@@ -87,13 +97,7 @@ public partial class MainWindow
         {
             if (!FolderHasMatch(folder)) continue;
 
-            if (hasFilter)
-            {
-                var id = ImGui.GetID(name);
-                if (!treeOpenSnapshot.ContainsKey(id))
-                    treeOpenSnapshot[id] = ImGui.GetStateStorage().GetInt(id, 0) != 0;
-                ImGui.SetNextItemOpen(true, ImGuiCond.Always);
-            }
+            ForceOpenIfFiltering(name, hasFilter);
 
             if (ImGui.TreeNodeEx(name, ImGuiTreeNodeFlags.SpanAvailWidth))
             {
@@ -296,13 +300,13 @@ public partial class MainWindow
                     ImGui.Spacing();
                 }
 
-                DrawEquipmentPanel(details);
+                DrawEquipmentPanel(id, details);
                 DrawCustomizationsPanel(details);
                 DrawModsPanel(details);
             }
         }
 
-        // Indent the floating footer one level so the dates line up with the indented section content.
+        // Nudge the floating footer in one level so the dates line up with the indented content above.
         if (details.CreatedAt is not null || details.LastEdit is not null)
         {
             ImGui.Indent();

@@ -103,8 +103,8 @@ public class CachedOutfit
     public List<CachedCustomization> Customizations { get; set; } = new();
     public List<CachedMod> Mods { get; set; } = new();
 
-    // The design's clan (subrace, 1-16) and gender (0 male / 1 female). Stored even when not applied,
-    // because the skin/hair colour palettes in human.cmp are selected by clan + gender.
+    // The design's clan (subrace, 1-16) and gender (0 male / 1 female). We keep these even when the
+    // design doesn't apply them, since the skin/hair colour palettes in human.cmp are picked by clan + gender.
     public int CustomizeClan { get; set; }
     public int CustomizeGender { get; set; }
 

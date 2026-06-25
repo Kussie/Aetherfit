@@ -26,6 +26,10 @@ public partial class MainWindow : Window, IDisposable
     // When a filter is active we force every matching tree node open and keep note of the previous state so it can be restored whe nthe filters are cleared
     private readonly Dictionary<uint, bool> treeOpenSnapshot = new();
     private bool wasFilterActive;
+    // Set for the single frame after the filter changes. Pops matching nodes open to show results, but
+    // otherwise stays out of the way so folders can still be collapsed.
+    private bool expandTreesForFilter;
+    private string filterSignature = string.Empty;
 
     private readonly FileDialogManager fileDialog = new();
     private const string ImageFilters = "Image{.png,.jpg,.jpeg,.webp}";
@@ -149,6 +153,11 @@ public partial class MainWindow : Window, IDisposable
         designsError = null;
 
         plugin.Configuration.CachedOutfits = result.Metadata;
+
+        // Mods might have changed since last time, so clear the affected-item caches and let the
+        // "(Appearance affected by ...)" notes rebuild from fresh Penumbra data.
+        plugin.Penumbra.ClearChangedItemsCache();
+        affectedByCache.Clear();
 
         var validIds = new HashSet<Guid>(result.Designs.Select(d => d.Id));
         plugin.ImageStorage.CleanupRemovedDesigns(validIds);
