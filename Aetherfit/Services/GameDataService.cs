@@ -209,4 +209,140 @@ public sealed class GameDataService
         }
         return "Nothing";
     }
+
+    // --- Character-creation colour palette (chara/xls/charamake/human.cmp) ---------------------
+    //
+    // Colour-type customizations (skin, hair, eyes, etc.) store a palette index, not an RGB value.
+    // Resolving an index requires the game's human.cmp colour map. Skin and hair palettes are also
+    // selected by the character's clan (subrace) and gender. The byte offsets below mirror the
+    // CmpData layout used by Penumbra.GameData / Glamourer's ColorParameters; each colour is 4 bytes
+    // of RGBA. See https://github.com/Ottermandias/Penumbra.GameData (Files/CmpData.cs).
+
+    private const int Rgba = 4;
+    private const int FullColors = 256 * Rgba;     // FullColors block: 256 colours
+    private const int TonedColors = 128 * Rgba;    // TonedColors block: 128 colours
+    private const int HairColorsBlock = 256 * 8;   // HairColors block: 256 * (Main + UnusedSheen)
+    private const int ColorParametersSize = 9216;  // size of one ColorParameters block
+
+    private const int ParametersBase = 0;
+    private const int InterfaceBase = ColorParametersSize;        // second ColorParameters block
+    private const int RacesBase = ColorParametersSize * 2;        // start of the 32 race/gender blocks
+    private const int GenderClanSize = FullColors + HairColorsBlock + FullColors + FullColors; // 5120
+
+    // Field offsets within a ColorParameters block.
+    private const int EyesOffset = 0;
+    private const int HairHighlightsOffset = FullColors;                       // 1024
+    private const int LipsDarkOffset = HairHighlightsOffset + FullColors;      // 2048
+    private const int FacePaintDarkOffset = LipsDarkOffset + TonedColors;      // 2560
+    private const int FeaturesOffset = FacePaintDarkOffset + TonedColors;      // 3072
+    private const int LipsLightOffset = FeaturesOffset + FullColors;           // 4096
+    private const int FacePaintLightOffset = LipsLightOffset + TonedColors;    // 4608
+
+    // Field offsets within a GenderClanColorParameters block (Skin, Hair, SkinInterface, HairInterface).
+    private const int SkinInterfaceOffset = FullColors + HairColorsBlock;          // 3072
+    private const int HairInterfaceOffset = SkinInterfaceOffset + FullColors;      // 4096
+
+    private byte[]? cmpData;
+    private bool cmpLoadAttempted;
+
+    /// <summary>
+    /// Resolves a colour-type customization (skin, hair, eyes, lips, etc.) to a packed 0xRRGGBB colour
+    /// for previewing. Returns false for non-colour customizations or out-of-range/unavailable values.
+    /// </summary>
+    public bool TryResolveCustomizeColor(string key, int value, int clan, int gender, out uint rgb)
+    {
+        rgb = 0;
+        var data = LoadCmp();
+        if (data == null)
+            return false;
+
+        if (!TryGetColorOffset(key, value, clan, gender, out var offset))
+            return false;
+        if (offset < 0 || offset + Rgba > data.Length)
+            return false;
+
+        // Stored as RGBA bytes; pack to 0xRRGGBB to match the dye swatch helper (Stain.Color format).
+        rgb = (uint)((data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2]);
+        return true;
+    }
+
+    private static bool TryGetColorOffset(string key, int value, int clan, int gender, out int offset)
+    {
+        offset = -1;
+        switch (key)
+        {
+            case "EyeColorLeft":
+            case "EyeColorRight":
+                return TrySingle(InterfaceBase + EyesOffset, value, out offset);
+            case "HighlightsColor":
+                return TrySingle(InterfaceBase + HairHighlightsOffset, value, out offset);
+            case "TattooColor":
+                return TrySingle(InterfaceBase + FeaturesOffset, value, out offset);
+            case "LipColor":
+                return TryDouble(ParametersBase + LipsDarkOffset, ParametersBase + LipsLightOffset, value, out offset);
+            case "FacePaintColor":
+                return TryDouble(ParametersBase + FacePaintDarkOffset, ParametersBase + FacePaintLightOffset, value, out offset);
+            case "SkinColor":
+                return TryRace(clan, gender, SkinInterfaceOffset, value, out offset);
+            case "HairColor":
+                return TryRace(clan, gender, HairInterfaceOffset, value, out offset);
+            default:
+                return false;
+        }
+    }
+
+    // Full 192-entry single tables (eyes, highlights, features).
+    private static bool TrySingle(int tableBase, int value, out int offset)
+    {
+        offset = -1;
+        if ((uint)value >= 192)
+            return false;
+        offset = tableBase + value * Rgba;
+        return true;
+    }
+
+    // Lip / face-paint split into 96 "dark" (values 0-95) and 96 "light" (values 128-223) colours.
+    private static bool TryDouble(int darkBase, int lightBase, int value, out int offset)
+    {
+        offset = -1;
+        if (value is >= 0 and < 96)
+            offset = darkBase + value * Rgba;
+        else if (value is >= 128 and < 224)
+            offset = lightBase + (value - 128) * Rgba;
+        else
+            return false;
+        return true;
+    }
+
+    // Race/gender-dependent skin & hair palettes.
+    private static bool TryRace(int clan, int gender, int typeOffset, int value, out int offset)
+    {
+        offset = -1;
+        if ((uint)value >= 192 || clan is < 1 or > 16)
+            return false;
+        var index = (clan - 1) * 2 + (gender == 1 ? 1 : 0); // gender: 0 male, 1 female
+        if ((uint)index >= 32)
+            return false;
+        offset = RacesBase + index * GenderClanSize + typeOffset + value * Rgba;
+        return true;
+    }
+
+    private byte[]? LoadCmp()
+    {
+        if (cmpLoadAttempted)
+            return cmpData;
+
+        cmpLoadAttempted = true;
+        try
+        {
+            var file = Plugin.DataManager.GetFile("chara/xls/charamake/human.cmp");
+            cmpData = file?.Data;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to load human.cmp; customization colour previews disabled");
+            cmpData = null;
+        }
+        return cmpData;
+    }
 }

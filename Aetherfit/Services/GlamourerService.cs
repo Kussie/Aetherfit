@@ -111,6 +111,7 @@ public sealed class GlamourerService
 
     private static CachedOutfit ParseOutfit(JObject j)
     {
+        var customize = j["Customize"] as JObject;
         var name = ReadString(j["Name"]) ?? "(unnamed)";
         var description = ReadString(j["Description"]);
         if (string.IsNullOrWhiteSpace(description))
@@ -133,6 +134,9 @@ public sealed class GlamourerService
             LastEdit = ReadDateTimeOffset(j["LastEdit"]),
             Equipment = ParseEquipment(equipment),
             BonusItems = ParseBonusItems(j["Bonus"]),
+            Customizations = ParseCustomizations(customize),
+            CustomizeClan = (int)ReadUInt64(customize?["Clan"]?["Value"]),
+            CustomizeGender = (int)ReadUInt64(customize?["Gender"]?["Value"]),
             HatVisible = ParseMetaToggle(equipment?["Hat"], "Show"),
             WeaponVisible = ParseMetaToggle(equipment?["Weapon"], "Show"),
             VisorToggled = ParseMetaToggle(equipment?["Visor"], "IsToggled"),
@@ -181,6 +185,118 @@ public sealed class GlamourerService
                 Apply = ReadBool(slotObj["Apply"]),
             });
         }
+        return result;
+    }
+
+    // Ordered for display. Toggle entries store a flag (0/non-zero), everything else a raw index.
+    // A few keys (Race/Gender/Clan) are formatted into their in-game names; see FormatCustomizeValue.
+    private static readonly (string Key, string Label, bool IsToggle)[] CustomizeDisplay =
+    {
+        ("Race",              "Race",                false),
+        ("Gender",            "Gender",              false),
+        ("BodyType",          "Body Type",           false),
+        ("Clan",              "Clan",                false),
+        ("Height",            "Height",              false),
+        ("Face",              "Face",                false),
+        ("Hairstyle",         "Hairstyle",           false),
+        ("Highlights",        "Highlights",          true),
+        ("HairColor",         "Hair Color",          false),
+        ("HighlightsColor",   "Highlights Color",    false),
+        ("SkinColor",         "Skin Color",          false),
+        ("Eyebrows",          "Eyebrows",            false),
+        ("EyeShape",          "Eye Shape",           false),
+        ("SmallIris",         "Small Iris",          true),
+        ("EyeColorRight",     "Right Eye Color",     false),
+        ("EyeColorLeft",      "Left Eye Color",      false),
+        ("Nose",              "Nose",                false),
+        ("Jaw",               "Jaw",                 false),
+        ("Mouth",             "Mouth",               false),
+        ("Lipstick",          "Lipstick",            true),
+        ("LipColor",          "Lip Color",           false),
+        ("FacialFeature1",    "Facial Feature 1",    true),
+        ("FacialFeature2",    "Facial Feature 2",    true),
+        ("FacialFeature3",    "Facial Feature 3",    true),
+        ("FacialFeature4",    "Facial Feature 4",    true),
+        ("FacialFeature5",    "Facial Feature 5",    true),
+        ("FacialFeature6",    "Facial Feature 6",    true),
+        ("FacialFeature7",    "Facial Feature 7",    true),
+        ("LegacyTattoo",      "Legacy Tattoo",       true),
+        ("TattooColor",       "Tattoo Color",        false),
+        ("FacePaint",         "Face Paint",          false),
+        ("FacePaintReversed", "Face Paint Reversed", true),
+        ("FacePaintColor",    "Face Paint Color",    false),
+        ("MuscleMass",        "Muscle Tone",         false),
+        ("TailShape",         "Tail / Ear Shape",    false),
+        ("BustSize",          "Bust Size",           false),
+        ("Wetness",           "Wetness",             true),
+    };
+
+    // In-game names for the fixed enum customizations, keyed by their customize value.
+    private static readonly IReadOnlyDictionary<int, string> RaceNames = new Dictionary<int, string>
+    {
+        [1] = "Hyur", [2] = "Elezen", [3] = "Lalafell", [4] = "Miqo'te",
+        [5] = "Roegadyn", [6] = "Au Ra", [7] = "Hrothgar", [8] = "Viera",
+    };
+
+    private static readonly IReadOnlyDictionary<int, string> ClanNames = new Dictionary<int, string>
+    {
+        [1] = "Midlander", [2] = "Highlander", [3] = "Wildwood", [4] = "Duskwight",
+        [5] = "Plainsfolk", [6] = "Dunesfolk", [7] = "Seeker of the Sun", [8] = "Keeper of the Moon",
+        [9] = "Sea Wolf", [10] = "Hellsguard", [11] = "Raen", [12] = "Xaela",
+        [13] = "Helions", [14] = "The Lost", [15] = "Rava", [16] = "Veena",
+    };
+
+    private static string FormatCustomizeValue(string key, int value) => key switch
+    {
+        "Race"   => RaceNames.GetValueOrDefault(value, value.ToString()),
+        "Clan"   => ClanNames.GetValueOrDefault(value, value.ToString()),
+        "Gender" => value switch { 0 => "Masculine", 1 => "Feminine", _ => value.ToString() },
+        _        => value.ToString(),
+    };
+
+    private static List<CachedCustomization> ParseCustomizations(JToken? token)
+    {
+        var result = new List<CachedCustomization>();
+        if (token is not JObject obj)
+            return result;
+
+        foreach (var (key, label, isToggle) in CustomizeDisplay)
+        {
+            if (obj[key] is not JObject entry)
+                continue;
+            if (!ReadBool(entry["Apply"]))
+                continue;
+
+            // Glamourer always serialises BodyType as applied with the default value (1), even when
+            // the design's UI toggle is off, and exposes no separate apply-mask. Treat the default as
+            // "not customised" so it doesn't appear on every design; a genuine non-default still shows.
+            if (key == "BodyType" && ReadUInt64(entry["Value"]) == 1)
+                continue;
+
+            var rawValue = (int)ReadUInt64(entry["Value"]);
+
+            string value;
+            if (isToggle)
+            {
+                // Toggles serialise either as a bool (Wetness) or a flag byte (0 / 128).
+                var on = ReadBool(entry["Value"]) || rawValue != 0;
+                value = on ? "On" : "Off";
+            }
+            else
+            {
+                value = FormatCustomizeValue(key, rawValue);
+            }
+
+            result.Add(new CachedCustomization
+            {
+                Key = key,
+                Label = label,
+                Value = value,
+                RawValue = rawValue,
+                IsToggle = isToggle,
+            });
+        }
+
         return result;
     }
 

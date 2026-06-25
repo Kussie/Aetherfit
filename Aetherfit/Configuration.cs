@@ -100,7 +100,13 @@ public class CachedOutfit
 
     public List<CachedEquipmentSlot> Equipment { get; set; } = new();
     public List<CachedBonusItem> BonusItems { get; set; } = new();
+    public List<CachedCustomization> Customizations { get; set; } = new();
     public List<CachedMod> Mods { get; set; } = new();
+
+    // The design's clan (subrace, 1-16) and gender (0 male / 1 female). Stored even when not applied,
+    // because the skin/hair colour palettes in human.cmp are selected by clan + gender.
+    public int CustomizeClan { get; set; }
+    public int CustomizeGender { get; set; }
 
     // null = the design does not apply this toggle (grey circle). true/false = the design forces the toggle on/off.
     public bool? HatVisible { get; set; }
@@ -142,6 +148,20 @@ public class CachedBonusItem
     public string Slot { get; set; } = string.Empty;
     public ulong ItemId { get; set; }
     public bool Apply { get; set; }
+}
+
+[Serializable]
+public class CachedCustomization
+{
+    // Raw Glamourer key (e.g. "HairColor"), used to resolve colour-type parameters against human.cmp.
+    public string Key { get; set; } = string.Empty;
+    // Friendly label resolved at parse time, e.g. "Hairstyle" or "Skin Color".
+    public string Label { get; set; } = string.Empty;
+    // Formatted value: a raw index for shape/colour parameters, or "On"/"Off" for toggles.
+    public string Value { get; set; } = string.Empty;
+    // Numeric customize value, used for colour palette lookups (meaningless for toggles).
+    public int RawValue { get; set; }
+    public bool IsToggle { get; set; }
 }
 
 public enum ModState

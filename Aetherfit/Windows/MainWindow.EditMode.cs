@@ -297,14 +297,21 @@ public partial class MainWindow
                 }
 
                 DrawEquipmentPanel(details);
+                DrawCustomizationsPanel(details);
                 DrawModsPanel(details);
             }
         }
 
-        if (details.CreatedAt is { } created)
-            DrawDateLine("Created", created);
-        if (details.LastEdit is { } edited)
-            DrawDateLine("Last edited", edited);
+        // Indent the floating footer one level so the dates line up with the indented section content.
+        if (details.CreatedAt is not null || details.LastEdit is not null)
+        {
+            ImGui.Indent();
+            if (details.CreatedAt is { } created)
+                DrawDateLine("Created", created);
+            if (details.LastEdit is { } edited)
+                DrawDateLine("Last edited", edited);
+            ImGui.Unindent();
+        }
     }
 
     private void DrawOutfitImageBlock(Guid id)

@@ -18,6 +18,7 @@ public partial class MainWindow
     private static readonly Vector4 ModLinkColor = UiTheme.ModLink;
 
     private bool equipmentPanelOpen = true;
+    private bool customizationsPanelOpen = true;
     private bool modsPanelOpen = true;
     private bool coverImagePanelOpen = true;
     private bool additionalImagesPanelOpen = true;
@@ -52,12 +53,7 @@ public partial class MainWindow
         var slotMap = BuildSlotMap(details.Equipment);
         var bonusMap = BuildBonusMap(details.BonusItems);
 
-        var slotLabelWidth = 0f;
-        foreach (var (_, label) in SlotDisplay)
-            slotLabelWidth = Math.Max(slotLabelWidth, ImGui.CalcTextSize(label).X);
-        foreach (var (_, label) in BonusSlotDisplay)
-            slotLabelWidth = Math.Max(slotLabelWidth, ImGui.CalcTextSize(label).X);
-        slotLabelWidth += 16f * ImGuiHelpers.GlobalScale;
+        var slotLabelWidth = LabelColumnWidth(details);
 
         foreach (var (slot, label) in SlotDisplay)
         {
@@ -78,6 +74,55 @@ public partial class MainWindow
         DrawToggleRow(details);
         ImGui.Unindent();
         ImGui.Spacing();
+    }
+
+    private void DrawCustomizationsPanel(CachedOutfit details)
+    {
+        // Only the design's applied appearance customizations are cached; nothing to show otherwise.
+        if (details.Customizations.Count == 0)
+            return;
+
+        if (!DrawCollapsibleSubheader("Customizations", ref customizationsPanelOpen))
+            return;
+
+        ImGui.Indent();
+
+        // Share the equipment panel's column width so the values line up between the two sections.
+        var labelWidth = LabelColumnWidth(details);
+
+        foreach (var c in details.Customizations)
+        {
+            var rowStartX = ImGui.GetCursorPosX();
+            ImGui.TextColored(AppliedTextColor, c.Label);
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(rowStartX + labelWidth);
+
+            if (c.IsToggle)
+            {
+                ImGui.TextColored(c.Value == "On" ? OnColor : OffColor, c.Value);
+            }
+            else
+            {
+                ImGui.TextColored(AppliedTextColor, c.Value);
+                DrawCustomizationColorSwatch(c, details);
+            }
+        }
+
+        ImGui.Unindent();
+        ImGui.Spacing();
+    }
+
+    private void DrawCustomizationColorSwatch(CachedCustomization c, CachedOutfit details)
+    {
+        if (!plugin.GameData.TryResolveCustomizeColor(
+                c.Key, c.RawValue, details.CustomizeClan, details.CustomizeGender, out var rgb))
+            return;
+
+        ImGui.SameLine();
+        var size = new Vector2(ImGui.GetTextLineHeight(), ImGui.GetTextLineHeight());
+        ImGui.ColorButton($"##cust_{c.Key}", StainColorToVec4(rgb, 1.0f),
+            ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoDragDrop | ImGuiColorEditFlags.NoInputs,
+            size);
     }
 
     private static bool DrawCollapsibleSubheader(string label, ref bool open, string? helpText = null)
@@ -130,6 +175,20 @@ public partial class MainWindow
         }
 
         return open;
+    }
+
+    // Width of the label column, shared by the Equipment and Customizations panels so their value
+    // columns line up. Spans every equipment/bonus slot plus the customizations present on this design.
+    private static float LabelColumnWidth(CachedOutfit details)
+    {
+        var width = 0f;
+        foreach (var (_, label) in SlotDisplay)
+            width = Math.Max(width, ImGui.CalcTextSize(label).X);
+        foreach (var (_, label) in BonusSlotDisplay)
+            width = Math.Max(width, ImGui.CalcTextSize(label).X);
+        foreach (var c in details.Customizations)
+            width = Math.Max(width, ImGui.CalcTextSize(c.Label).X);
+        return width + 16f * ImGuiHelpers.GlobalScale;
     }
 
     private static Dictionary<EquipmentSlot, CachedEquipmentSlot> BuildSlotMap(List<CachedEquipmentSlot> equipment)

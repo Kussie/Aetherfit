@@ -215,13 +215,13 @@ public partial class MainWindow : Window, IDisposable
         ImGui.TextDisabled($"{designsCount} design(s)");
         ImGui.SameLine();
 
-        if (ImGui.Button("Export"))
+        if (ImGui.Button("Share your Designs"))
             OpenExportGalleryDialog();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Export this gallery to a shareable .afgallery file (images + basic info).");
         ImGui.SameLine();
 
-        if (ImGui.Button("Import"))
+        if (ImGui.Button("View Shared Designs"))
             OpenImportGalleryDialog();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Open another user's exported .afgallery file in a read-only viewer.");
