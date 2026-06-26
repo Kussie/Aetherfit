@@ -189,8 +189,18 @@ public sealed class ImageStorageService
         {
             try
             {
-                coverPath = Path.Combine(dir, $"{sourceId:N}{NormalizeExtension(c.Ext)}");
-                File.WriteAllBytes(coverPath, c.Bytes);
+                var candidate = Path.Combine(dir, $"{sourceId:N}{NormalizeExtension(c.Ext)}");
+                // NormalizeExtension already strips dangerous extensions; this is a second line of defence
+                // in case the file name itself ever resolves outside the foreign cache directory.
+                if (IsContainedIn(dir, candidate))
+                {
+                    File.WriteAllBytes(candidate, c.Bytes);
+                    coverPath = candidate;
+                }
+                else
+                {
+                    Plugin.Log.Warning("Skipped foreign cover for {Id}: path escaped the cache directory", sourceId);
+                }
             }
             catch (Exception ex)
             {
@@ -207,6 +217,11 @@ public sealed class ImageStorageService
             try
             {
                 var path = Path.Combine(dir, $"{sourceId:N}_{i}{NormalizeExtension(ext)}");
+                if (!IsContainedIn(dir, path))
+                {
+                    Plugin.Log.Warning("Skipped foreign image for {Id}: path escaped the cache directory", sourceId);
+                    continue;
+                }
                 File.WriteAllBytes(path, bytes);
                 additionalPaths.Add(path);
             }
@@ -248,13 +263,34 @@ public sealed class ImageStorageService
         }
     }
 
-    // Lower-cases an extension and makes sure it has a leading dot. No extension at all? Assume ".png".
+    // Image extensions we're willing to write. Anything outside this set (including separators or
+    // traversal sequences smuggled in via a shared bundle's Ext field) is forced back to ".png".
+    private static readonly HashSet<string> AllowedImageExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
+
+    // Lower-cases an extension and makes sure it has a leading dot. Untrusted or unrecognised extensions
+    // (e.g. ".png/../../evil.exe" from an imported gallery) collapse to ".png" so they can't escape the
+    // target directory or write an executable type.
     public static string NormalizeExtension(string? ext)
     {
         if (string.IsNullOrWhiteSpace(ext))
             return ".png";
         ext = ext.ToLowerInvariant();
-        return ext.StartsWith('.') ? ext : "." + ext;
+        if (!ext.StartsWith('.'))
+            ext = "." + ext;
+        return AllowedImageExtensions.Contains(ext) ? ext : ".png";
+    }
+
+    // Belt-and-braces guard against path traversal: confirm a built path actually resolves inside the
+    // directory we intended to write to. Returns false for anything that escapes via "..", separators, etc.
+    private static bool IsContainedIn(string directory, string path)
+    {
+        var root = Path.GetFullPath(directory);
+        var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        var full = Path.GetFullPath(path);
+        return full.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase);
     }
 
     // Delete a file if it's there, and shrug off (just log) any failure. Saves repeating this try/catch everywhere.
