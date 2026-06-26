@@ -140,6 +140,8 @@ public sealed class GlamourerService
             HatVisible = ParseMetaToggle(equipment?["Hat"], "Show"),
             WeaponVisible = ParseMetaToggle(equipment?["Weapon"], "Show"),
             VisorToggled = ParseMetaToggle(equipment?["Visor"], "IsToggled"),
+            ForcedRedraw = ReadBool(j["ForcedRedraw"]),
+            ResetTemporarySettings = ReadBool(j["ResetTemporarySettings"]),
             Mods = ParseMods(j["Mods"]),
         };
     }

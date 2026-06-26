@@ -279,6 +279,7 @@ public partial class MainWindow
 
         var clicked = false;
         var shiftClicked = false;
+        var shiftRightClicked = false;
         var doubleClicked = false;
 
         if (currentImage != null)
@@ -355,6 +356,8 @@ public partial class MainWindow
                 else
                     clicked = true;
             }
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift && !overLeft && !overRight && !overStar)
+                shiftRightClicked = true;
             if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !overLeft && !overRight && !overStar)
                 doubleClicked = true;
             if (overStar)
@@ -407,6 +410,11 @@ public partial class MainWindow
             selectedDesign = design.Id;
             coverMode = false;
         }
+        if (shiftRightClicked)
+        {
+            selectedDesign = design.Id;
+            plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
+        }
         if (doubleClicked)
         {
             selectedDesign = design.Id;
@@ -422,6 +430,7 @@ public partial class MainWindow
             ImGui.TextDisabled(design.FullPath);
         ImGui.TextDisabled("Double-click to apply");
         ImGui.TextDisabled("Shift+click to open in edit view");
+        ImGui.TextDisabled("Shift+right-click to open in Glamourer");
         ImGui.EndTooltip();
     }
 }

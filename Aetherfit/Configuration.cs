@@ -121,6 +121,11 @@ public class CachedOutfit
     public bool? HatVisible { get; set; }
     public bool? WeaponVisible { get; set; }
     public bool? VisorToggled { get; set; }
+
+    // Design-level application flags (always present on a design): whether it forces a redraw on apply
+    // and whether it resets temporary settings. Shown as enabled/disabled in the equipment panel.
+    public bool ForcedRedraw { get; set; }
+    public bool ResetTemporarySettings { get; set; }
 }
 
 public enum EquipmentSlot

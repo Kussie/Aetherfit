@@ -119,10 +119,7 @@ public partial class MainWindow
             }
 
             if (c.Key == "Hairstyle" && hairstyleMod != null)
-            {
-                ImGui.SameLine();
-                ImGui.TextColored(UnsetColor, $"(Appearance affected by {hairstyleMod})");
-            }
+                DrawAffectedByText(hairstyleMod);
         }
 
         ImGui.Unindent();
@@ -389,8 +386,19 @@ public partial class MainWindow
         if (!affectedBy.TryGetValue(itemName, out var modName))
             return;
 
+        DrawAffectedByText(modName);
+    }
+
+    // "(Appearance affected by {modName})" with the mod name tinted in the mod-link colour so it stands
+    // out from the surrounding grey suffix text.
+    private static void DrawAffectedByText(string modName)
+    {
         ImGui.SameLine();
-        ImGui.TextColored(UnsetColor, $"(Appearance affected by {modName})");
+        ImGui.TextColored(UnsetColor, "(Appearance affected by ");
+        ImGui.SameLine(0, 0);
+        ImGui.TextColored(ModLinkColor, modName);
+        ImGui.SameLine(0, 0);
+        ImGui.TextColored(UnsetColor, ")");
     }
 
     private void DrawStainSwatch(byte stainId, bool active)
@@ -426,6 +434,27 @@ public partial class MainWindow
         DrawToggle("Weapon", details.WeaponVisible);
         ImGui.SameLine(0, 24f * ImGuiHelpers.GlobalScale);
         DrawToggle("Visor", details.VisorToggled);
+
+        DrawBoolToggle("Force Redraw", details.ForcedRedraw,
+            "Force Redraw: enabled — the design redraws the character on apply",
+            "Force Redraw: disabled");
+        ImGui.SameLine(0, 24f * ImGuiHelpers.GlobalScale);
+        DrawBoolToggle("Reset Temporary Settings", details.ResetTemporarySettings,
+            "Reset Temporary Settings: enabled — the design resets temporary settings on apply",
+            "Reset Temporary Settings: disabled");
+    }
+
+    // A plain on/off toggle (always set, never tri-state) for design-level application flags.
+    private static void DrawBoolToggle(string label, bool state, string onTooltip, string offTooltip)
+    {
+        ImGui.BeginGroup();
+        DrawFontAwesome(state ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, state ? OnColor : OffColor);
+        ImGui.SameLine();
+        ImGui.TextUnformatted(label);
+        ImGui.EndGroup();
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(state ? onTooltip : offTooltip);
     }
 
     private static void DrawToggle(string label, bool? state)
