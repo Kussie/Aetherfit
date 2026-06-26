@@ -13,6 +13,11 @@ namespace Aetherfit.Windows;
 
 public partial class MainWindow
 {
+    // Faint grey for the tree indent guide lines, mirroring Glamourer's design list.
+    private static readonly Vector4 TreeGuideColor = new(0.5f, 0.5f, 0.5f, 0.6f);
+    // Leaf dot radius as a fraction of the text line height (the bullet glyphs were either too big or too small).
+    private const float LeafDotRadius = 0.16f;
+
     private const float RightPaneImageMax = 220f;
     private const float TooltipImageMax = 160f;
     private const float AdditionalThumbSize = 72f;
@@ -91,7 +96,7 @@ public partial class MainWindow
             DrawDesignLeafTooltip(hovered);
     }
 
-    private void DrawTree(FolderNode node, bool hasFilter)
+    private void DrawTree(FolderNode node, bool hasFilter, int depth = 0)
     {
         foreach (var (name, folder) in node.Folders)
         {
@@ -99,9 +104,33 @@ public partial class MainWindow
 
             ForceOpenIfFiltering(name, hasFilter);
 
-            if (ImGui.TreeNodeEx(name, ImGuiTreeNodeFlags.SpanAvailWidth))
+            // Capture the row's logical left edge before drawing; a Selectable's item rect extends half an
+            // ItemSpacing to the left of this, so we can't rely on GetItemRectMin for the tick's anchor.
+            var rowX = ImGui.GetCursorScreenPos().X;
+            var open = ImGui.TreeNodeEx(name, ImGuiTreeNodeFlags.SpanAvailWidth);
+            // Connect this node to its parent's vertical guide with a short horizontal tick.
+            DrawTreeItemTick(depth, rowX);
+
+            if (open)
             {
-                DrawTree(folder, hasFilter);
+                // Glamourer-style indent guide: a faint vertical line down the left of this folder's
+                // children. We capture the top before drawing them and the bottom after, then draw the
+                // line between - drawing happens after the children so its extent is known.
+                var drawList = ImGui.GetWindowDrawList();
+                // Line the guide up under the tip of this folder's expand arrow.
+                var guideX = rowX + TreeArrowCenterOffset();
+                var guideTop = ImGui.GetCursorScreenPos().Y;
+
+                DrawTree(folder, hasFilter, depth + 1);
+
+                // Stop the line at the vertical centre of the last child row so it reads as connecting to it.
+                var guideBottom = ImGui.GetCursorScreenPos().Y
+                                  - ImGui.GetStyle().ItemSpacing.Y
+                                  - (ImGui.GetTextLineHeight() * 0.5f);
+                if (guideBottom > guideTop)
+                    drawList.AddLine(new Vector2(guideX, guideTop), new Vector2(guideX, guideBottom),
+                        ImGui.ColorConvertFloat4ToU32(TreeGuideColor), ImGuiHelpers.GlobalScale);
+
                 ImGui.TreePop();
             }
         }
@@ -110,8 +139,35 @@ public partial class MainWindow
         {
             plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var cached);
             if (!DesignMatchesFilters(design, cached)) continue;
+            var rowX = ImGui.GetCursorScreenPos().X;
             DrawDesignLeaf(design);
+            DrawTreeItemTick(depth, rowX);
         }
+    }
+
+    // Horizontal distance from a tree node's left edge to the centre of its expand arrow, matching how
+    // ImGui positions the arrow (FramePadding then a font-sized glyph box). The guides line up under it.
+    private static float TreeArrowCenterOffset()
+        => ImGui.GetStyle().FramePadding.X + (ImGui.GetFontSize() * 0.5f);
+
+    // A short horizontal line from the parent folder's vertical guide to the item, at the item's vertical
+    // centre. Only items nested under a folder (depth > 0) have a parent guide to connect to.
+    private static void DrawTreeItemTick(int depth, float rowX)
+    {
+        if (depth <= 0)
+            return;
+
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var centerY = (min.Y + max.Y) * 0.5f;
+        // The parent folder sits one indent level to the left; its arrow tip is where the guide runs.
+        var guideX = rowX - ImGui.GetStyle().IndentSpacing + TreeArrowCenterOffset();
+        var tickEndX = rowX - (2f * ImGuiHelpers.GlobalScale);
+        if (tickEndX <= guideX)
+            return;
+
+        ImGui.GetWindowDrawList().AddLine(new Vector2(guideX, centerY), new Vector2(tickEndX, centerY),
+            ImGui.ColorConvertFloat4ToU32(TreeGuideColor), ImGuiHelpers.GlobalScale);
     }
 
     private void DrawDesignLeaf(DesignLeaf design)
@@ -122,11 +178,16 @@ public partial class MainWindow
             ImGui.PushStyleColor(ImGuiCol.Text, design.Color);
 
         var selected = selectedDesign == design.Id;
+        // Favourites keep the star glyph; other designs get a hand-drawn dot (after the Selectable) so we
+        // can size it precisely. Either way leave a little room at the start of the label for the marker.
         var label = isFavourite
             ? $"★ {design.DisplayName}##{design.Id}"
-            : $"{design.DisplayName}##{design.Id}";
+            : $"   {design.DisplayName}##{design.Id}";
         if (ImGui.Selectable(label, selected))
             selectedDesign = design.Id;
+
+        if (!isFavourite)
+            DrawLeafDot(hasColor ? design.Color : ImGui.GetColorU32(ImGuiCol.Text));
 
         if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
         {
@@ -139,6 +200,16 @@ public partial class MainWindow
 
         if (ImGui.IsItemHovered())
             hoveredDesignForTooltip = design;
+    }
+
+    // A filled dot at the start of a leaf row, sized from the line height and tinted to the design's colour.
+    private static void DrawLeafDot(uint color)
+    {
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var lineH = ImGui.GetTextLineHeight();
+        var center = new Vector2(min.X + (lineH * 0.45f), (min.Y + max.Y) * 0.5f);
+        ImGui.GetWindowDrawList().AddCircleFilled(center, lineH * LeafDotRadius, color, 16);
     }
 
     private void DrawDesignLeafTooltip(DesignLeaf design)
