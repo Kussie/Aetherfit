@@ -354,4 +354,12 @@ public partial class MainWindow
         foreach (var folder in node.Folders.Values)
             CollectVisibleDesigns(folder, result);
     }
+
+    // The ids of every design that currently passes the active filters - used to export only the visible list.
+    private HashSet<Guid> CollectVisibleDesignIds()
+    {
+        var visible = new List<DesignLeaf>();
+        CollectVisibleDesigns(root, visible);
+        return visible.Select(d => d.Id).ToHashSet();
+    }
 }

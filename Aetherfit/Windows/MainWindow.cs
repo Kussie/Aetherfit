@@ -225,9 +225,10 @@ public partial class MainWindow : Window, IDisposable
         ImGui.SameLine();
 
         if (ImGui.Button("Share your Designs"))
-            OpenExportGalleryDialog();
+            ImGui.OpenPopup("##sharePopup");
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Export this gallery to a shareable .afgallery file (images + basic info).");
+            ImGui.SetTooltip("Export designs to a shareable .afgallery file (images + basic info).");
+        DrawSharePopup();
         ImGui.SameLine();
 
         if (ImGui.Button("View Shared Designs"))
@@ -238,6 +239,31 @@ public partial class MainWindow : Window, IDisposable
 
         if (ImGui.Button("Settings"))
             plugin.ToggleConfigUi();
+    }
+
+    // The "Share your Designs" dropdown: export everything, or just the designs left after the active filters.
+    private void DrawSharePopup()
+    {
+        using var popup = ImRaii.Popup("##sharePopup");
+        if (!popup.Success)
+            return;
+
+        if (ImGui.Selectable("All Designs"))
+            OpenExportGalleryDialog();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Export every cached design.");
+
+        // Filtered export is only meaningful while a filter is narrowing the list.
+        var hasFilter = HasAnyFilter;
+        using (ImRaii.Disabled(!hasFilter))
+        {
+            if (ImGui.Selectable("Filtered Designs"))
+                OpenExportGalleryDialog(CollectVisibleDesignIds());
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(hasFilter
+                ? "Export only the designs currently shown by the active filters."
+                : "Set a filter first to export only the designs that remain visible.");
     }
 
     private void DrawBottomButtons()

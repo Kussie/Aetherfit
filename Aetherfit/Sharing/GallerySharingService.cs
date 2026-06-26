@@ -45,7 +45,8 @@ public sealed class GallerySharingService
         this.attribution = attribution;
     }
 
-    public bool ExportToFile(string sharerLabel, string path)
+    // onlyIds, when given, limits the export to those designs (e.g. the currently filtered list); null exports all.
+    public bool ExportToFile(string sharerLabel, string path, IReadOnlySet<Guid>? onlyIds = null)
     {
         try
         {
@@ -62,6 +63,9 @@ public sealed class GallerySharingService
             var imageEntries = new List<(string Entry, byte[] Bytes)>();
             foreach (var (id, outfit) in configuration.CachedOutfits)
             {
+                if (onlyIds != null && !onlyIds.Contains(id))
+                    continue;
+
                 var attributed = attribution.Build(outfit);
                 var design = new SharedDesign
                 {

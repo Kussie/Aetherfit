@@ -79,7 +79,8 @@ public partial class MainWindow
             DrawCoverGrid();
     }
 
-    private void OpenExportGalleryDialog()
+    // onlyIds null = export everything; otherwise just those designs (the currently filtered list).
+    private void OpenExportGalleryDialog(IReadOnlySet<Guid>? onlyIds = null)
     {
         var label = Plugin.PlayerState.IsLoaded && !string.IsNullOrWhiteSpace(Plugin.PlayerState.CharacterName)
             ? Plugin.PlayerState.CharacterName
@@ -94,7 +95,7 @@ public partial class MainWindow
             (success, path) =>
             {
                 if (success && !string.IsNullOrEmpty(path))
-                    plugin.GallerySharing.ExportToFile(label, path);
+                    plugin.GallerySharing.ExportToFile(label, path, onlyIds);
             });
     }
 
