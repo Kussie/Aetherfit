@@ -16,10 +16,6 @@ public partial class MainWindow
 {
     private const string AddJobPopupId = "AddJobPopup";
 
-    private static readonly Vector4 JobPillColor = UiTheme.PillBase;
-    private static readonly Vector4 JobPillHovered = UiTheme.PillHovered;
-    private static readonly Vector4 JobPillActive = UiTheme.PillActive;
-
     private void DrawJobAssociations(Guid id)
     {
         DrawSubheader("Job Associations",
@@ -87,9 +83,9 @@ public partial class MainWindow
 
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);
         ImGui.PushStyleVar(ImGuiStyleVar.ButtonTextAlign, new Vector2(1f, 0.5f));
-        ImGui.PushStyleColor(ImGuiCol.Button, JobPillColor);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, JobPillHovered);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, JobPillActive);
+        ImGui.PushStyleColor(ImGuiCol.Button, UiTheme.PillBase);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.PillHovered);
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.PillActive);
         var clicked = ImGui.Button($"{label}##job{job}", new Vector2(width, height));
         ImGui.PopStyleColor(3);
         ImGui.PopStyleVar(2);

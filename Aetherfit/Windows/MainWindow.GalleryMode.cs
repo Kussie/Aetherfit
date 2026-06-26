@@ -303,20 +303,11 @@ public partial class MainWindow
         var canPrev = imgIdx > 0;
         var canNext = imgIdx < images.Count - 1;
 
-        var arrowZone = Math.Min(28f * ImGuiHelpers.GlobalScale, Math.Min(thumbWidth, thumbHeight) * 0.32f);
-        var arrowMargin = 4f * ImGuiHelpers.GlobalScale;
-        var leftMin = new Vector2(thumbStart.X + arrowMargin, thumbStart.Y + (thumbHeight - arrowZone) * 0.5f);
-        var leftMax = new Vector2(leftMin.X + arrowZone, leftMin.Y + arrowZone);
-        var rightMax = new Vector2(thumbStart.X + thumbWidth - arrowMargin, thumbStart.Y + (thumbHeight + arrowZone) * 0.5f);
-        var rightMin = new Vector2(rightMax.X - arrowZone, rightMax.Y - arrowZone);
-
         var mouse = ImGui.GetIO().MousePos;
-        var overLeft = imageHovered && hasArrows && canPrev
-                       && mouse.X >= leftMin.X && mouse.X <= leftMax.X
-                       && mouse.Y >= leftMin.Y && mouse.Y <= leftMax.Y;
-        var overRight = imageHovered && hasArrows && canNext
-                        && mouse.X >= rightMin.X && mouse.X <= rightMax.X
-                        && mouse.Y >= rightMin.Y && mouse.Y <= rightMax.Y;
+        var arrows = GalleryDraw.DrawArrows(thumbStart, thumbWidth, thumbHeight,
+            hasArrows, canPrev, canNext, mouse, imageHovered);
+        var overLeft = arrows.OverLeft;
+        var overRight = arrows.OverRight;
 
         var starSize = 24f * ImGuiHelpers.GlobalScale;
         var starMargin = 4f * ImGuiHelpers.GlobalScale;
@@ -325,13 +316,6 @@ public partial class MainWindow
         var overStar = imageHovered
             && mouse.X >= starMin.X && mouse.X <= starMax.X
             && mouse.Y >= starMin.Y && mouse.Y <= starMax.Y;
-
-        if (imageHovered && hasArrows)
-        {
-            var dl = ImGui.GetWindowDrawList();
-            if (canPrev) GalleryDraw.DrawChevron(dl, leftMin, leftMax, isLeft: true, hovered: overLeft);
-            if (canNext) GalleryDraw.DrawChevron(dl, rightMin, rightMax, isLeft: false, hovered: overRight);
-        }
 
         if (imageHovered)
         {
@@ -381,8 +365,8 @@ public partial class MainWindow
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, bgAlpha)), 3f);
             var starChar = isFavourite ? "★" : "☆";
             var starColor = isFavourite
-                ? ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.85f, 0.1f, 1f))
-                : ImGui.ColorConvertFloat4ToU32(new Vector4(0.7f, 0.7f, 0.72f, 0.9f));
+                ? ImGui.ColorConvertFloat4ToU32(UiTheme.FavouriteStar)
+                : ImGui.ColorConvertFloat4ToU32(UiTheme.FavouriteStarOff);
             var starTextSize = ImGui.CalcTextSize(starChar);
             var starCenter = (starMin + starMax) * 0.5f;
             dl.AddText(new Vector2(starCenter.X - starTextSize.X * 0.5f, starCenter.Y - starTextSize.Y * 0.5f),

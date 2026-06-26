@@ -134,7 +134,7 @@ public partial class MainWindow
         var size = ImGui.GetFrameHeight();
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);
         ImGui.PushStyleColor(ImGuiCol.Button,
-            enabled ? UiTheme.PillBase : new Vector4(0.20f, 0.20f, 0.22f, 0.6f));
+            enabled ? UiTheme.PillBase : UiTheme.ToggleOffBg);
         ImGui.PushStyleColor(ImGuiCol.Text,
             enabled ? UiTheme.GoldAccent : UiTheme.PlaceholderText);
         if (ImGui.Button($"{letter}##scope{letter}", new Vector2(size, size)))

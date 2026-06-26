@@ -9,7 +9,9 @@ namespace Aetherfit.Sharing;
 [Serializable]
 public sealed class SharedGallery
 {
-    public const int CurrentFormatVersion = 1;
+    // v2 added the equipment / dyes / mod-association details so the shared viewer can show a design's
+    // make-up the way the local view does. v1 bundles simply have those lists empty.
+    public const int CurrentFormatVersion = 2;
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public string SharerLabel { get; set; } = string.Empty;
@@ -27,6 +29,42 @@ public sealed class SharedDesign
     public List<uint> Jobs { get; set; } = new();    // ClassJob RowIds; these are the same on everyone's client
     public SharedImage? Cover { get; set; }
     public List<SharedImage> AdditionalImages { get; set; } = new();
+
+    // Make-up of the design, so the recipient (who has neither the sharer's Glamourer design nor mods) can
+    // still see what it applies. Item/stain ids resolve against the recipient's own game data.
+    public List<SharedEquipment> Equipment { get; set; } = new();
+    public List<SharedBonusItem> BonusItems { get; set; } = new();
+    public List<SharedMod> Mods { get; set; } = new();
+
+    // Item display name -> the mod responsible for its look, baked at export time using the sharer's
+    // Penumbra data (the recipient can't recompute this). Keyed by resolved item name to match the viewer.
+    public Dictionary<string, string> AffectedItems { get; set; } = new();
+}
+
+[Serializable]
+public sealed class SharedEquipment
+{
+    public EquipmentSlot Slot { get; set; }
+    public ulong ItemId { get; set; }
+    public byte Stain { get; set; }
+    public byte Stain2 { get; set; }
+    public bool Apply { get; set; }
+    public bool ApplyStain { get; set; }
+}
+
+[Serializable]
+public sealed class SharedBonusItem
+{
+    public string Slot { get; set; } = string.Empty;
+    public ulong ItemId { get; set; }
+    public bool Apply { get; set; }
+}
+
+[Serializable]
+public sealed class SharedMod
+{
+    public string Name { get; set; } = string.Empty;
+    public ModState State { get; set; }
 }
 
 // One image in a bundle. Zip bundles point at a zip entry (Entry); the old inline bundles stuffed the bytes
@@ -58,4 +96,10 @@ public sealed class ForeignDesign
     public List<uint> Jobs { get; init; } = new();
     public string? CoverPath { get; init; }
     public List<string> AdditionalPaths { get; init; } = new();
+
+    // Design make-up carried straight from the bundle, shown in the read-only details panel.
+    public List<SharedEquipment> Equipment { get; init; } = new();
+    public List<SharedBonusItem> BonusItems { get; init; } = new();
+    public List<SharedMod> Mods { get; init; } = new();
+    public Dictionary<string, string> AffectedItems { get; init; } = new();
 }

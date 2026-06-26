@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
 using Aetherfit.Ui;
@@ -12,10 +11,10 @@ namespace Aetherfit.Windows;
 
 public partial class MainWindow
 {
-    private static readonly Vector4 OnColor = new(0.30f, 0.78f, 0.30f, 1.0f);
-    private static readonly Vector4 OffColor = new(0.88f, 0.32f, 0.32f, 1.0f);
-    private static readonly Vector4 UnsetColor = new(0.55f, 0.55f, 0.55f, 1.0f);
-    private static readonly Vector4 AppliedTextColor = new(1.0f, 1.0f, 1.0f, 1.0f);
+    private static readonly Vector4 OnColor = UiTheme.StateOn;
+    private static readonly Vector4 OffColor = UiTheme.StateOff;
+    private static readonly Vector4 UnsetColor = UiTheme.StateUnset;
+    private static readonly Vector4 AppliedTextColor = UiTheme.AppliedText;
     private static readonly Vector4 SectionHeader = UiTheme.SectionHeader;
     private static readonly Vector4 ModLinkColor = UiTheme.ModLink;
 
@@ -32,27 +31,6 @@ public partial class MainWindow
     private bool coverImagePanelOpen = true;
     private bool additionalImagesPanelOpen = true;
 
-    private static readonly (EquipmentSlot Slot, string Label)[] SlotDisplay =
-    {
-        (EquipmentSlot.MainHand, "Main Hand"),
-        (EquipmentSlot.OffHand,  "Off Hand"),
-        (EquipmentSlot.Head,     "Head"),
-        (EquipmentSlot.Body,     "Body"),
-        (EquipmentSlot.Hands,    "Hands"),
-        (EquipmentSlot.Legs,     "Legs"),
-        (EquipmentSlot.Feet,     "Feet"),
-        (EquipmentSlot.Ears,     "Ears"),
-        (EquipmentSlot.Neck,     "Neck"),
-        (EquipmentSlot.Wrists,   "Wrists"),
-        (EquipmentSlot.RFinger,  "Right Finger"),
-        (EquipmentSlot.LFinger,  "Left Finger"),
-    };
-
-    private static readonly (string SlotKey, string Label)[] BonusSlotDisplay =
-    {
-        ("Glasses", "Facewear Accessory"),
-    };
-
     private void DrawEquipmentPanel(Guid id, CachedOutfit details)
     {
         if (!DrawCollapsibleSubheader("Equipment", ref equipmentPanelOpen))
@@ -65,13 +43,13 @@ public partial class MainWindow
 
         var slotLabelWidth = LabelColumnWidth(details);
 
-        foreach (var (slot, label) in SlotDisplay)
+        foreach (var (slot, label) in DesignDetailView.SlotDisplay)
         {
             slotMap.TryGetValue(slot, out var entry);
             DrawEquipmentRow(label, slotLabelWidth, entry, affectedBy);
         }
 
-        foreach (var (slotKey, label) in BonusSlotDisplay)
+        foreach (var (slotKey, label) in DesignDetailView.BonusSlotDisplay)
         {
             bonusMap.TryGetValue(slotKey, out var entry);
             DrawBonusRow(label, slotLabelWidth, entry, affectedBy);
@@ -119,7 +97,7 @@ public partial class MainWindow
             }
 
             if (c.Key == "Hairstyle" && hairstyleMod != null)
-                DrawAffectedByText(hairstyleMod);
+                DesignDetailView.DrawAffectedByText(hairstyleMod);
         }
 
         ImGui.Unindent();
@@ -134,7 +112,7 @@ public partial class MainWindow
 
         ImGui.SameLine();
         var size = new Vector2(ImGui.GetTextLineHeight(), ImGui.GetTextLineHeight());
-        ImGui.ColorButton($"##cust_{c.Key}", StainColorToVec4(rgb, 1.0f),
+        ImGui.ColorButton($"##cust_{c.Key}", DesignDetailView.StainColorToVec4(rgb, 1.0f),
             ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoDragDrop | ImGuiColorEditFlags.NoInputs,
             size);
     }
@@ -196,9 +174,9 @@ public partial class MainWindow
     private static float LabelColumnWidth(CachedOutfit details)
     {
         var width = 0f;
-        foreach (var (_, label) in SlotDisplay)
+        foreach (var (_, label) in DesignDetailView.SlotDisplay)
             width = Math.Max(width, ImGui.CalcTextSize(label).X);
-        foreach (var (_, label) in BonusSlotDisplay)
+        foreach (var (_, label) in DesignDetailView.BonusSlotDisplay)
             width = Math.Max(width, ImGui.CalcTextSize(label).X);
         foreach (var c in details.Customizations)
             width = Math.Max(width, ImGui.CalcTextSize(c.Label).X);
@@ -226,205 +204,28 @@ public partial class MainWindow
         if (affectedByCache.TryGetValue(id, out var cached))
             return cached;
 
-        var affected = BuildAffectedBy(details);
+        var result = plugin.Attribution.Build(details);
+        var affected = new AffectedBy(result.Items, result.Hairstyle);
         affectedByCache[id] = affected;
         return affected;
     }
-
-    // Works out which mod is responsible for the design's equipment items and applied hairstyle. Only
-    // enabled mods count, and when more than one changes the same thing the highest priority wins.
-    // OrderByDescending is stable, so mods sharing a priority keep the order Glamourer listed them in.
-    private AffectedBy BuildAffectedBy(CachedOutfit details)
-    {
-        var map = new Dictionary<string, string>(StringComparer.Ordinal);
-
-        // Gather the item names this design actually uses - those are the only ones worth matching against.
-        var designItemNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var e in details.Equipment)
-        {
-            var name = plugin.GameData.ResolveItemName(e.ItemId);
-            if (name != GameDataService.NothingItemName)
-                designItemNames.Add(name);
-        }
-        foreach (var b in details.BonusItems)
-        {
-            var name = plugin.GameData.ResolveBonusItemName(b.Slot, b.ItemId);
-            if (name != GameDataService.NothingItemName)
-                designItemNames.Add(name);
-        }
-
-        // The applied hairstyle, if any. Customizations only holds applied entries, so its presence here
-        // already means "set to be changed". HairChangedItemFragment is what a matching Penumbra key contains.
-        var hairstyle = details.Customizations.FirstOrDefault(c => c.Key == "Hairstyle");
-        var hairFragment = hairstyle == null ? null : HairChangedItemFragment(details);
-        var hairValue = hairstyle?.RawValue ?? 0;
-        string? hairstyleMod = null;
-
-        if (designItemNames.Count == 0 && hairFragment == null)
-            return new AffectedBy(map, null);
-
-        foreach (var mod in details.Mods.Where(m => m.State == ModState.Enabled).OrderByDescending(m => m.Priority))
-        {
-            var changed = plugin.Penumbra.GetChangedItemNames(mod.Directory, mod.Name);
-            if (changed.Count == 0)
-                continue;
-
-            var displayName = ModDisplayName(mod);
-            foreach (var itemName in designItemNames)
-            {
-                if (!map.ContainsKey(itemName) && changed.Contains(itemName))
-                    map[itemName] = displayName;
-            }
-
-            if (hairstyleMod == null && hairFragment != null && changed.Any(k => HairKeyMatches(k, hairFragment, hairValue)))
-                hairstyleMod = displayName;
-        }
-
-        return new AffectedBy(map, hairstyleMod);
-    }
-
-    // Penumbra names a hair changed-item "Customization: {ModelRace} {Gender} Hair {modelId}" (see
-    // Penumbra.GameData ObjectIdentification). We rebuild the "{ModelRace} {Gender} Hair {value}" middle
-    // from the design's clan/gender + hairstyle value; the hairstyle customize value is the hair model id.
-    // Returns null when we can't resolve the race/gender (then we just don't attribute the hairstyle).
-    private static string? HairChangedItemFragment(CachedOutfit details)
-    {
-        var race = ClanToModelRace(details.CustomizeClan);
-        var gender = details.CustomizeGender switch { 0 => "Male", 1 => "Female", _ => null };
-        return race == null || gender == null ? null : $"{race} {gender} Hair ";
-    }
-
-    // True when a Penumbra changed-item key is the design's hairstyle: the right race/gender/Hair fragment
-    // and a trailing model id equal to the hairstyle value (parsed as an int so zero-padding doesn't matter).
-    private static bool HairKeyMatches(string key, string fragment, int expectedId)
-    {
-        if (!key.StartsWith("Customization:", StringComparison.Ordinal))
-            return false;
-
-        var at = key.IndexOf(fragment, StringComparison.Ordinal);
-        if (at < 0)
-            return false;
-
-        var idText = key[(at + fragment.Length)..].Trim();
-        // The id is the last token; guard against anything trailing it.
-        var space = idText.IndexOf(' ');
-        if (space >= 0)
-            idText = idText[..space];
-        return int.TryParse(idText, out var modelId) && modelId == expectedId;
-    }
-
-    // Glamourer clan (subrace, 1-16) -> the ModelRace name Penumbra uses in changed-item keys. Hyur splits
-    // into Midlander/Highlander; the other races collapse their two tribes onto one model base.
-    private static string? ClanToModelRace(int clan) => clan switch
-    {
-        1 => "Midlander",
-        2 => "Highlander",
-        3 or 4 => "Elezen",
-        5 or 6 => "Lalafell",
-        7 or 8 => "Miqo'te",
-        9 or 10 => "Roegadyn",
-        11 or 12 => "Au Ra",
-        13 or 14 => "Hrothgar",
-        15 or 16 => "Viera",
-        _ => null,
-    };
 
     private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry,
         IReadOnlyDictionary<string, string> affectedBy)
     {
         var applied = entry?.Apply == true;
-        var labelColor = applied ? AppliedTextColor : UnsetColor;
-
-        var rowStartX = ImGui.GetCursorPosX();
-        ImGui.TextColored(labelColor, label);
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(rowStartX + labelWidth);
-
-        if (entry == null)
-        {
-            ImGui.TextColored(UnsetColor, "(not in design)");
-            return;
-        }
-
-        var itemName = plugin.GameData.ResolveItemName(entry.ItemId);
-        ImGui.TextColored(labelColor, itemName);
-
-        DrawStainSwatch(entry.Stain, entry.ApplyStain && applied);
-        DrawStainSwatch(entry.Stain2, entry.ApplyStain && applied);
-
-        DrawAffectedBySuffix(applied, itemName, affectedBy);
+        var itemName = entry == null ? null : plugin.GameData.ResolveItemName(entry.ItemId);
+        DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+            entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, applied, affectedBy);
     }
 
     private void DrawBonusRow(string label, float labelWidth, CachedBonusItem? entry,
         IReadOnlyDictionary<string, string> affectedBy)
     {
         var applied = entry?.Apply == true;
-        var labelColor = applied ? AppliedTextColor : UnsetColor;
-
-        var rowStartX = ImGui.GetCursorPosX();
-        ImGui.TextColored(labelColor, label);
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(rowStartX + labelWidth);
-
-        if (entry == null)
-        {
-            ImGui.TextColored(UnsetColor, "(not in design)");
-            return;
-        }
-
-        var itemName = plugin.GameData.ResolveBonusItemName(entry.Slot, entry.ItemId);
-        ImGui.TextColored(labelColor, itemName);
-
-        DrawAffectedBySuffix(applied, itemName, affectedBy);
-    }
-
-    private static void DrawAffectedBySuffix(bool applied, string itemName,
-        IReadOnlyDictionary<string, string> affectedBy)
-    {
-        if (!applied || itemName == GameDataService.NothingItemName)
-            return;
-        if (!affectedBy.TryGetValue(itemName, out var modName))
-            return;
-
-        DrawAffectedByText(modName);
-    }
-
-    // "(Appearance affected by {modName})" with the mod name tinted in the mod-link colour so it stands
-    // out from the surrounding grey suffix text.
-    private static void DrawAffectedByText(string modName)
-    {
-        ImGui.SameLine();
-        ImGui.TextColored(UnsetColor, "(Appearance affected by ");
-        ImGui.SameLine(0, 0);
-        ImGui.TextColored(ModLinkColor, modName);
-        ImGui.SameLine(0, 0);
-        ImGui.TextColored(UnsetColor, ")");
-    }
-
-    private void DrawStainSwatch(byte stainId, bool active)
-    {
-        if (stainId == 0)
-            return;
-
-        var (name, color) = plugin.GameData.ResolveStain(stainId);
-        var v4 = StainColorToVec4(color, active ? 1.0f : 0.4f);
-
-        ImGui.SameLine();
-        var size = new Vector2(ImGui.GetTextLineHeight(), ImGui.GetTextLineHeight());
-        ImGui.ColorButton($"##stain{stainId}", v4,
-            ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoDragDrop | ImGuiColorEditFlags.NoInputs,
-            size);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(active ? name : $"{name} (not applied)");
-    }
-
-    private static Vector4 StainColorToVec4(uint color, float alpha)
-    {
-        // Stain.Color is packed as 0xRRGGBB.
-        var r = ((color >> 16) & 0xFF) / 255f;
-        var g = ((color >> 8) & 0xFF) / 255f;
-        var b = (color & 0xFF) / 255f;
-        return new Vector4(r, g, b, alpha);
+        var itemName = entry == null ? null : plugin.GameData.ResolveBonusItemName(entry.Slot, entry.ItemId);
+        DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+            stain: 0, stain2: 0, applyStain: false, applied, affectedBy);
     }
 
     private void DrawToggleRow(CachedOutfit details)
@@ -448,7 +249,7 @@ public partial class MainWindow
     private static void DrawBoolToggle(string label, bool state, string onTooltip, string offTooltip)
     {
         ImGui.BeginGroup();
-        DrawFontAwesome(state ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, state ? OnColor : OffColor);
+        DesignDetailView.DrawFontAwesome(state ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, state ? OnColor : OffColor);
         ImGui.SameLine();
         ImGui.TextUnformatted(label);
         ImGui.EndGroup();
@@ -484,13 +285,7 @@ public partial class MainWindow
             false => (FontAwesomeIcon.Times, OffColor),
             null  => (FontAwesomeIcon.Circle, UnsetColor),
         };
-        DrawFontAwesome(icon, color);
-    }
-
-    private static void DrawFontAwesome(FontAwesomeIcon icon, Vector4 color)
-    {
-        using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
-            ImGui.TextColored(color, icon.ToIconString());
+        DesignDetailView.DrawFontAwesome(icon, color);
     }
 
     private void DrawModsPanel(CachedOutfit details)
@@ -514,20 +309,16 @@ public partial class MainWindow
         ImGui.Spacing();
     }
 
-    // A mod's display name, falling back to its directory when Glamourer didn't store a name.
-    private static string ModDisplayName(CachedMod mod)
-        => string.IsNullOrWhiteSpace(mod.Name) ? mod.Directory : mod.Name;
-
     private void DrawModRow(CachedMod mod)
     {
-        DrawModStateIcon(mod.State);
+        DesignDetailView.DrawModStateIcon(mod.State);
         ImGui.SameLine();
 
-        var label = ModDisplayName(mod);
+        var label = DesignAttributionService.ModDisplayName(mod);
         if (string.IsNullOrWhiteSpace(label))
             label = "(unnamed mod)";
 
-        ImGui.TextColored(ModLinkColor, label);
+        DesignDetailView.TextColoredUnformatted(ModLinkColor, label);
 
         var hovered = ImGui.IsItemHovered();
         if (hovered)
@@ -537,17 +328,6 @@ public partial class MainWindow
         }
         if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             plugin.Penumbra.OpenMod(mod.Directory, mod.Name);
-    }
-
-    private static void DrawModStateIcon(ModState state)
-    {
-        var (icon, color) = state switch
-        {
-            ModState.Enabled  => (FontAwesomeIcon.Check, OnColor),
-            ModState.Disabled => (FontAwesomeIcon.Times, OffColor),
-            _                 => (FontAwesomeIcon.Circle, UnsetColor),
-        };
-        DrawFontAwesome(icon, color);
     }
 
     private static void DrawModTooltip(CachedMod mod)

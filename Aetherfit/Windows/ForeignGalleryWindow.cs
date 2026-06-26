@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Services;
 using Aetherfit.Sharing;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
@@ -19,11 +20,15 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
     private const float CoverMinThumbSize = 96f;
     private const float CoverAspectRatio = 3f / 2f;
     private const string AddFilterPopupId = "ForeignAddFilterPopup";
+    private const string DetailsPopupId = "ForeignDesignDetails";
 
     private readonly Plugin plugin;
 
     private ForeignGallery? gallery;
     private readonly Dictionary<Guid, int> imageIndex = new();
+
+    private ForeignDesign? detailsDesign;
+    private bool openDetailsThisFrame;
 
     private string filterName = string.Empty;
     private readonly HashSet<string> filterTags = new(StringComparer.OrdinalIgnoreCase);
@@ -49,6 +54,8 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
 
         gallery = foreign;
         imageIndex.Clear();
+        detailsDesign = null;
+        openDetailsThisFrame = false;
         filterName = string.Empty;
         filterTags.Clear();
         filterJobs.Clear();
@@ -63,6 +70,7 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
             plugin.ImageStorage.ClearForeign(gallery.OriginKey);
             gallery = null;
         }
+        detailsDesign = null;
     }
 
     public void Dispose()
@@ -91,20 +99,28 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         ImGui.Separator();
         ImGui.Spacing();
 
-        using var gridChild = ImRaii.Child("ForeignGridScroll", Vector2.Zero, false);
-        if (!gridChild.Success)
-            return;
-
-        var visible = GetVisibleDesigns();
-        if (visible.Count == 0)
+        using (var gridChild = ImRaii.Child("ForeignGridScroll", Vector2.Zero, false))
         {
-            ImGui.TextDisabled(gallery.Designs.Count == 0
-                ? "This shared gallery is empty."
-                : "No designs match the current filters.");
-            return;
+            if (gridChild.Success)
+            {
+                var visible = GetVisibleDesigns();
+                if (visible.Count == 0)
+                    ImGui.TextDisabled(gallery.Designs.Count == 0
+                        ? "This shared gallery is empty."
+                        : "No designs match the current filters.");
+                else
+                    DrawGrid(visible);
+            }
         }
 
-        DrawGrid(visible);
+        // Open and draw the details popup at the window root (not inside the scroll child) so its id and
+        // placement stay stable.
+        if (openDetailsThisFrame)
+        {
+            ImGui.OpenPopup(DetailsPopupId);
+            openDetailsThisFrame = false;
+        }
+        DrawDetailsPopup();
     }
 
     private List<ForeignDesign> GetVisibleDesigns()
@@ -310,27 +326,10 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         var canPrev = imgIdx > 0;
         var canNext = imgIdx < images.Count - 1;
 
-        var arrowZone = Math.Min(28f * ImGuiHelpers.GlobalScale, Math.Min(thumbWidth, thumbHeight) * 0.32f);
-        var arrowMargin = 4f * ImGuiHelpers.GlobalScale;
-        var leftMin = new Vector2(thumbStart.X + arrowMargin, thumbStart.Y + (thumbHeight - arrowZone) * 0.5f);
-        var leftMax = new Vector2(leftMin.X + arrowZone, leftMin.Y + arrowZone);
-        var rightMax = new Vector2(thumbStart.X + thumbWidth - arrowMargin, thumbStart.Y + (thumbHeight + arrowZone) * 0.5f);
-        var rightMin = new Vector2(rightMax.X - arrowZone, rightMax.Y - arrowZone);
-
-        var mouse = ImGui.GetIO().MousePos;
-        var overLeft = imageHovered && hasArrows && canPrev
-                       && mouse.X >= leftMin.X && mouse.X <= leftMax.X
-                       && mouse.Y >= leftMin.Y && mouse.Y <= leftMax.Y;
-        var overRight = imageHovered && hasArrows && canNext
-                        && mouse.X >= rightMin.X && mouse.X <= rightMax.X
-                        && mouse.Y >= rightMin.Y && mouse.Y <= rightMax.Y;
-
-        if (imageHovered && hasArrows)
-        {
-            var dl = ImGui.GetWindowDrawList();
-            if (canPrev) GalleryDraw.DrawChevron(dl, leftMin, leftMax, isLeft: true, hovered: overLeft);
-            if (canNext) GalleryDraw.DrawChevron(dl, rightMin, rightMax, isLeft: false, hovered: overRight);
-        }
+        var arrows = GalleryDraw.DrawArrows(thumbStart, thumbWidth, thumbHeight,
+            hasArrows, canPrev, canNext, ImGui.GetIO().MousePos, imageHovered);
+        var overLeft = arrows.OverLeft;
+        var overRight = arrows.OverRight;
 
         if (imageHovered)
         {
@@ -339,6 +338,11 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
             {
                 if (overLeft) imageIndex[design.SourceId] = imgIdx - 1;
                 else if (overRight) imageIndex[design.SourceId] = imgIdx + 1;
+                else
+                {
+                    detailsDesign = design;
+                    openDetailsThisFrame = true;
+                }
             }
             if (!overLeft && !overRight)
                 DrawCellTooltip(design);
@@ -394,6 +398,9 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
 
         if (!hasDetails)
             ImGui.TextDisabled("No additional details.");
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("Click to view equipment & mods");
 
         ImGui.EndTooltip();
     }
@@ -466,5 +473,196 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
             }
             ImGui.TextUnformatted(name);
         }
+    }
+
+    // Read-only equipment + mod-association panel for the clicked design, mirroring the local detail view.
+    // All the make-up was baked into the bundle, so nothing here needs Glamourer or Penumbra.
+    private void DrawDetailsPopup()
+    {
+        if (detailsDesign is { } pending)
+        {
+            var viewport = ImGui.GetMainViewport();
+            var width = ComputeDetailsWidth(pending, viewport);
+            var height = Math.Min(480f * ImGuiHelpers.GlobalScale, viewport.WorkSize.Y * 0.85f);
+            ImGui.SetNextWindowSize(new Vector2(width, height), ImGuiCond.Appearing);
+        }
+
+        using var popup = ImRaii.Popup(DetailsPopupId);
+        if (!popup.Success || detailsDesign is not { } d)
+            return;
+
+        ImGui.SetWindowFontScale(UiTheme.HeaderFontScale);
+        DesignDetailView.TextColoredUnformatted(UiTheme.GoldAccent, d.Name);
+        ImGui.SetWindowFontScale(1.0f);
+
+        if (!string.IsNullOrWhiteSpace(d.Description))
+        {
+            ImGui.PushTextWrapPos(0);
+            DesignDetailView.TextColoredUnformatted(ImGui.GetStyle().Colors[(int)ImGuiCol.TextDisabled], d.Description);
+            ImGui.PopTextWrapPos();
+        }
+        ImGui.Separator();
+
+        using var scroll = ImRaii.Child("ForeignDetailsScroll", Vector2.Zero, false);
+        if (!scroll.Success)
+            return;
+
+        DrawForeignEquipment(d);
+        DrawForeignMods(d);
+    }
+
+    // Sizes the popup to its widest row (equipment value + dyes + "affected by" suffix, or a mod name, or
+    // the title), clamped to a minimum and to most of the screen so it never runs off the viewport.
+    private float ComputeDetailsWidth(ForeignDesign d, ImGuiViewportPtr viewport)
+    {
+        var style = ImGui.GetStyle();
+        var scale = ImGuiHelpers.GlobalScale;
+        var lineH = ImGui.GetTextLineHeight();
+        var stainW = style.ItemSpacing.X + lineH;        // one dye swatch plus its leading SameLine spacing
+        var notInDesign = ImGui.CalcTextSize("(not in design)").X;
+
+        var labelWidth = 0f;
+        foreach (var (_, label) in DesignDetailView.SlotDisplay)
+            labelWidth = Math.Max(labelWidth, ImGui.CalcTextSize(label).X);
+        foreach (var (_, label) in DesignDetailView.BonusSlotDisplay)
+            labelWidth = Math.Max(labelWidth, ImGui.CalcTextSize(label).X);
+        labelWidth += 16f * scale;
+
+        var bySlot = new Dictionary<EquipmentSlot, SharedEquipment>();
+        foreach (var e in d.Equipment)
+            bySlot[e.Slot] = e;
+        var byBonus = new Dictionary<string, SharedBonusItem>(StringComparer.Ordinal);
+        foreach (var b in d.BonusItems)
+            byBonus[b.Slot] = b;
+
+        // Title is drawn at the header font scale and is not indented.
+        var content = ImGui.CalcTextSize(d.Name).X * UiTheme.HeaderFontScale;
+
+        foreach (var (slot, _) in DesignDetailView.SlotDisplay)
+        {
+            var w = labelWidth;
+            if (bySlot.TryGetValue(slot, out var entry))
+            {
+                var name = plugin.GameData.ResolveItemName(entry.ItemId);
+                w += ImGui.CalcTextSize(name).X;
+                if (entry.Stain != 0) w += stainW;
+                if (entry.Stain2 != 0) w += stainW;
+                w += AffectedSuffixWidth(entry.Apply, name, d.AffectedItems, style.ItemSpacing.X);
+            }
+            else
+            {
+                w += notInDesign;
+            }
+            content = Math.Max(content, style.IndentSpacing + w);
+        }
+
+        foreach (var (slotKey, _) in DesignDetailView.BonusSlotDisplay)
+        {
+            var w = labelWidth;
+            if (byBonus.TryGetValue(slotKey, out var entry))
+            {
+                var name = plugin.GameData.ResolveBonusItemName(entry.Slot, entry.ItemId);
+                w += ImGui.CalcTextSize(name).X;
+                w += AffectedSuffixWidth(entry.Apply, name, d.AffectedItems, style.ItemSpacing.X);
+            }
+            else
+            {
+                w += notInDesign;
+            }
+            content = Math.Max(content, style.IndentSpacing + w);
+        }
+
+        foreach (var mod in d.Mods)
+        {
+            var name = string.IsNullOrWhiteSpace(mod.Name) ? "(unnamed mod)" : mod.Name;
+            var w = style.IndentSpacing + lineH + style.ItemInnerSpacing.X + ImGui.CalcTextSize(name).X;
+            content = Math.Max(content, w);
+        }
+
+        var desired = content + (style.WindowPadding.X * 2) + style.ScrollbarSize + (8f * scale);
+        var min = 360f * scale;
+        var max = Math.Min(viewport.WorkSize.X * 0.9f, 1100f * scale);
+        return Math.Clamp(desired, min, max);
+    }
+
+    private static float AffectedSuffixWidth(bool applied, string itemName,
+        IReadOnlyDictionary<string, string> affected, float itemSpacingX)
+    {
+        if (!applied || itemName == GameDataService.NothingItemName)
+            return 0f;
+        if (!affected.TryGetValue(itemName, out var modName))
+            return 0f;
+
+        return itemSpacingX
+               + ImGui.CalcTextSize("(Appearance affected by ").X
+               + ImGui.CalcTextSize(modName).X
+               + ImGui.CalcTextSize(")").X;
+    }
+
+    private void DrawForeignEquipment(ForeignDesign d)
+    {
+        ImGui.TextColored(UiTheme.SectionHeader, "Equipment");
+        ImGui.Spacing();
+        ImGui.Indent();
+
+        var bySlot = new Dictionary<EquipmentSlot, SharedEquipment>();
+        foreach (var e in d.Equipment)
+            bySlot[e.Slot] = e;
+
+        var byBonus = new Dictionary<string, SharedBonusItem>(StringComparer.Ordinal);
+        foreach (var b in d.BonusItems)
+            byBonus[b.Slot] = b;
+
+        var labelWidth = 0f;
+        foreach (var (_, label) in DesignDetailView.SlotDisplay)
+            labelWidth = Math.Max(labelWidth, ImGui.CalcTextSize(label).X);
+        foreach (var (_, label) in DesignDetailView.BonusSlotDisplay)
+            labelWidth = Math.Max(labelWidth, ImGui.CalcTextSize(label).X);
+        labelWidth += 16f * ImGuiHelpers.GlobalScale;
+
+        foreach (var (slot, label) in DesignDetailView.SlotDisplay)
+        {
+            bySlot.TryGetValue(slot, out var entry);
+            var itemName = entry == null ? null : plugin.GameData.ResolveItemName(entry.ItemId);
+            DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+                entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, entry?.Apply == true, d.AffectedItems);
+        }
+        foreach (var (slotKey, label) in DesignDetailView.BonusSlotDisplay)
+        {
+            byBonus.TryGetValue(slotKey, out var entry);
+            var itemName = entry == null ? null : plugin.GameData.ResolveBonusItemName(entry.Slot, entry.ItemId);
+            DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+                stain: 0, stain2: 0, applyStain: false, entry?.Apply == true, d.AffectedItems);
+        }
+
+        ImGui.Unindent();
+        ImGui.Spacing();
+    }
+
+    private void DrawForeignMods(ForeignDesign d)
+    {
+        ImGui.Separator();
+        ImGui.Spacing();
+        ImGui.TextColored(UiTheme.SectionHeader, "Mod Associations");
+        ImGui.Spacing();
+        ImGui.Indent();
+
+        if (d.Mods.Count == 0)
+        {
+            ImGui.TextDisabled("No mods associated with this design");
+        }
+        else
+        {
+            foreach (var mod in d.Mods)
+            {
+                DesignDetailView.DrawModStateIcon(mod.State);
+                ImGui.SameLine();
+                DesignDetailView.TextColoredUnformatted(UiTheme.ModLink,
+                    string.IsNullOrWhiteSpace(mod.Name) ? "(unnamed mod)" : mod.Name);
+            }
+        }
+
+        ImGui.Unindent();
+        ImGui.Spacing();
     }
 }

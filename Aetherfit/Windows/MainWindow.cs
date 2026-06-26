@@ -114,7 +114,7 @@ public partial class MainWindow : Window, IDisposable
             var lineBot   = splitterScreenPos.Y + bodyHeight;
             var lineColor = (splitHovered || splitActive)
                 ? ImGui.ColorConvertFloat4ToU32(Ui.UiTheme.GoldAccent)
-                : ImGui.ColorConvertFloat4ToU32(new Vector4(0.45f, 0.45f, 0.50f, 0.90f));
+                : ImGui.ColorConvertFloat4ToU32(Ui.UiTheme.SplitterIdle);
             var lineThick = splitActive ? 2.5f : (splitHovered ? 2.0f : 1.5f);
             ImGui.GetWindowDrawList().AddLine(
                 new Vector2(lineX, lineTop), new Vector2(lineX, lineBot), lineColor, lineThick);

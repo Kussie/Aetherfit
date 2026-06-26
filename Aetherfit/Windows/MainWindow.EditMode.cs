@@ -14,7 +14,7 @@ namespace Aetherfit.Windows;
 public partial class MainWindow
 {
     // Faint grey for the tree indent guide lines, mirroring Glamourer's design list.
-    private static readonly Vector4 TreeGuideColor = new(0.5f, 0.5f, 0.5f, 0.6f);
+    private static readonly Vector4 TreeGuideColor = UiTheme.TreeGuide;
     // Leaf dot radius as a fraction of the text line height (the bullet glyphs were either too big or too small).
     private const float LeafDotRadius = 0.16f;
 
@@ -293,11 +293,11 @@ public partial class MainWindow
                 var rowTopY = ImGui.GetCursorPosY();
                 ImGui.SetWindowFontScale(1.5f);
                 ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1f, 1f, 1f, 0.08f));
-                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1f, 1f, 1f, 0.15f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered);
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive);
                 ImGui.PushStyleColor(ImGuiCol.Text, isFavourite
-                    ? new Vector4(1f, 0.85f, 0.1f, 1f)
-                    : new Vector4(0.45f, 0.45f, 0.48f, 1f));
+                    ? UiTheme.FavouriteStar
+                    : UiTheme.FavouriteButtonOff);
                 if (ImGui.Button(isFavourite ? "★##favStar" : "☆##favStar"))
                 {
                     if (isFavourite)

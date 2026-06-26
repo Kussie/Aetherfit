@@ -90,7 +90,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
         if (!string.IsNullOrEmpty(errorMessage))
         {
             ImGui.Spacing();
-            ImGui.TextColored(new Vector4(1f, 0.5f, 0.5f, 1f), errorMessage);
+            ImGui.TextColored(UiTheme.ErrorText, errorMessage);
         }
     }
 

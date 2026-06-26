@@ -31,6 +31,7 @@ public sealed class Plugin : IDalamudPlugin
     public GlamourerService Glamourer { get; init; }
     public PenumbraService Penumbra { get; init; }
     public GameDataService GameData { get; init; }
+    public DesignAttributionService Attribution { get; init; }
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
@@ -60,9 +61,10 @@ public sealed class Plugin : IDalamudPlugin
         Glamourer = new GlamourerService();
         Penumbra = new PenumbraService();
         GameData = new GameDataService();
+        Attribution = new DesignAttributionService(GameData, Penumbra);
         ImageStorage = new ImageStorageService(Configuration);
         Screenshot = new ScreenshotService();
-        GallerySharing = new GallerySharingService(Configuration, ImageStorage);
+        GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
 
         // Clean up any imported-gallery images a previous session left behind (e.g. if we crashed before tidying up).
         ImageStorage.ClearAllForeign();

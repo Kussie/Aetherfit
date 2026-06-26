@@ -33,11 +33,16 @@ public sealed class GallerySharingService
 
     private readonly Configuration configuration;
     private readonly ImageStorageService imageStorage;
+    private readonly GameDataService gameData;
+    private readonly DesignAttributionService attribution;
 
-    public GallerySharingService(Configuration configuration, ImageStorageService imageStorage)
+    public GallerySharingService(Configuration configuration, ImageStorageService imageStorage,
+        GameDataService gameData, DesignAttributionService attribution)
     {
         this.configuration = configuration;
         this.imageStorage = imageStorage;
+        this.gameData = gameData;
+        this.attribution = attribution;
     }
 
     public bool ExportToFile(string sharerLabel, string path)
@@ -57,6 +62,7 @@ public sealed class GallerySharingService
             var imageEntries = new List<(string Entry, byte[] Bytes)>();
             foreach (var (id, outfit) in configuration.CachedOutfits)
             {
+                var attributed = attribution.Build(outfit);
                 var design = new SharedDesign
                 {
                     SourceId = id,
@@ -64,6 +70,27 @@ public sealed class GallerySharingService
                     Description = outfit.Description,
                     Tags = new List<string>(outfit.Tags),
                     Jobs = new List<uint>(configuration.GetJobAssociations(id)),
+                    Equipment = outfit.Equipment.Select(e => new SharedEquipment
+                    {
+                        Slot = e.Slot,
+                        ItemId = e.ItemId,
+                        Stain = e.Stain,
+                        Stain2 = e.Stain2,
+                        Apply = e.Apply,
+                        ApplyStain = e.ApplyStain,
+                    }).ToList(),
+                    BonusItems = outfit.BonusItems.Select(b => new SharedBonusItem
+                    {
+                        Slot = b.Slot,
+                        ItemId = b.ItemId,
+                        Apply = b.Apply,
+                    }).ToList(),
+                    Mods = outfit.Mods.Select(m => new SharedMod
+                    {
+                        Name = DesignAttributionService.ModDisplayName(m),
+                        State = m.State,
+                    }).ToList(),
+                    AffectedItems = new Dictionary<string, string>(attributed.Items),
                 };
 
                 // Budget the design to MaxImagesPerDesign images total, the cover counting as one.
@@ -183,6 +210,12 @@ public sealed class GallerySharingService
                     Jobs = design.Jobs ?? new(),
                     CoverPath = coverPath,
                     AdditionalPaths = additionalPaths,
+                    // Drop null elements/values a crafted bundle could deserialize into, so the read-only
+                    // viewer can iterate these without null checks (a null entry would otherwise crash it).
+                    Equipment = (design.Equipment ?? new()).OfType<SharedEquipment>().ToList(),
+                    BonusItems = (design.BonusItems ?? new()).OfType<SharedBonusItem>().ToList(),
+                    Mods = (design.Mods ?? new()).OfType<SharedMod>().ToList(),
+                    AffectedItems = SanitizeAffectedItems(design.AffectedItems),
                 });
             }
 
@@ -196,9 +229,29 @@ public sealed class GallerySharingService
         }
     }
 
-    private static SharedGallery Deserialize(string json) =>
-        JsonConvert.DeserializeObject<SharedGallery>(json)
-        ?? throw new InvalidDataException("The file did not contain a valid gallery.");
+    // Keep only entries whose key and value are both present - a bundle could carry null values, which the
+    // viewer would otherwise hand straight to ImGui.
+    private static Dictionary<string, string> SanitizeAffectedItems(Dictionary<string, string>? src)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (src == null)
+            return result;
+        foreach (var (key, value) in src)
+            if (key is not null && value is not null)
+                result[key] = value;
+        return result;
+    }
+
+    private static SharedGallery Deserialize(string json)
+    {
+        // Strip a leading UTF-8 BOM: StreamWriter(Encoding.UTF8) writes one into the manifest, and decoding
+        // the bytes with Encoding.UTF8.GetString keeps it, which Json.NET then rejects.
+        if (json.Length > 0 && json[0] == '﻿')
+            json = json[1..];
+
+        return JsonConvert.DeserializeObject<SharedGallery>(json)
+               ?? throw new InvalidDataException("The file did not contain a valid gallery.");
+    }
 
     private static void WarnIfNewer(SharedGallery snapshot)
     {
@@ -229,6 +282,13 @@ public sealed class GallerySharingService
             }
             else if (!string.IsNullOrEmpty(image.Data))
             {
+                // base64 decodes to roughly length * 3/4 bytes; reject before decoding so a giant blob
+                // can't allocate a huge array only to be thrown away by the size check below.
+                if ((long)image.Data.Length / 4 * 3 > MaxImageBytes)
+                {
+                    Plugin.Log.Warning("Skipped oversized inline shared image");
+                    return null;
+                }
                 bytes = Convert.FromBase64String(image.Data);
             }
 
@@ -347,6 +407,8 @@ public sealed class GallerySharingService
             using var gzip = new GZipStream(input, CompressionMode.Decompress);
             return Encoding.UTF8.GetString(ReadBounded(gzip, MaxManifestBytes));
         }
+        if (raw.Length > MaxManifestBytes)
+            throw new InvalidDataException("Gallery manifest is too large.");
         return Encoding.UTF8.GetString(raw);
     }
 }
