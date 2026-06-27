@@ -1,7 +1,7 @@
 {
   "Author": "Kussie ",
   "Name": "Aetherfit",
-  "Punchline": "An alternative simple frontend for Glamourer",
+  "Punchline": "An alternative simple frontend for Glamourer, because glamour is the real endgame.",
   "Description": "A custom simple frontend for applying designs from Glamourer. Lets you browse and apply designs, and optionally upload your own images to more easily be able to decide on which design to wear.",
   "ApplicableVersion": "any",
   "RepoUrl": "https://github.com/Kussie/Aetherfit",
@@ -12,6 +12,6 @@
     "outfits",
     "glam",
     "fashion"
-  ], 
+  ],
   "DalamudApiLevel": 15
 }

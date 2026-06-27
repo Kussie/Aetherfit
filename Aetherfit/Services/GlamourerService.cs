@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Glamourer.Api.Enums;
 using Glamourer.Api.IpcSubscribers;
 using Newtonsoft.Json.Linq;
 
@@ -8,6 +9,11 @@ namespace Aetherfit.Services;
 
 public sealed class GlamourerService
 {
+    // Locking with our own key keeps the look pinned in Glamourer's state across redraws and automation, so it
+    // survives teleports and zone changes. Reverting passes the same key to release the lock.
+    private const uint LockKey = 0x0AE7EF17;
+    private const ApplyFlag PersistentApply = ApplyFlag.Lock | ApplyFlag.Equipment | ApplyFlag.Customization;
+
     private readonly GetDesignListExtended getDesignListExtended;
     private readonly GetDesignJObject getDesignJObject;
     private readonly ApplyDesign applyDesign;
@@ -67,7 +73,7 @@ public sealed class GlamourerService
     {
         try
         {
-            var result = applyDesign.Invoke(id, 0, 0);
+            var result = applyDesign.Invoke(id, 0, LockKey, PersistentApply);
             SoundService.PlayApply();
             var suffix = layerName == null ? "" : $" (+ layer \"{layerName}\")";
             Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"{suffix}: {result}");
@@ -86,7 +92,7 @@ public sealed class GlamourerService
     {
         try
         {
-            var result = applyDesign.Invoke(id, 0, 0);
+            var result = applyDesign.Invoke(id, 0, LockKey, PersistentApply);
             Plugin.Log.Info("Applied layer design ({Id}): {Result}", id, result);
         }
         catch (Exception ex)
@@ -114,7 +120,7 @@ public sealed class GlamourerService
     {
         try
         {
-            var result = revertState.Invoke(0);
+            var result = revertState.Invoke(0, LockKey);
             SoundService.PlayRevert();
             Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Reverted appearance to game state: {result}");
             Plugin.Log.Info("Reverted appearance to game state: {Result}", result);
