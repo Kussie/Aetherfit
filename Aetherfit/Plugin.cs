@@ -179,6 +179,9 @@ public sealed class Plugin : IDalamudPlugin
             if (!PlayerState.IsLoaded)
                 return;
 
+            // The new character's race/gender feeds mod attribution, so drop anything cached for the last one.
+            MainWindow.InvalidateAttributionCache();
+
             var settings = Configuration.GetOrCreateLoginSettings(PlayerState.ContentId);
             if (settings.LoginAction == LoginAction.None)
                 return;

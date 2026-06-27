@@ -28,8 +28,19 @@ public partial class MainWindow
     private bool equipmentPanelOpen = true;
     private bool customizationsPanelOpen = true;
     private bool modsPanelOpen = true;
+    private bool designLinksPanelOpen = true;
     private bool coverImagePanelOpen = true;
     private bool additionalImagesPanelOpen = true;
+
+    // The application aspects a design link can toggle, in Glamourer's flag order. Mirrors ApplicationType.
+    private static readonly (DesignLinkApplication Flag, string Label)[] LinkApplicationFlags =
+    {
+        (DesignLinkApplication.Armor, "Armor"),
+        (DesignLinkApplication.Customizations, "Customizations"),
+        (DesignLinkApplication.Weapons, "Weapons"),
+        (DesignLinkApplication.GearCustomization, "Dyes/Crests"),
+        (DesignLinkApplication.Accessories, "Accessories"),
+    };
 
     private void DrawEquipmentPanel(Guid id, CachedOutfit details)
     {
@@ -199,6 +210,10 @@ public partial class MainWindow
         return map;
     }
 
+    // Mod attribution depends on the current character's race/gender (for hairstyles a design doesn't
+    // pin), so the cached results go stale when the player changes - clear them on login.
+    public void InvalidateAttributionCache() => affectedByCache.Clear();
+
     private AffectedBy GetAffectedBy(Guid id, CachedOutfit details)
     {
         if (affectedByCache.TryGetValue(id, out var cached))
@@ -286,6 +301,91 @@ public partial class MainWindow
             null  => (FontAwesomeIcon.Circle, UnsetColor),
         };
         DesignDetailView.DrawFontAwesome(icon, color);
+    }
+
+    private void DrawDesignLinksPanel(CachedOutfit details)
+    {
+        // Only Glamourer designs with links have anything to show, so skip the section entirely otherwise.
+        if (details.Links.Count == 0)
+            return;
+
+        if (!DrawCollapsibleSubheader("Design Links", ref designLinksPanelOpen))
+            return;
+
+        ImGui.Indent();
+        foreach (var link in details.Links)
+            DrawDesignLinkRow(link);
+        ImGui.Unindent();
+        ImGui.Spacing();
+    }
+
+    private void DrawDesignLinkRow(CachedDesignLink link)
+    {
+        var name = ResolveLinkedDesignName(link.DesignId);
+
+        DesignDetailView.TextColoredUnformatted(ModLinkColor, name);
+        var hovered = ImGui.IsItemHovered();
+
+        ImGui.SameLine();
+        ImGui.TextDisabled(link.IsBefore ? "(before)" : "(after)");
+
+        if (hovered)
+        {
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            ImGui.SetTooltip("Shift + left-click to open in Aetherfit\nShift + right-click to open in Glamourer");
+
+            if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+            {
+                selectedDesign = link.DesignId;
+                coverMode = false;
+            }
+            if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                plugin.Glamourer.OpenInGlamourer(link.DesignId, name);
+        }
+
+        ImGui.Indent();
+        DrawLinkApplicationToggles(link.LinkType);
+
+        var condition = DescribeLinkCondition(link);
+        if (condition != null)
+            ImGui.TextDisabled(condition);
+        ImGui.Unindent();
+        ImGui.Spacing();
+    }
+
+    private static void DrawLinkApplicationToggles(int linkType)
+    {
+        var type = (DesignLinkApplication)linkType;
+        for (var i = 0; i < LinkApplicationFlags.Length; i++)
+        {
+            var (flag, label) = LinkApplicationFlags[i];
+            // Three per line, matching the equipment metadata toggle row so it doesn't run off a narrow pane.
+            if (i % 3 != 0)
+                ImGui.SameLine(0, 24f * ImGuiHelpers.GlobalScale);
+
+            var on = (type & flag) != 0;
+            DrawBoolToggle(label, on,
+                $"{label}: applied by this link",
+                $"{label}: not applied by this link");
+        }
+    }
+
+    private string ResolveLinkedDesignName(Guid id)
+    {
+        if (plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit) && !string.IsNullOrWhiteSpace(outfit.Name))
+            return outfit.Name;
+        return "(unknown design)";
+    }
+
+    // A link's job/gearset gate, mirroring Glamourer's precedence: a set gearset wins, else a job category,
+    // else no restriction (applies to everything, so we show nothing).
+    private string? DescribeLinkCondition(CachedDesignLink link)
+    {
+        if (link.Gearset >= 0)
+            return $"Restricted to gearset {link.Gearset}";
+
+        var jobs = plugin.GameData.ResolveJobGroupName(link.JobGroup);
+        return jobs == null ? null : $"Restricted to: {jobs}";
     }
 
     private void DrawModsPanel(CachedOutfit details)

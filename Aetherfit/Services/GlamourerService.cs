@@ -137,6 +137,9 @@ public sealed class GlamourerService
             Customizations = ParseCustomizations(customize),
             CustomizeClan = (int)ReadUInt64(customize?["Clan"]?["Value"]),
             CustomizeGender = (int)ReadUInt64(customize?["Gender"]?["Value"]),
+            CustomizeClanApplied = ReadBool(customize?["Clan"]?["Apply"]),
+            CustomizeGenderApplied = ReadBool(customize?["Gender"]?["Apply"]),
+            Links = ParseLinks(j["Links"]),
             HatVisible = ParseMetaToggle(equipment?["Hat"], "Show"),
             WeaponVisible = ParseMetaToggle(equipment?["Weapon"], "Show"),
             VisorToggled = ParseMetaToggle(equipment?["Visor"], "IsToggled"),
@@ -336,6 +339,39 @@ public sealed class GlamourerService
         return result;
     }
 
+    private static List<CachedDesignLink> ParseLinks(JToken? token)
+    {
+        var result = new List<CachedDesignLink>();
+        if (token is not JObject obj)
+            return result;
+
+        AddLinks(obj["Before"], isBefore: true, result);
+        AddLinks(obj["After"], isBefore: false, result);
+        return result;
+    }
+
+    private static void AddLinks(JToken? token, bool isBefore, List<CachedDesignLink> result)
+    {
+        if (token is not JArray array)
+            return;
+
+        foreach (var entry in array.OfType<JObject>())
+        {
+            if (!Guid.TryParse(ReadString(entry["Design"]), out var designId))
+                continue;
+
+            var conditions = entry["Conditions"] as JObject;
+            result.Add(new CachedDesignLink
+            {
+                DesignId = designId,
+                LinkType = (int)ReadUInt64(entry["Type"]),
+                Gearset = conditions?["Gearset"] == null ? -1 : ReadInt32(conditions["Gearset"], -1),
+                JobGroup = (int)ReadUInt64(conditions?["JobGroup"]),
+                IsBefore = isBefore,
+            });
+        }
+    }
+
     private static Dictionary<string, string> ParseModSettings(JToken? token)
     {
         var result = new Dictionary<string, string>();
@@ -378,6 +414,22 @@ public sealed class GlamourerService
             uint u => u,
             string s when ulong.TryParse(s, out var parsed) => parsed,
             _ => 0,
+        };
+    }
+
+    // A signed reader for fields that legitimately go negative (e.g. a gearset index of -1 = "any").
+    private static int ReadInt32(JToken? token, int fallback)
+    {
+        if (token is not JValue v || v.Value is null)
+            return fallback;
+        return v.Value switch
+        {
+            long l => (int)l,
+            int i => i,
+            uint u => (int)u,
+            ulong u => (int)u,
+            string s when int.TryParse(s, out var parsed) => parsed,
+            _ => fallback,
         };
     }
 

@@ -32,6 +32,7 @@ public sealed class GameDataService
     private readonly ExcelSheet<Stain>? stainSheet;
     private readonly ExcelSheet<Glasses>? glassesSheet;
     private readonly ExcelSheet<ClassJob>? classJobSheet;
+    private readonly ExcelSheet<ClassJobCategory>? classJobCategorySheet;
 
     private readonly ConcurrentDictionary<ulong, string> itemNameCache = new();
     private readonly ConcurrentDictionary<byte, (string Name, uint Color)> stainCache = new();
@@ -69,6 +70,19 @@ public sealed class GameDataService
         stainSheet = TryLoadSheet<Stain>();
         glassesSheet = TryLoadSheet<Glasses>();
         classJobSheet = TryLoadSheet<ClassJob>();
+        classJobCategorySheet = TryLoadSheet<ClassJobCategory>();
+    }
+
+    // The name of a Glamourer design-link job condition (a ClassJobCategory, e.g. "All Classes" or "Healer").
+    // Returns null for "any job" (RowId 0) or when the category has no name / can't be resolved.
+    public string? ResolveJobGroupName(int jobGroupId)
+    {
+        if (jobGroupId <= 0 || classJobCategorySheet == null)
+            return null;
+        if (!classJobCategorySheet.TryGetRow((uint)jobGroupId, out var row))
+            return null;
+        var name = row.Name.ExtractText();
+        return string.IsNullOrWhiteSpace(name) ? null : name;
     }
 
     private static ExcelSheet<T>? TryLoadSheet<T>() where T : struct, IExcelRow<T>

@@ -77,16 +77,23 @@ public sealed class DesignAttributionService
         return new Result(map, hairstyleMod);
     }
 
-    // Penumbra names a hair changed-item "Customization: {ModelRace} {Gender} Hair {modelId}" (see
-    // Penumbra.GameData ObjectIdentification). We rebuild the "{ModelRace} {Gender} Hair {value}" middle
-    // from the design's clan/gender + hairstyle value; the hairstyle customize value is the hair model id.
-    // Returns null when we can't resolve the race/gender (then we just don't attribute the hairstyle).
     private static string? HairChangedItemFragment(CachedOutfit details)
     {
-        var race = ClanToModelRace(details.CustomizeClan);
-        var gender = details.CustomizeGender switch { 0 => "Male", 1 => "Female", _ => null };
+        var clan = details.CustomizeClanApplied ? details.CustomizeClan : CurrentPlayerClan();
+        var genderValue = details.CustomizeGenderApplied ? details.CustomizeGender : CurrentPlayerGender();
+
+        var race = clan is { } c ? ClanToModelRace(c) : null;
+        var gender = genderValue switch { 0 => "Male", 1 => "Female", _ => null };
         return race == null || gender == null ? null : $"{race} {gender} Hair ";
     }
+
+    // The current character's clan (Tribe RowId, 1-16) and gender (0 male / 1 female), or null when not logged in.
+    // The Tribe sheet RowIds line up with Glamourer's clan numbering, and Sex.Male/Female are 0/1.
+    private static int? CurrentPlayerClan()
+        => Plugin.PlayerState.IsLoaded ? (int)Plugin.PlayerState.Tribe.RowId : null;
+
+    private static int? CurrentPlayerGender()
+        => Plugin.PlayerState.IsLoaded ? (int)Plugin.PlayerState.Sex : null;
 
     // True when a Penumbra changed-item key is the design's hairstyle: the right race/gender/Hair fragment
     // and a trailing model id equal to the hairstyle value (parsed as an int so zero-padding doesn't matter).

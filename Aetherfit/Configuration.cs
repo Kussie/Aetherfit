@@ -115,11 +115,17 @@ public class CachedOutfit
     public List<CachedBonusItem> BonusItems { get; set; } = new();
     public List<CachedCustomization> Customizations { get; set; } = new();
     public List<CachedMod> Mods { get; set; } = new();
+    public List<CachedDesignLink> Links { get; set; } = new();
 
     // The design's clan (subrace, 1-16) and gender (0 male / 1 female). We keep these even when the
     // design doesn't apply them, since the skin/hair colour palettes in human.cmp are picked by clan + gender.
     public int CustomizeClan { get; set; }
     public int CustomizeGender { get; set; }
+
+    // Whether the design actually applies its clan/gender. When it doesn't, the appearance takes the wearing
+    // character's race/gender instead - which matters for attributing e.g. hairstyles to a mod.
+    public bool CustomizeClanApplied { get; set; }
+    public bool CustomizeGenderApplied { get; set; }
 
     // null = the design does not apply this toggle (grey circle). true/false = the design forces the toggle on/off.
     public bool? HatVisible { get; set; }
@@ -198,4 +204,30 @@ public class CachedMod
     public ModState State { get; set; }
     public int Priority { get; set; }
     public Dictionary<string, string> Settings { get; set; } = new();
+}
+
+// A Glamourer design link: another design applied before/after this one, gated by a job/gearset condition,
+// and limited to a subset of application aspects (the LinkType flags).
+[Serializable]
+public class CachedDesignLink
+{
+    public Guid DesignId { get; set; }
+    // Glamourer ApplicationType flags: Armor=1, Customizations=2, Weapons=4, Dyes/Crests=8, Accessories=16.
+    public int LinkType { get; set; }
+    // Gearset index condition, or -1 for "any".
+    public int Gearset { get; set; } = -1;
+    // ClassJobCategory RowId condition, or 0 for "any job".
+    public int JobGroup { get; set; }
+    // true = applied before this design, false = after. Purely informational for display.
+    public bool IsBefore { get; set; }
+}
+
+[Flags]
+public enum DesignLinkApplication
+{
+    Armor = 1,
+    Customizations = 2,
+    Weapons = 4,
+    GearCustomization = 8,
+    Accessories = 16,
 }

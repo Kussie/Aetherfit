@@ -416,6 +416,7 @@ public partial class MainWindow
 
                 DrawEquipmentPanel(id, details);
                 DrawCustomizationsPanel(id, details);
+                DrawDesignLinksPanel(details);
                 DrawModsPanel(details);
             }
         }
