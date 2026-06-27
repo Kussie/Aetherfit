@@ -49,6 +49,10 @@ public class Configuration : IPluginConfiguration
     // because CachedOutfits is wholly replaced from Glamourer metadata on every Refresh.
     public Dictionary<Guid, List<uint>> DesignJobAssociations { get; set; } = new();
 
+    // Random layer designs: applying a base design also applies one of its layers at random, filtered to the
+    // wearer's current role. Keyed by base design id.
+    public Dictionary<Guid, List<DesignLayer>> DesignLayers { get; set; } = new();
+
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
     
@@ -77,6 +81,17 @@ public class Configuration : IPluginConfiguration
             DesignJobAssociations.Remove(id);
         else
             DesignJobAssociations[id] = jobs;
+    }
+
+    public List<DesignLayer> GetLayers(Guid id)
+        => DesignLayers.TryGetValue(id, out var layers) ? layers : new();
+
+    public void SetLayers(Guid id, List<DesignLayer> layers)
+    {
+        if (layers.Count == 0)
+            DesignLayers.Remove(id);
+        else
+            DesignLayers[id] = layers;
     }
 
     public CharacterLoginSettings GetOrCreateLoginSettings(ulong contentId)
@@ -230,4 +245,14 @@ public enum DesignLinkApplication
     Weapons = 4,
     GearCustomization = 8,
     Accessories = 16,
+}
+
+// A random layer design: when the base design is applied, one matching layer is picked at random and applied
+// on top. AllJobs applies regardless of the wearer's job; otherwise it only applies for the listed jobs.
+[Serializable]
+public class DesignLayer
+{
+    public Guid DesignId { get; set; }
+    public bool AllJobs { get; set; } = true;
+    public List<uint> Jobs { get; set; } = new();
 }

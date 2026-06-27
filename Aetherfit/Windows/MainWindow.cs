@@ -170,6 +170,7 @@ public partial class MainWindow : Window, IDisposable
 
         plugin.Configuration.FavouriteDesigns.RemoveWhere(id => !validIds.Contains(id));
         plugin.Configuration.HiddenDesigns.RemoveWhere(id => !validIds.Contains(id));
+        CleanupStaleLayers(validIds);
 
         if (selectedDesign is { } sid && !validIds.Contains(sid))
             selectedDesign = null;
@@ -380,10 +381,35 @@ public partial class MainWindow : Window, IDisposable
 
     public void RevertAppearance() => plugin.Glamourer.Revert();
 
+    private bool applyingLayer;
+
     private void ApplyDesignById(Guid id)
     {
         var name = plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.Name : id.ToString();
-        plugin.Glamourer.Apply(id, name);
+        var layer = applyingLayer ? null : PickRandomLayer(id);
+        plugin.Glamourer.Apply(id, name, layer is { } pick ? ResolveLinkedDesignName(pick) : null);
+
+        if (layer is { } layerId)
+        {
+            applyingLayer = true;
+            try { plugin.Glamourer.ApplyLayer(layerId); }
+            finally { applyingLayer = false; }
+        }
+    }
+
+    private Guid? PickRandomLayer(Guid baseId)
+    {
+        var layers = plugin.Configuration.GetLayers(baseId);
+        if (layers.Count == 0 || !Plugin.PlayerState.IsLoaded)
+            return null;
+
+        var jobId = Plugin.PlayerState.ClassJob.RowId;
+        var candidates = layers
+            .Where(l => (l.AllJobs || l.Jobs.Contains(jobId))
+                        && plugin.Configuration.CachedOutfits.ContainsKey(l.DesignId))
+            .ToList();
+
+        return candidates.Count == 0 ? null : candidates[Random.Shared.Next(candidates.Count)].DesignId;
     }
 
     public string? ApplyRandomDesign()

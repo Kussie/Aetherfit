@@ -63,19 +63,36 @@ public sealed class GlamourerService
         }
     }
 
-    public void Apply(Guid id, string designName)
+    public void Apply(Guid id, string designName, string? layerName = null)
     {
         try
         {
             var result = applyDesign.Invoke(id, 0, 0);
             SoundService.PlayApply();
-            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\": {result}");
+            var suffix = layerName == null ? "" : $" (+ layer \"{layerName}\")";
+            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"{suffix}: {result}");
             Plugin.Log.Info("Applied design {Name} ({Id}): {Result}", designName, id, result);
         }
         catch (Exception ex)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Apply failed: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to apply Glamourer design {Id}", id);
+        }
+    }
+
+    // Applies a random layer design on top of an already-applied base, without the chat line or sound - the
+    // base's apply already announced it.
+    public void ApplyLayer(Guid id)
+    {
+        try
+        {
+            var result = applyDesign.Invoke(id, 0, 0);
+            Plugin.Log.Info("Applied layer design ({Id}): {Result}", id, result);
+        }
+        catch (Exception ex)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Layer apply failed: {ex.Message}");
+            Plugin.Log.Warning(ex, "Failed to apply Glamourer layer design {Id}", id);
         }
     }
 
