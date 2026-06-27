@@ -414,7 +414,9 @@ public partial class MainWindow : Window, IDisposable
 
     public string? ApplyRandomDesign()
     {
-        var ids = plugin.Configuration.CachedOutfits.Keys.ToList();
+        var ids = plugin.Configuration.CachedOutfits.Keys
+            .Where(id => !plugin.Configuration.HiddenDesigns.Contains(id))
+            .ToList();
         if (ids.Count == 0)
         {
             var msg = "No cached designs — open Aetherfit and click Refresh first.";
@@ -438,7 +440,8 @@ public partial class MainWindow : Window, IDisposable
         }
 
         var matching = plugin.Configuration.CachedOutfits
-            .Where(kv => tags.All(t => kv.Value.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)))
+            .Where(kv => !plugin.Configuration.HiddenDesigns.Contains(kv.Key)
+                         && tags.All(t => kv.Value.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)))
             .Select(kv => kv.Key)
             .ToList();
 
@@ -466,7 +469,9 @@ public partial class MainWindow : Window, IDisposable
 
         var jobId = Plugin.PlayerState.ClassJob.RowId;
         var matching = plugin.Configuration.DesignJobAssociations
-            .Where(kv => kv.Value.Contains(jobId) && plugin.Configuration.CachedOutfits.ContainsKey(kv.Key))
+            .Where(kv => kv.Value.Contains(jobId)
+                         && plugin.Configuration.CachedOutfits.ContainsKey(kv.Key)
+                         && !plugin.Configuration.HiddenDesigns.Contains(kv.Key))
             .Select(kv => kv.Key)
             .ToList();
 
