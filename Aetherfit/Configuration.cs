@@ -41,6 +41,10 @@ public class Configuration : IPluginConfiguration
 
     public HashSet<Guid> FavouriteDesigns { get; set; } = new();
 
+    // Designs the user has hidden: they are kept out of the gallery view and excluded from exports,
+    // but remain visible in the design tree so they can be unhidden from the detail header.
+    public HashSet<Guid> HiddenDesigns { get; set; } = new();
+
     // User-authored associations between a design and one or more ClassJob RowIds. Stored here (not on CachedOutfit)
     // because CachedOutfits is wholly replaced from Glamourer metadata on every Refresh.
     public Dictionary<Guid, List<uint>> DesignJobAssociations { get; set; } = new();

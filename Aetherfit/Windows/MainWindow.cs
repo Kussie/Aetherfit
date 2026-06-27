@@ -169,6 +169,7 @@ public partial class MainWindow : Window, IDisposable
             plugin.Configuration.DesignJobAssociations.Remove(stale);
 
         plugin.Configuration.FavouriteDesigns.RemoveWhere(id => !validIds.Contains(id));
+        plugin.Configuration.HiddenDesigns.RemoveWhere(id => !validIds.Contains(id));
 
         if (selectedDesign is { } sid && !validIds.Contains(sid))
             selectedDesign = null;

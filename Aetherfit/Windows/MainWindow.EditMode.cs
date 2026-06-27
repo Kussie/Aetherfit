@@ -195,6 +195,12 @@ public partial class MainWindow
             ApplyDesignById(design.Id);
         }
 
+        if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
+        {
+            selectedDesign = design.Id;
+            plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
+        }
+
         if (hasColor)
             ImGui.PopStyleColor();
 
@@ -223,6 +229,7 @@ public partial class MainWindow
         if (imagePath != null)
             DrawImageScaled(imagePath, TooltipImageMax * ImGuiHelpers.GlobalScale);
         ImGui.TextDisabled("Double-click to apply");
+        ImGui.TextDisabled("Shift + right-click to open in Glamourer");
         ImGui.EndTooltip();
     }
 
@@ -311,6 +318,42 @@ public partial class MainWindow
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
                 var rowHeight = ImGui.GetItemRectSize().Y;
+
+                // Hidden toggle, sitting right next to the favourite star. The filled eye glyph reads larger than the
+                // thin star outline at the same scale, so render it at 1.0. Give the button the star's full row height
+                // and let ImGui vertically centre the glyph within it - that lines the eye up with the star exactly,
+                // with no font-metric guesswork.
+                var isHidden = plugin.Configuration.HiddenDesigns.Contains(id);
+                ImGui.SameLine();
+                ImGui.SetWindowFontScale(1.0f);
+                ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered);
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive);
+                ImGui.PushStyleColor(ImGuiCol.Text, isHidden ? UiTheme.HiddenEyeOn : UiTheme.HiddenButtonOff);
+                bool eyeClicked;
+                using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+                {
+                    var eyeGlyph = (isHidden ? FontAwesomeIcon.EyeSlash : FontAwesomeIcon.Eye).ToIconString();
+                    var eyeWidth = ImGui.CalcTextSize(eyeGlyph).X + (ImGui.GetStyle().FramePadding.X * 2);
+                    // The eye glyph's visual centre sits slightly above its line-box centre, so frame-centring leaves
+                    // it a touch high - nudge the button down a hair to bring it level with the star.
+                    ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (2.25f * ImGuiHelpers.GlobalScale));
+                    eyeClicked = ImGui.Button(eyeGlyph + "##hideEye", new Vector2(eyeWidth, rowHeight));
+                }
+                if (eyeClicked)
+                {
+                    if (isHidden)
+                        plugin.Configuration.HiddenDesigns.Remove(id);
+                    else
+                        plugin.Configuration.HiddenDesigns.Add(id);
+                    plugin.Configuration.Save();
+                    hiddenVersion++;
+                }
+                ImGui.PopStyleColor(4);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(isHidden
+                        ? "Hidden — click to show in the gallery and exports"
+                        : "Click to hide from the gallery and exports");
 
                 ImGui.SameLine();
                 ImGui.SetWindowFontScale(1.5f);

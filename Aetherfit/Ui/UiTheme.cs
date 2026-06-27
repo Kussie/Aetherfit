@@ -37,6 +37,12 @@ internal static class UiTheme
     public static readonly Vector4 FavouriteStarOff = new(0.7f, 0.7f, 0.72f, 0.9f);
     public static readonly Vector4 FavouriteButtonOff = new(0.45f, 0.45f, 0.48f, 1.0f);
 
+    // Hidden eye: muted red when a design is hidden, otherwise the same greys as the favourite star -
+    // a softer tint for the eye overlaid on a gallery thumbnail, a darker one for the detail-header button.
+    public static readonly Vector4 HiddenEyeOn = new(0.90f, 0.45f, 0.45f, 1.0f);
+    public static readonly Vector4 HiddenEyeOff = new(0.7f, 0.7f, 0.72f, 0.9f);
+    public static readonly Vector4 HiddenButtonOff = new(0.45f, 0.45f, 0.48f, 1.0f);
+
     // Faint vertical indent guides down the design tree.
     public static readonly Vector4 TreeGuide = new(0.5f, 0.5f, 0.5f, 0.6f);
 

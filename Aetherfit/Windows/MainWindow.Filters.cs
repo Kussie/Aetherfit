@@ -347,6 +347,9 @@ public partial class MainWindow
     {
         foreach (var design in node.Designs)
         {
+            // Hidden designs are kept out of the gallery and exports entirely (the design tree still shows them).
+            if (plugin.Configuration.HiddenDesigns.Contains(design.Id))
+                continue;
             plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var cached);
             if (DesignMatchesFilters(design, cached))
                 result.Add(design);

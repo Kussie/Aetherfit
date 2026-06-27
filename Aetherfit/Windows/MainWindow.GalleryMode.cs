@@ -5,6 +5,7 @@ using System.Numerics;
 using Aetherfit.Sharing;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 
@@ -41,6 +42,8 @@ public partial class MainWindow
     private bool cachedFilterModdedOnly;
     private int favouriteVersion;
     private int cachedFavouriteVersion = -1;
+    private int hiddenVersion;
+    private int cachedHiddenVersion = -1;
 
     private void DrawCoverModePane()
     {
@@ -160,7 +163,8 @@ public partial class MainWindow
         cachedFilterFavourites != filterFavourites ||
         cachedFilterVanillaOnly != filterVanillaOnly ||
         cachedFilterModdedOnly != filterModdedOnly ||
-        cachedFavouriteVersion != favouriteVersion;
+        cachedFavouriteVersion != favouriteVersion ||
+        cachedHiddenVersion != hiddenVersion;
 
     private void RebuildGalleryCache()
     {
@@ -181,6 +185,7 @@ public partial class MainWindow
         cachedFilterVanillaOnly = filterVanillaOnly;
         cachedFilterModdedOnly = filterModdedOnly;
         cachedFavouriteVersion = favouriteVersion;
+        cachedHiddenVersion = hiddenVersion;
     }
 
     private void DrawCoverGrid()
@@ -318,6 +323,13 @@ public partial class MainWindow
             && mouse.X >= starMin.X && mouse.X <= starMax.X
             && mouse.Y >= starMin.Y && mouse.Y <= starMax.Y;
 
+        // Hidden-eye toggle mirrors the star, anchored to the top-left corner instead of the top-right.
+        var eyeMin = new Vector2(thumbStart.X + starMargin, thumbStart.Y + starMargin);
+        var eyeMax = new Vector2(eyeMin.X + starSize, eyeMin.Y + starSize);
+        var overEye = imageHovered
+            && mouse.X >= eyeMin.X && mouse.X <= eyeMax.X
+            && mouse.Y >= eyeMin.Y && mouse.Y <= eyeMax.Y;
+
         if (imageHovered)
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
@@ -332,6 +344,14 @@ public partial class MainWindow
                     plugin.Configuration.Save();
                     favouriteVersion++;
                 }
+                else if (overEye)
+                {
+                    // Visible cells are never hidden, so a click here always hides the design (it then drops
+                    // out of the gallery). Unhiding happens from the detail header.
+                    plugin.Configuration.HiddenDesigns.Add(design.Id);
+                    plugin.Configuration.Save();
+                    hiddenVersion++;
+                }
                 else if (overLeft)
                     galleryImageIndex[design.Id] = imgIdx - 1;
                 else if (overRight)
@@ -341,12 +361,14 @@ public partial class MainWindow
                 else
                     clicked = true;
             }
-            if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift && !overLeft && !overRight && !overStar)
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift && !overLeft && !overRight && !overStar && !overEye)
                 shiftRightClicked = true;
-            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !overLeft && !overRight && !overStar)
+            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !overLeft && !overRight && !overStar && !overEye)
                 doubleClicked = true;
             if (overStar)
                 ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
+            else if (overEye)
+                ImGui.SetTooltip("Click to hide from the gallery and exports");
             else if (!overLeft && !overRight)
                 DrawCoverCellTooltip(design);
         }
@@ -372,6 +394,24 @@ public partial class MainWindow
             var starCenter = (starMin + starMax) * 0.5f;
             dl.AddText(new Vector2(starCenter.X - starTextSize.X * 0.5f, starCenter.Y - starTextSize.Y * 0.5f),
                 starColor, starChar);
+        }
+
+        // The hide-eye only appears on hover: a visible cell is never hidden, so there is no persistent state to show.
+        if (imageHovered)
+        {
+            var dl = ImGui.GetWindowDrawList();
+            var bgAlpha = overEye ? 0.85f : 0.55f;
+            dl.AddRectFilled(eyeMin, eyeMax,
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, bgAlpha)), 3f);
+            var eyeColor = ImGui.ColorConvertFloat4ToU32(UiTheme.HiddenEyeOff);
+            using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            {
+                var eyeChar = FontAwesomeIcon.Eye.ToIconString();
+                var eyeTextSize = ImGui.CalcTextSize(eyeChar);
+                var eyeCenter = (eyeMin + eyeMax) * 0.5f;
+                dl.AddText(new Vector2(eyeCenter.X - eyeTextSize.X * 0.5f, eyeCenter.Y - eyeTextSize.Y * 0.5f),
+                    eyeColor, eyeChar);
+            }
         }
 
         var label = design.DisplayName;
