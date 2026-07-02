@@ -18,8 +18,10 @@ public partial class MainWindow
 
     private void DrawJobAssociations(Guid id)
     {
-        DrawSubheader("Job Associations",
-            "Associate this design with one or more jobs. \"/aetherfit job\" applies a random design matching your current job. These are saved by Aetherfit and survive a Refresh.");
+        if (!DrawCollapsibleSubheader("Job Associations", ref jobAssociationsPanelOpen,
+                "Associate this design with one or more jobs. \"/aetherfit job\" applies a random design matching your current job. These are saved by Aetherfit and survive a Refresh."))
+            return;
+
         ImGui.Indent();
 
         var jobs = plugin.Configuration.GetJobAssociations(id);

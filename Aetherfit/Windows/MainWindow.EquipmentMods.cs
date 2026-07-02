@@ -31,6 +31,9 @@ public partial class MainWindow
     private bool designLinksPanelOpen = true;
     private bool coverImagePanelOpen = true;
     private bool additionalImagesPanelOpen = true;
+    private bool jobAssociationsPanelOpen = true;
+    private bool tagsPanelOpen = true;
+    private bool descriptionPanelOpen = true;
 
     // The application aspects a design link can toggle, in Glamourer's flag order. Mirrors ApplicationType.
     private static readonly (DesignLinkApplication Flag, string Label)[] LinkApplicationFlags =

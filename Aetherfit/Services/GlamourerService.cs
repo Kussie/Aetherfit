@@ -39,8 +39,10 @@ public sealed class GlamourerService : IDisposable
     private void OnStateFinalized(nint actor, StateFinalizationType type)
     {
         // Glamourer raises this for our own IPC calls too: the flag catches synchronous delivery,
-        // the grace window catches anything Glamourer defers past our call (e.g. redraws).
-        if (invokingOwnChange || DateTime.UtcNow - lastOwnChangeUtc < TimeSpan.FromSeconds(1))
+        // the grace window catches anything Glamourer defers past our call. Deferred redraws can
+        // take several seconds when many mods are still loading (e.g. right after login), so the
+        // window has to be generous or our own apply gets misread as an external change.
+        if (invokingOwnChange || DateTime.UtcNow - lastOwnChangeUtc < TimeSpan.FromSeconds(5))
             return;
 
         OnExternalStateFinalized?.Invoke(actor, type);

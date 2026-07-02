@@ -372,31 +372,39 @@ public partial class MainWindow
 
                 DrawJobAssociations(id);
 
-                DrawSubheader("Tags");
-                ImGui.Indent();
-                if (details.Tags.Count > 0)
+                if (DrawCollapsibleSubheader("Tags", ref tagsPanelOpen))
                 {
-                    for (var i = 0; i < details.Tags.Count; i++)
+                    ImGui.Indent();
+                    if (details.Tags.Count > 0)
                     {
-                        if (i > 0) ImGui.SameLine();
-                        ImGui.TextColored(UiTheme.ModLink, details.Tags[i]);
+                        for (var i = 0; i < details.Tags.Count; i++)
+                        {
+                            if (i > 0) ImGui.SameLine();
+                            ImGui.TextColored(UiTheme.ModLink, details.Tags[i]);
+                        }
                     }
+                    else
+                    {
+                        DrawSetInGlamourerNotice(
+                            "This design has no tags yet — tags are added to the design in Glamourer.",
+                            id, details.Name);
+                    }
+                    ImGui.Unindent();
+                    ImGui.Spacing();
                 }
-                else
-                {
-                    ImGui.TextDisabled("No tags set in Glamourer");
-                }
-                ImGui.Unindent();
-                ImGui.Spacing();
 
-                DrawSubheader("Description");
-                ImGui.Indent();
-                if (!string.IsNullOrWhiteSpace(details.Description))
-                    ImGui.TextWrapped(details.Description);
-                else
-                    ImGui.TextDisabled("No description set in Glamourer");
-                ImGui.Unindent();
-                ImGui.Spacing();
+                if (DrawCollapsibleSubheader("Description", ref descriptionPanelOpen))
+                {
+                    ImGui.Indent();
+                    if (!string.IsNullOrWhiteSpace(details.Description))
+                        ImGui.TextWrapped(details.Description);
+                    else
+                        DrawSetInGlamourerNotice(
+                            "This design has no description yet — the description is edited on the design in Glamourer.",
+                            id, details.Name);
+                    ImGui.Unindent();
+                    ImGui.Spacing();
+                }
 
                 if (DrawCollapsibleSubheader("Cover Image", ref coverImagePanelOpen, ImageHelpText))
                 {
@@ -560,6 +568,21 @@ public partial class MainWindow
 
     private static string FormatFullDate(DateTimeOffset dt) =>
         dt.LocalDateTime.ToString("dddd, MMMM d, yyyy 'at' h:mm tt");
+
+    // Empty-state line for fields that live on the Glamourer design (tags, description): explains
+    // where they are edited and links straight to the design in Glamourer.
+    private void DrawSetInGlamourerNotice(string message, Guid id, string designName)
+    {
+        ImGui.TextDisabled(message);
+        DesignDetailView.TextColoredUnformatted(UiTheme.ModLink, "Open this design in Glamourer");
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            ImGui.SetTooltip($"Open \"{designName}\" in Glamourer");
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                plugin.Glamourer.OpenInGlamourer(id, designName);
+        }
+    }
 
     private static void DrawSubheader(string label, string? helpText = null)
     {

@@ -195,13 +195,21 @@ public sealed class Plugin : IDalamudPlugin
     private bool loginSequenceActive;
     private DateTime lastGlamourerActivityUtc;
 
+    // After the login action applies, external design applies within this window are Glamourer's late
+    // login work (automation, or the deferred finalization of our own apply on a slow redraw) rather
+    // than the user changing outfits: they must not clear the last-worn record, and they get one
+    // re-apply so late automation can't silently overwrite the login outfit.
+    private DateTime postLoginGraceUntilUtc = DateTime.MinValue;
+    private int loginRetriesLeft;
+
     private void OnLogin()
     {
         // PlayerState loads before the character object spawns into the world, and Glamourer needs the
         // actual object (applying earlier returns ActorNotFound), so poll until the local player exists
         // rather than relying on a fixed delay. Loading screens can easily exceed any fixed timer.
         loginSequenceActive = true;
-        WaitForPlayerThenApply(attemptsLeft: 60);
+        loginRetriesLeft = 1;
+        WaitForPlayerThenApply(attemptsLeft: 120);
     }
 
     private void WaitForPlayerThenApply(int attemptsLeft)
@@ -224,6 +232,7 @@ public sealed class Plugin : IDalamudPlugin
                 {
                     loginSequenceActive = false;
                     Log.Warning("Local player never spawned after login; skipping the login action.");
+                    ChatGui.PrintError($"{ChatPrefix}Skipped the login action: the character never finished loading.");
                 }
 
                 return;
@@ -231,8 +240,9 @@ public sealed class Plugin : IDalamudPlugin
 
             // Glamourer keeps touching the character for a while after spawn (gearset load, automation),
             // and whatever applies last wins. Wait until its state changes go quiet before we apply.
+            // Slow logins (heavy mod loads) can keep Glamourer busy well past a short deadline, so be generous.
             lastGlamourerActivityUtc = DateTime.UtcNow;
-            WaitForGlamourerQuiet(deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(20));
+            WaitForGlamourerQuiet(deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(60));
         }, TimeSpan.FromSeconds(1));
     }
 
@@ -252,6 +262,9 @@ public sealed class Plugin : IDalamudPlugin
                 WaitForGlamourerQuiet(deadlineUtc);
                 return;
             }
+
+            if (!quiet)
+                Log.Warning("Glamourer was still busy at the login settle deadline; applying anyway.");
 
             loginSequenceActive = false;
             RunLoginAction();
@@ -273,6 +286,22 @@ public sealed class Plugin : IDalamudPlugin
         if (type != StateFinalizationType.DesignApplied)
             return;
 
+        if (DateTime.UtcNow < postLoginGraceUntilUtc)
+        {
+            // A design landed right after our login apply: Glamourer's late automation can overwrite
+            // the outfit we just restored ("whatever applies last wins"), so put ours back once.
+            if (loginRetriesLeft > 0)
+            {
+                loginRetriesLeft--;
+                Log.Info("A design was applied right after the login action; re-applying once it settles.");
+                loginSequenceActive = true;
+                lastGlamourerActivityUtc = DateTime.UtcNow;
+                WaitForGlamourerQuiet(deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(30));
+            }
+
+            return;
+        }
+
         // A design we didn't apply landed on the character, so the last-worn record no longer
         // reflects what they are wearing. Drop it rather than reapply something stale on login.
         if (!PlayerState.IsLoaded
@@ -289,7 +318,10 @@ public sealed class Plugin : IDalamudPlugin
     private void RunLoginAction()
     {
         if (!PlayerState.IsLoaded)
+        {
+            Log.Warning("PlayerState was not loaded when the login action ran; skipping it.");
             return;
+        }
 
         // The new character's race/gender feeds mod attribution, so drop anything cached for the last one.
         MainWindow.InvalidateAttributionCache();
@@ -307,7 +339,12 @@ public sealed class Plugin : IDalamudPlugin
         };
 
         if (err != null)
+        {
             ChatGui.PrintError($"{ChatPrefix}{err}");
+            return;
+        }
+
+        postLoginGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(15);
     }
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();
