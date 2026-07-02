@@ -40,6 +40,9 @@ public class ConfigWindow : Window, IDisposable
         ImGui.Separator();
         ImGui.Spacing();
 
+        ImGui.TextColored(UiTheme.SectionHeader, "General");
+        ImGui.Spacing();
+
         var showThumb = cfg.ShowThumbnailOnHover;
         if (ImGui.Checkbox("Show outfit thumbnail on mouse-over", ref showThumb))
         {
@@ -65,6 +68,15 @@ public class ConfigWindow : Window, IDisposable
             cfg.Save();
         }
         ImGui.PopItemWidth();
+
+        var enableLayers = cfg.EnableRandomLayers;
+        if (ImGui.Checkbox("Enable Random Layer Designs", ref enableLayers))
+        {
+            cfg.EnableRandomLayers = enableLayers;
+            cfg.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("When on, applying a base design also rolls one of its configured layers at random.\nWhen off, the Random Layer Designs panel is hidden and no layers are applied.");
 
         ImGui.Spacing();
         ImGui.Separator();

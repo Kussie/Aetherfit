@@ -36,6 +36,9 @@ public class Configuration : IPluginConfiguration
     public bool DefaultToCoverMode { get; set; } = false;
     public GalleryFitMode GalleryFitMode { get; set; } = GalleryFitMode.Crop;
 
+    // When disabled, the Random Layer Designs panel is hidden and applying a base design never rolls a layer.
+    public bool EnableRandomLayers { get; set; } = false;
+
     // Legacy: replaced by GalleryFitMode. Migrated on first plugin load if it was set to true.
     public bool GalleryFitWholeImage { get; set; } = false;
 

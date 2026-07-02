@@ -399,6 +399,9 @@ public partial class MainWindow : Window, IDisposable
 
     private Guid? PickRandomLayer(Guid baseId)
     {
+        if (!plugin.Configuration.EnableRandomLayers)
+            return null;
+
         var layers = plugin.Configuration.GetLayers(baseId);
         if (layers.Count == 0 || !Plugin.PlayerState.IsLoaded)
             return null;
