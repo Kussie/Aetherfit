@@ -10,6 +10,7 @@ public enum LoginAction
     None,
     ApplyRandom,
     ApplyRandomByTag,
+    ReapplyLast,
 }
 
 public enum GalleryFitMode
@@ -123,6 +124,11 @@ public class CharacterLoginSettings
 {
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
+
+    // Most recent design (+ exact layer combo) applied through Aetherfit on this character.
+    // Cleared on revert. Used by LoginAction.ReapplyLast.
+    public Guid? LastWornDesign { get; set; }
+    public List<Guid> LastWornLayers { get; set; } = new();
 }
 
 [Serializable]

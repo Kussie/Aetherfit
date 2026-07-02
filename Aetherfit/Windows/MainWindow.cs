@@ -379,15 +379,32 @@ public partial class MainWindow : Window, IDisposable
             ImGui.CloseCurrentPopup();
     }
 
-    public void RevertAppearance() => plugin.Glamourer.Revert();
+    public void RevertAppearance()
+    {
+        plugin.Glamourer.Revert();
+
+        // A deliberate revert means "I want my real gear" — forget the last-worn record so
+        // LoginAction.ReapplyLast doesn't re-dress the character on the next login.
+        if (Plugin.PlayerState.IsLoaded
+            && plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+            && settings.LastWornDesign != null)
+        {
+            settings.LastWornDesign = null;
+            settings.LastWornLayers.Clear();
+            plugin.Configuration.Save();
+        }
+    }
 
     private bool applyingLayer;
 
     private void ApplyDesignById(Guid id)
+        => ApplyDesignCore(id, applyingLayer ? new List<Guid>() : PickLayers(id));
+
+    private void ApplyDesignCore(Guid id, List<Guid> layerIds)
     {
         var name = plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.Name : id.ToString();
-        var layerIds = applyingLayer ? new List<Guid>() : PickLayers(id);
-        plugin.Glamourer.Apply(id, name, layerIds.Select(ResolveLinkedDesignName).ToList());
+        if (!plugin.Glamourer.Apply(id, name, layerIds.Select(ResolveLinkedDesignName).ToList()))
+            return;
 
         if (layerIds.Count > 0)
         {
@@ -399,6 +416,45 @@ public partial class MainWindow : Window, IDisposable
             }
             finally { applyingLayer = false; }
         }
+
+        RecordLastWorn(id, layerIds);
+    }
+
+    // Always records, regardless of the login-action setting, so enabling ReapplyLast later
+    // works immediately. Recording at apply time also keeps the persisted record current at
+    // logout without needing a logout hook.
+    private void RecordLastWorn(Guid baseId, List<Guid> layerIds)
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        settings.LastWornDesign = baseId;
+        settings.LastWornLayers = new List<Guid>(layerIds);
+        plugin.Configuration.Save();
+    }
+
+    public string? ReapplyLastWorn()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return "Log in to a character first.";
+
+        if (!plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+            || settings.LastWornDesign is not { } baseId)
+            return "No previously worn design recorded for this character yet.";
+
+        if (!plugin.Configuration.CachedOutfits.ContainsKey(baseId))
+            return "Your previously worn design no longer exists in Glamourer — nothing reapplied.";
+
+        var layers = plugin.Configuration.EnableRandomLayers
+            ? settings.LastWornLayers.Where(l => plugin.Configuration.CachedOutfits.ContainsKey(l)).ToList()
+            : new List<Guid>();
+        if (layers.Count < settings.LastWornLayers.Count && plugin.Configuration.EnableRandomLayers)
+            Plugin.Log.Info($"Skipped {settings.LastWornLayers.Count - layers.Count} previously worn layer(s) that no longer exist in Glamourer.");
+
+        selectedDesign = baseId;
+        ApplyDesignCore(baseId, layers);
+        return null;
     }
 
     // Walks the base design's layer slots top-down, picking one job-matching design per slot (at random when

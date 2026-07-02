@@ -8,6 +8,7 @@ using Dalamud.Plugin.Services;
 using Aetherfit.Services;
 using Aetherfit.Sharing;
 using Aetherfit.Windows;
+using Glamourer.Api.Enums;
 
 namespace Aetherfit;
 
@@ -18,6 +19,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IClientState ClientState { get; private set; } = null!;
     [PluginService] internal static IPlayerState PlayerState { get; private set; } = null!;
+    [PluginService] internal static IObjectTable ObjectTable { get; private set; } = null!;
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
@@ -111,6 +113,7 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
         PluginInterface.UiBuilder.DisableGposeUiHide = true;
         ClientState.Login += OnLogin;
+        Glamourer.OnExternalStateFinalized += OnGlamourerStateFinalized;
 
         Log.Information($"===A cool log message from {PluginInterface.Manifest.Name}===");
     }
@@ -121,6 +124,8 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfigUi;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
         ClientState.Login -= OnLogin;
+        Glamourer.OnExternalStateFinalized -= OnGlamourerStateFinalized;
+        Glamourer.Dispose();
 
         WindowSystem.RemoveAllWindows();
 
@@ -185,32 +190,124 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
+    // Set while the post-login sequence is running: Glamourer state changes during this window are its
+    // own restoration work (gearset load, automation), not the user changing outfits.
+    private bool loginSequenceActive;
+    private DateTime lastGlamourerActivityUtc;
+
     private void OnLogin()
     {
-        // Give Glamourer a couple of seconds to finish initializing after login before we ask it to apply.
-        // PlayerState.ContentId also needs the same window to populate.
+        // PlayerState loads before the character object spawns into the world, and Glamourer needs the
+        // actual object (applying earlier returns ActorNotFound), so poll until the local player exists
+        // rather than relying on a fixed delay. Loading screens can easily exceed any fixed timer.
+        loginSequenceActive = true;
+        WaitForPlayerThenApply(attemptsLeft: 60);
+    }
+
+    private void WaitForPlayerThenApply(int attemptsLeft)
+    {
         Framework.RunOnTick(() =>
         {
-            if (!PlayerState.IsLoaded)
-                return;
-
-            // The new character's race/gender feeds mod attribution, so drop anything cached for the last one.
-            MainWindow.InvalidateAttributionCache();
-
-            var settings = Configuration.GetOrCreateLoginSettings(PlayerState.ContentId);
-            if (settings.LoginAction == LoginAction.None)
-                return;
-
-            string? err = settings.LoginAction switch
+            if (!ClientState.IsLoggedIn)
             {
-                LoginAction.ApplyRandom => MainWindow.ApplyRandomDesign(),
-                LoginAction.ApplyRandomByTag => MainWindow.ApplyRandomByTags(settings.LoginTags),
-                _ => null,
-            };
+                loginSequenceActive = false;
+                return;
+            }
 
-            if (err != null)
-                ChatGui.PrintError($"{ChatPrefix}{err}");
-        }, TimeSpan.FromSeconds(3));
+            if (ObjectTable.LocalPlayer == null)
+            {
+                if (attemptsLeft > 0)
+                {
+                    WaitForPlayerThenApply(attemptsLeft - 1);
+                }
+                else
+                {
+                    loginSequenceActive = false;
+                    Log.Warning("Local player never spawned after login; skipping the login action.");
+                }
+
+                return;
+            }
+
+            // Glamourer keeps touching the character for a while after spawn (gearset load, automation),
+            // and whatever applies last wins. Wait until its state changes go quiet before we apply.
+            lastGlamourerActivityUtc = DateTime.UtcNow;
+            WaitForGlamourerQuiet(deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(20));
+        }, TimeSpan.FromSeconds(1));
+    }
+
+    private void WaitForGlamourerQuiet(DateTime deadlineUtc)
+    {
+        Framework.RunOnTick(() =>
+        {
+            if (!ClientState.IsLoggedIn)
+            {
+                loginSequenceActive = false;
+                return;
+            }
+
+            var quiet = DateTime.UtcNow - lastGlamourerActivityUtc >= TimeSpan.FromSeconds(3);
+            if (!quiet && DateTime.UtcNow < deadlineUtc)
+            {
+                WaitForGlamourerQuiet(deadlineUtc);
+                return;
+            }
+
+            loginSequenceActive = false;
+            RunLoginAction();
+        }, TimeSpan.FromSeconds(1));
+    }
+
+    private void OnGlamourerStateFinalized(nint actor, StateFinalizationType type)
+    {
+        var localPlayer = ObjectTable.LocalPlayer;
+        if (localPlayer == null || actor != localPlayer.Address)
+            return;
+
+        if (loginSequenceActive)
+        {
+            lastGlamourerActivityUtc = DateTime.UtcNow;
+            return;
+        }
+
+        if (type != StateFinalizationType.DesignApplied)
+            return;
+
+        // A design we didn't apply landed on the character, so the last-worn record no longer
+        // reflects what they are wearing. Drop it rather than reapply something stale on login.
+        if (!PlayerState.IsLoaded
+            || !Configuration.CharacterLoginSettings.TryGetValue(PlayerState.ContentId, out var settings)
+            || settings.LastWornDesign == null)
+            return;
+
+        settings.LastWornDesign = null;
+        settings.LastWornLayers.Clear();
+        Configuration.Save();
+        Log.Info("Cleared the last-worn design record: a design was applied outside Aetherfit.");
+    }
+
+    private void RunLoginAction()
+    {
+        if (!PlayerState.IsLoaded)
+            return;
+
+        // The new character's race/gender feeds mod attribution, so drop anything cached for the last one.
+        MainWindow.InvalidateAttributionCache();
+
+        var settings = Configuration.GetOrCreateLoginSettings(PlayerState.ContentId);
+        if (settings.LoginAction == LoginAction.None)
+            return;
+
+        string? err = settings.LoginAction switch
+        {
+            LoginAction.ApplyRandom => MainWindow.ApplyRandomDesign(),
+            LoginAction.ApplyRandomByTag => MainWindow.ApplyRandomByTags(settings.LoginTags),
+            LoginAction.ReapplyLast => MainWindow.ReapplyLastWorn(),
+            _ => null,
+        };
+
+        if (err != null)
+            ChatGui.PrintError($"{ChatPrefix}{err}");
     }
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();

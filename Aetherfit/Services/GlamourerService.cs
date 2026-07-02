@@ -1,18 +1,28 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Glamourer.Api.Enums;
+using Glamourer.Api.Helpers;
 using Glamourer.Api.IpcSubscribers;
 using Newtonsoft.Json.Linq;
 
 namespace Aetherfit.Services;
 
-public sealed class GlamourerService
+public sealed class GlamourerService : IDisposable
 {
     private readonly GetDesignListExtended getDesignListExtended;
     private readonly GetDesignJObject getDesignJObject;
     private readonly ApplyDesign applyDesign;
     private readonly RevertState revertState;
     private readonly OpenDesign openDesign;
+    private readonly EventSubscriber<nint, StateFinalizationType> stateFinalized;
+
+    private bool invokingOwnChange;
+    private DateTime lastOwnChangeUtc = DateTime.MinValue;
+
+    // Raised when Glamourer finalizes a state change we did not cause ourselves, e.g. the user
+    // applying a design directly in Glamourer's UI, automation, or another plugin's IPC.
+    public event Action<nint, StateFinalizationType>? OnExternalStateFinalized;
 
     public GlamourerService()
     {
@@ -21,6 +31,30 @@ public sealed class GlamourerService
         applyDesign = new ApplyDesign(Plugin.PluginInterface);
         revertState = new RevertState(Plugin.PluginInterface);
         openDesign = new OpenDesign(Plugin.PluginInterface);
+        stateFinalized = StateFinalized.Subscriber(Plugin.PluginInterface, OnStateFinalized);
+    }
+
+    public void Dispose() => stateFinalized.Dispose();
+
+    private void OnStateFinalized(nint actor, StateFinalizationType type)
+    {
+        // Glamourer raises this for our own IPC calls too: the flag catches synchronous delivery,
+        // the grace window catches anything Glamourer defers past our call (e.g. redraws).
+        if (invokingOwnChange || DateTime.UtcNow - lastOwnChangeUtc < TimeSpan.FromSeconds(1))
+            return;
+
+        OnExternalStateFinalized?.Invoke(actor, type);
+    }
+
+    private GlamourerApiEc InvokeOwnChange(Func<GlamourerApiEc> call)
+    {
+        invokingOwnChange = true;
+        try { return call(); }
+        finally
+        {
+            invokingOwnChange = false;
+            lastOwnChangeUtc = DateTime.UtcNow;
+        }
     }
 
     public sealed record DesignInfo(Guid Id, string DisplayName, string FullPath, uint Color);
@@ -63,24 +97,33 @@ public sealed class GlamourerService
         }
     }
 
-    public void Apply(Guid id, string designName, IReadOnlyList<string>? layerNames = null)
+    public bool Apply(Guid id, string designName, IReadOnlyList<string>? layerNames = null)
     {
         try
         {
-            var result = applyDesign.Invoke(id, 0, 0);
+            var result = InvokeOwnChange(() => applyDesign.Invoke(id, 0, 0));
+            if (result != GlamourerApiEc.Success)
+            {
+                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{designName}\": {result}");
+                Plugin.Log.Warning("Failed to apply design {Name} ({Id}): {Result}", designName, id, result);
+                return false;
+            }
+
             SoundService.PlayApply();
             var suffix = layerNames is not { Count: > 0 }
                 ? ""
                 : layerNames.Count == 1
                     ? $" (+ layer \"{layerNames[0]}\")"
                     : $" (+ layers {string.Join(", ", layerNames.Select(n => $"\"{n}\""))})";
-            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"{suffix}: {result}");
-            Plugin.Log.Info("Applied design {Name} ({Id}): {Result}", designName, id, result);
+            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"{suffix}");
+            Plugin.Log.Info("Applied design {Name} ({Id})", designName, id);
+            return true;
         }
         catch (Exception ex)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Apply failed: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to apply Glamourer design {Id}", id);
+            return false;
         }
     }
 
@@ -90,8 +133,15 @@ public sealed class GlamourerService
     {
         try
         {
-            var result = applyDesign.Invoke(id, 0, 0);
-            Plugin.Log.Info("Applied layer design ({Id}): {Result}", id, result);
+            var result = InvokeOwnChange(() => applyDesign.Invoke(id, 0, 0));
+            if (result != GlamourerApiEc.Success)
+            {
+                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Layer apply failed: {result}");
+                Plugin.Log.Warning("Failed to apply layer design {Id}: {Result}", id, result);
+                return;
+            }
+
+            Plugin.Log.Info("Applied layer design ({Id})", id);
         }
         catch (Exception ex)
         {
@@ -118,7 +168,7 @@ public sealed class GlamourerService
     {
         try
         {
-            var result = revertState.Invoke(0);
+            var result = InvokeOwnChange(() => revertState.Invoke(0));
             SoundService.PlayRevert();
             Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Reverted appearance to game state: {result}");
             Plugin.Log.Info("Reverted appearance to game state: {Result}", result);

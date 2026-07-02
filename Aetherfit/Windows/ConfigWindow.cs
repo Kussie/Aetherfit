@@ -70,7 +70,7 @@ public class ConfigWindow : Window, IDisposable
         ImGui.PopItemWidth();
 
         var enableLayers = cfg.EnableRandomLayers;
-        if (ImGui.Checkbox("Enable Additional Design Layers", ref enableLayers))
+        if (ImGui.Checkbox("Enable Additional Design Layers feature", ref enableLayers))
         {
             cfg.EnableRandomLayers = enableLayers;
             cfg.Save();
@@ -149,6 +149,21 @@ public class ConfigWindow : Window, IDisposable
             ImGui.Unindent();
         }
 
+        if (ImGui.RadioButton("Reapply the last worn outfit", settings.LoginAction == LoginAction.ReapplyLast))
+            SetLoginAction(settings, LoginAction.ReapplyLast);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Puts back exactly what you were wearing when you last applied a design with Aetherfit,\n"
+                           + "including the same layers (no re-roll).\n"
+                           + "Only designs applied via Aetherfit are tracked: applying a design directly in Glamourer\n"
+                           + "resets the known design, as does reverting your appearance.");
+
+        if (settings.LoginAction == LoginAction.ReapplyLast)
+        {
+            ImGui.Indent();
+            DrawLastWornStatus(settings);
+            ImGui.Unindent();
+        }
+
         // Popup must be called every frame so ImGui can manage its open/close state.
         DrawLoginTagsPopup(settings);
     }
@@ -175,6 +190,26 @@ public class ConfigWindow : Window, IDisposable
         if (settings.LoginAction == action) return;
         settings.LoginAction = action;
         plugin.Configuration.Save();
+    }
+
+    private void DrawLastWornStatus(CharacterLoginSettings settings)
+    {
+        if (settings.LastWornDesign is not { } lastWorn)
+        {
+            ImGui.TextDisabled("Nothing recorded yet — apply a design first.");
+            return;
+        }
+
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(lastWorn, out var outfit))
+        {
+            ImGui.TextDisabled("Last worn design no longer exists in Glamourer.");
+            return;
+        }
+
+        var line = settings.LastWornLayers.Count > 0
+            ? $"Last worn: {outfit.Name} (+{settings.LastWornLayers.Count} layer{(settings.LastWornLayers.Count == 1 ? "" : "s")})"
+            : $"Last worn: {outfit.Name}";
+        ImGui.TextDisabled(line);
     }
 
     private void DrawLoginTagPicker(CharacterLoginSettings settings)
