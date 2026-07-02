@@ -386,33 +386,42 @@ public partial class MainWindow : Window, IDisposable
     private void ApplyDesignById(Guid id)
     {
         var name = plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.Name : id.ToString();
-        var layer = applyingLayer ? null : PickRandomLayer(id);
-        plugin.Glamourer.Apply(id, name, layer is { } pick ? ResolveLinkedDesignName(pick) : null);
+        var layerIds = applyingLayer ? new List<Guid>() : PickLayers(id);
+        plugin.Glamourer.Apply(id, name, layerIds.Select(ResolveLinkedDesignName).ToList());
 
-        if (layer is { } layerId)
+        if (layerIds.Count > 0)
         {
             applyingLayer = true;
-            try { plugin.Glamourer.ApplyLayer(layerId); }
+            try
+            {
+                foreach (var layerId in layerIds)
+                    plugin.Glamourer.ApplyLayer(layerId);
+            }
             finally { applyingLayer = false; }
         }
     }
 
-    private Guid? PickRandomLayer(Guid baseId)
+    // Walks the base design's layer slots top-down, picking one job-matching design per slot (at random when
+    // the slot holds several). Returns the layers to apply, in application order.
+    private List<Guid> PickLayers(Guid baseId)
     {
-        if (!plugin.Configuration.EnableRandomLayers)
-            return null;
-
-        var layers = plugin.Configuration.GetLayers(baseId);
-        if (layers.Count == 0 || !Plugin.PlayerState.IsLoaded)
-            return null;
+        var picks = new List<Guid>();
+        if (!plugin.Configuration.EnableRandomLayers || !Plugin.PlayerState.IsLoaded)
+            return picks;
 
         var jobId = Plugin.PlayerState.ClassJob.RowId;
-        var candidates = layers
-            .Where(l => (l.AllJobs || l.Jobs.Contains(jobId))
-                        && plugin.Configuration.CachedOutfits.ContainsKey(l.DesignId))
-            .ToList();
+        foreach (var slot in plugin.Configuration.GetLayerSlots(baseId))
+        {
+            var candidates = slot.Designs
+                .Where(l => (l.AllJobs || l.Jobs.Contains(jobId))
+                            && plugin.Configuration.CachedOutfits.ContainsKey(l.DesignId))
+                .ToList();
 
-        return candidates.Count == 0 ? null : candidates[Random.Shared.Next(candidates.Count)].DesignId;
+            if (candidates.Count > 0)
+                picks.Add(candidates[Random.Shared.Next(candidates.Count)].DesignId);
+        }
+
+        return picks;
     }
 
     public string? ApplyRandomDesign()

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -55,6 +56,20 @@ public sealed class Plugin : IDalamudPlugin
         {
             Configuration.GalleryFitMode = GalleryFitMode.Letterbox;
             Configuration.GalleryFitWholeImage = false;
+            Configuration.Save();
+        }
+
+        // Migrate the legacy flat DesignLayers lists into DesignLayerSlots: the old list becomes a single
+        // slot, preserving the previous "pick one layer at random" behaviour.
+        if (Configuration.DesignLayers.Count > 0)
+        {
+            foreach (var (baseId, layers) in Configuration.DesignLayers)
+            {
+                if (layers.Count > 0 && !Configuration.DesignLayerSlots.ContainsKey(baseId))
+                    Configuration.DesignLayerSlots[baseId] = new List<DesignLayerSlot> { new() { Designs = layers } };
+            }
+
+            Configuration.DesignLayers.Clear();
             Configuration.Save();
         }
 

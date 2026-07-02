@@ -418,7 +418,7 @@ public partial class MainWindow
                 DrawCustomizationsPanel(id, details);
                 DrawDesignLinksPanel(details);
                 if (plugin.Configuration.EnableRandomLayers)
-                    DrawRandomLayersPanel(id);
+                    DrawAdditionalLayersPanel(id);
                 DrawModsPanel(details);
             }
         }

@@ -70,13 +70,13 @@ public class ConfigWindow : Window, IDisposable
         ImGui.PopItemWidth();
 
         var enableLayers = cfg.EnableRandomLayers;
-        if (ImGui.Checkbox("Enable Random Layer Designs", ref enableLayers))
+        if (ImGui.Checkbox("Enable Additional Design Layers", ref enableLayers))
         {
             cfg.EnableRandomLayers = enableLayers;
             cfg.Save();
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("When on, applying a base design also rolls one of its configured layers at random.\nWhen off, the Random Layer Designs panel is hidden and no layers are applied.");
+            ImGui.SetTooltip("When on, applying a base design also applies its configured layers top to bottom,\npicking one design at random from any layer that holds several.\nWhen off, the Additional Design Layers panel is hidden and no layers are applied.");
 
         ImGui.Spacing();
         ImGui.Separator();

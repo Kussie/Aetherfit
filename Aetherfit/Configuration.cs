@@ -36,7 +36,7 @@ public class Configuration : IPluginConfiguration
     public bool DefaultToCoverMode { get; set; } = false;
     public GalleryFitMode GalleryFitMode { get; set; } = GalleryFitMode.Crop;
 
-    // When disabled, the Random Layer Designs panel is hidden and applying a base design never rolls a layer.
+    // When disabled, the Additional Design Layers panel is hidden and applying a base design never applies layers.
     public bool EnableRandomLayers { get; set; } = false;
 
     // Legacy: replaced by GalleryFitMode. Migrated on first plugin load if it was set to true.
@@ -52,8 +52,12 @@ public class Configuration : IPluginConfiguration
     // because CachedOutfits is wholly replaced from Glamourer metadata on every Refresh.
     public Dictionary<Guid, List<uint>> DesignJobAssociations { get; set; } = new();
 
-    // Random layer designs: applying a base design also applies one of its layers at random, filtered to the
-    // wearer's current role. Keyed by base design id.
+    // Additional design layers: applying a base design also applies its layer slots top-down. Each slot holds
+    // one or more designs; one job-matching design is picked (at random when the slot holds several) and
+    // applied before moving to the next slot. Keyed by base design id.
+    public Dictionary<Guid, List<DesignLayerSlot>> DesignLayerSlots { get; set; } = new();
+
+    // Legacy: replaced by DesignLayerSlots. Migrated on first plugin load into a single slot per base design.
     public Dictionary<Guid, List<DesignLayer>> DesignLayers { get; set; } = new();
 
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
@@ -86,15 +90,16 @@ public class Configuration : IPluginConfiguration
             DesignJobAssociations[id] = jobs;
     }
 
-    public List<DesignLayer> GetLayers(Guid id)
-        => DesignLayers.TryGetValue(id, out var layers) ? layers : new();
+    public List<DesignLayerSlot> GetLayerSlots(Guid id)
+        => DesignLayerSlots.TryGetValue(id, out var slots) ? slots : new();
 
-    public void SetLayers(Guid id, List<DesignLayer> layers)
+    public void SetLayerSlots(Guid id, List<DesignLayerSlot> slots)
     {
-        if (layers.Count == 0)
-            DesignLayers.Remove(id);
+        slots.RemoveAll(s => s.Designs.Count == 0);
+        if (slots.Count == 0)
+            DesignLayerSlots.Remove(id);
         else
-            DesignLayers[id] = layers;
+            DesignLayerSlots[id] = slots;
     }
 
     public CharacterLoginSettings GetOrCreateLoginSettings(ulong contentId)
@@ -250,8 +255,16 @@ public enum DesignLinkApplication
     Accessories = 16,
 }
 
-// A random layer design: when the base design is applied, one matching layer is picked at random and applied
-// on top. AllJobs applies regardless of the wearer's job; otherwise it only applies for the listed jobs.
+// One slot in a base design's additional-layer stack. Slots are applied top-down; when a slot holds several
+// designs, one job-matching design is picked at random before continuing to the next slot.
+[Serializable]
+public class DesignLayerSlot
+{
+    public List<DesignLayer> Designs { get; set; } = new();
+}
+
+// An additional design layer: a design applied on top of the base design. AllJobs applies regardless of the
+// wearer's job; otherwise it only applies for the listed jobs.
 [Serializable]
 public class DesignLayer
 {

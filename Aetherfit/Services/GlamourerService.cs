@@ -63,13 +63,17 @@ public sealed class GlamourerService
         }
     }
 
-    public void Apply(Guid id, string designName, string? layerName = null)
+    public void Apply(Guid id, string designName, IReadOnlyList<string>? layerNames = null)
     {
         try
         {
             var result = applyDesign.Invoke(id, 0, 0);
             SoundService.PlayApply();
-            var suffix = layerName == null ? "" : $" (+ layer \"{layerName}\")";
+            var suffix = layerNames is not { Count: > 0 }
+                ? ""
+                : layerNames.Count == 1
+                    ? $" (+ layer \"{layerNames[0]}\")"
+                    : $" (+ layers {string.Join(", ", layerNames.Select(n => $"\"{n}\""))})";
             Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"{suffix}: {result}");
             Plugin.Log.Info("Applied design {Name} ({Id}): {Result}", designName, id, result);
         }
@@ -80,8 +84,8 @@ public sealed class GlamourerService
         }
     }
 
-    // Applies a random layer design on top of an already-applied base, without the chat line or sound - the
-    // base's apply already announced it.
+    // Applies an additional design layer on top of an already-applied base, without the chat line or sound -
+    // the base's apply already announced it.
     public void ApplyLayer(Guid id)
     {
         try
