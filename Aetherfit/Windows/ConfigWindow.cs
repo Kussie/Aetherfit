@@ -120,7 +120,7 @@ public class ConfigWindow : Window, IDisposable
     private void DrawLoginSection()
     {
         var ps = Plugin.PlayerState;
-        ImGui.TextColored(UiTheme.SectionHeader, "On login");
+        ImGui.TextColored(UiTheme.SectionHeader, "On login & zoning");
 
         if (!ps.IsLoaded)
         {
@@ -163,6 +163,20 @@ public class ConfigWindow : Window, IDisposable
             DrawLastWornStatus(settings);
             ImGui.Unindent();
         }
+
+        ImGui.Spacing();
+        var reapplyOnZone = settings.ReapplyOnZoneChange;
+        if (ImGui.Checkbox("Reapply last worn outfit after zone changes", ref reapplyOnZone))
+        {
+            settings.ReapplyOnZoneChange = reapplyOnZone;
+            plugin.Configuration.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Glamourer reverts manually applied designs when you change zones.\n"
+                           + "When on, Aetherfit puts back the last design (and exact layers) you applied\n"
+                           + "through Aetherfit after every zone change.\n"
+                           + "Only designs applied via Aetherfit are restored: applying a design directly\n"
+                           + "in Glamourer, or reverting, clears the record and stops the reapplying.");
 
         // Popup must be called every frame so ImGui can manage its open/close state.
         DrawLoginTagsPopup(settings);

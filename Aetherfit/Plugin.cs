@@ -114,6 +114,7 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
         PluginInterface.UiBuilder.DisableGposeUiHide = true;
         ClientState.Login += OnLogin;
+        ClientState.TerritoryChanged += OnTerritoryChanged;
         Glamourer.OnExternalStateFinalized += OnGlamourerStateFinalized;
 
         Log.Information($"===A cool log message from {PluginInterface.Manifest.Name}===");
@@ -125,6 +126,7 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfigUi;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
         ClientState.Login -= OnLogin;
+        ClientState.TerritoryChanged -= OnTerritoryChanged;
         Glamourer.OnExternalStateFinalized -= OnGlamourerStateFinalized;
         Glamourer.Dispose();
 
@@ -257,35 +259,59 @@ public sealed class Plugin : IDalamudPlugin
             ChatGui.Print($"{ChatPrefix}  Overall speed: ×{snapshot.OverallSpeed:0.##}");
     }
 
-    // Set while the post-login sequence is running: Glamourer state changes during this window are its
-    // own restoration work (gearset load, automation), not the user changing outfits.
-    private bool loginSequenceActive;
+    // Set while a restore sequence (post-login or post-zone-change) is waiting for the player to
+    // spawn and Glamourer to go quiet: Glamourer state changes during this window are its own
+    // restoration work (gearset load, automation, zone reverts), not the user changing outfits.
+    private bool restoreSequenceActive;
+    // The login flow owns the first restore after login; TerritoryChanged fires during that load
+    // too and must not start a competing zone sequence.
+    private bool restoreIsLoginFlow;
+    // Bumped on every sequence start so in-flight RunOnTick chains from a superseded sequence
+    // (e.g. rapid consecutive zone changes) notice they are stale and stop.
+    private int restoreGeneration;
+    // What to run once Glamourer goes quiet: the login action or the zone-change reapply. Kept in
+    // a field so the one-shot grace-window retry re-runs whichever action last applied.
+    private Action? restoreContinuation;
     private DateTime lastGlamourerActivityUtc;
 
-    // After the login action applies, external design applies within this window are Glamourer's late
-    // login work (automation, or the deferred finalization of our own apply on a slow redraw) rather
+    // After a restore applies, external design applies within this window are Glamourer's late
+    // work (automation, or the deferred finalization of our own apply on a slow redraw) rather
     // than the user changing outfits: they must not clear the last-worn record, and they get one
-    // re-apply so late automation can't silently overwrite the login outfit.
-    private DateTime postLoginGraceUntilUtc = DateTime.MinValue;
-    private int loginRetriesLeft;
+    // re-apply so late automation can't silently overwrite the restored outfit.
+    private DateTime postRestoreGraceUntilUtc = DateTime.MinValue;
+    private int restoreRetriesLeft;
 
     private void OnLogin()
+    {
+        // Slow logins (heavy mod loads) can keep Glamourer busy for a long time, so be generous.
+        StartRestoreSequence(RunLoginAction, isLoginFlow: true,
+            playerAttemptsLeft: 120, quietDeadline: TimeSpan.FromSeconds(60));
+    }
+
+    private void StartRestoreSequence(Action continuation, bool isLoginFlow,
+                                      int playerAttemptsLeft, TimeSpan quietDeadline)
+    {
+        restoreSequenceActive = true;
+        restoreIsLoginFlow = isLoginFlow;
+        restoreRetriesLeft = 1;
+        restoreContinuation = continuation;
+        var gen = ++restoreGeneration;
+        WaitForPlayerThenApply(gen, playerAttemptsLeft, quietDeadline);
+    }
+
+    private void WaitForPlayerThenApply(int gen, int attemptsLeft, TimeSpan quietDeadline)
     {
         // PlayerState loads before the character object spawns into the world, and Glamourer needs the
         // actual object (applying earlier returns ActorNotFound), so poll until the local player exists
         // rather than relying on a fixed delay. Loading screens can easily exceed any fixed timer.
-        loginSequenceActive = true;
-        loginRetriesLeft = 1;
-        WaitForPlayerThenApply(attemptsLeft: 120);
-    }
-
-    private void WaitForPlayerThenApply(int attemptsLeft)
-    {
         Framework.RunOnTick(() =>
         {
+            if (gen != restoreGeneration)
+                return;
+
             if (!ClientState.IsLoggedIn)
             {
-                loginSequenceActive = false;
+                restoreSequenceActive = false;
                 return;
             }
 
@@ -293,13 +319,14 @@ public sealed class Plugin : IDalamudPlugin
             {
                 if (attemptsLeft > 0)
                 {
-                    WaitForPlayerThenApply(attemptsLeft - 1);
+                    WaitForPlayerThenApply(gen, attemptsLeft - 1, quietDeadline);
                 }
                 else
                 {
-                    loginSequenceActive = false;
-                    Log.Warning("Local player never spawned after login; skipping the login action.");
-                    ChatGui.PrintError($"{ChatPrefix}Skipped the login action: the character never finished loading.");
+                    restoreSequenceActive = false;
+                    Log.Warning("Local player never spawned; skipping the restore action.");
+                    if (restoreIsLoginFlow)
+                        ChatGui.PrintError($"{ChatPrefix}Skipped the login action: the character never finished loading.");
                 }
 
                 return;
@@ -307,35 +334,74 @@ public sealed class Plugin : IDalamudPlugin
 
             // Glamourer keeps touching the character for a while after spawn (gearset load, automation),
             // and whatever applies last wins. Wait until its state changes go quiet before we apply.
-            // Slow logins (heavy mod loads) can keep Glamourer busy well past a short deadline, so be generous.
             lastGlamourerActivityUtc = DateTime.UtcNow;
-            WaitForGlamourerQuiet(deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(60));
+            WaitForGlamourerQuiet(gen, deadlineUtc: DateTime.UtcNow + quietDeadline);
         }, TimeSpan.FromSeconds(1));
     }
 
-    private void WaitForGlamourerQuiet(DateTime deadlineUtc)
+    private void WaitForGlamourerQuiet(int gen, DateTime deadlineUtc)
     {
         Framework.RunOnTick(() =>
         {
+            if (gen != restoreGeneration)
+                return;
+
             if (!ClientState.IsLoggedIn)
             {
-                loginSequenceActive = false;
+                restoreSequenceActive = false;
                 return;
             }
 
             var quiet = DateTime.UtcNow - lastGlamourerActivityUtc >= TimeSpan.FromSeconds(3);
             if (!quiet && DateTime.UtcNow < deadlineUtc)
             {
-                WaitForGlamourerQuiet(deadlineUtc);
+                WaitForGlamourerQuiet(gen, deadlineUtc);
                 return;
             }
 
             if (!quiet)
-                Log.Warning("Glamourer was still busy at the login settle deadline; applying anyway.");
+                Log.Warning("Glamourer was still busy at the settle deadline; applying anyway.");
 
-            loginSequenceActive = false;
-            RunLoginAction();
+            restoreSequenceActive = false;
+            restoreIsLoginFlow = false;
+            restoreContinuation?.Invoke();
         }, TimeSpan.FromSeconds(1));
+    }
+
+    private void OnTerritoryChanged(uint territoryId)
+    {
+        if (restoreSequenceActive && restoreIsLoginFlow)
+            return;
+
+        if (!ClientState.IsLoggedIn || !PlayerState.IsLoaded)
+            return;
+
+        // Read-only lookup on purpose: don't create/save settings from an event firing every zone.
+        if (!Configuration.CharacterLoginSettings.TryGetValue(PlayerState.ContentId, out var settings)
+            || !settings.ReapplyOnZoneChange
+            || settings.LastWornDesign == null)
+            return;
+
+        // A new TerritoryChanged means a new load: StartRestoreSequence bumps restoreGeneration,
+        // cancelling any in-flight zone sequence so the newest load wins.
+        StartRestoreSequence(RunZoneReapply, isLoginFlow: false,
+            playerAttemptsLeft: 60, quietDeadline: TimeSpan.FromSeconds(30));
+    }
+
+    private void RunZoneReapply()
+    {
+        if (!PlayerState.IsLoaded)
+            return;
+
+        var err = MainWindow.ReapplyLastWorn(quiet: true);
+        if (err != null)
+        {
+            // Stale record (e.g. design deleted) — chat-erroring on every zone would spam.
+            Log.Info($"Zone-change reapply skipped: {err}");
+            return;
+        }
+
+        postRestoreGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(15);
     }
 
     private void OnGlamourerStateFinalized(nint actor, StateFinalizationType type)
@@ -344,7 +410,7 @@ public sealed class Plugin : IDalamudPlugin
         if (localPlayer == null || actor != localPlayer.Address)
             return;
 
-        if (loginSequenceActive)
+        if (restoreSequenceActive)
         {
             lastGlamourerActivityUtc = DateTime.UtcNow;
             return;
@@ -353,17 +419,18 @@ public sealed class Plugin : IDalamudPlugin
         if (type != StateFinalizationType.DesignApplied)
             return;
 
-        if (DateTime.UtcNow < postLoginGraceUntilUtc)
+        if (DateTime.UtcNow < postRestoreGraceUntilUtc)
         {
-            // A design landed right after our login apply: Glamourer's late automation can overwrite
+            // A design landed right after our restore apply: Glamourer's late automation can overwrite
             // the outfit we just restored ("whatever applies last wins"), so put ours back once.
-            if (loginRetriesLeft > 0)
+            if (restoreRetriesLeft > 0)
             {
-                loginRetriesLeft--;
-                Log.Info("A design was applied right after the login action; re-applying once it settles.");
-                loginSequenceActive = true;
+                restoreRetriesLeft--;
+                Log.Info("A design was applied right after the restore action; re-applying once it settles.");
+                restoreSequenceActive = true;
                 lastGlamourerActivityUtc = DateTime.UtcNow;
-                WaitForGlamourerQuiet(deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(30));
+                // Bump the generation so a stale chain can't collide with the retry chain.
+                WaitForGlamourerQuiet(++restoreGeneration, deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(30));
             }
 
             return;
@@ -411,7 +478,7 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        postLoginGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        postRestoreGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(15);
     }
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();

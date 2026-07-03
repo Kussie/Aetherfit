@@ -129,6 +129,11 @@ public class CharacterLoginSettings
     // Cleared on revert. Used by LoginAction.ReapplyLast.
     public Guid? LastWornDesign { get; set; }
     public List<Guid> LastWornLayers { get; set; } = new();
+
+    // When enabled, Aetherfit re-applies the last-worn design (+ exact layers) after every zone
+    // change, since Glamourer reverts manual state on zoning. Independent of LoginAction: it works
+    // off the LastWorn record, which is written on every Aetherfit apply regardless of settings.
+    public bool ReapplyOnZoneChange { get; set; } = false;
 }
 
 [Serializable]

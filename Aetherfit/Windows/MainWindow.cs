@@ -400,10 +400,10 @@ public partial class MainWindow : Window, IDisposable
     private void ApplyDesignById(Guid id)
         => ApplyDesignCore(id, applyingLayer ? new List<Guid>() : PickLayers(id));
 
-    private void ApplyDesignCore(Guid id, List<Guid> layerIds)
+    private void ApplyDesignCore(Guid id, List<Guid> layerIds, bool quiet = false)
     {
         var name = plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.Name : id.ToString();
-        if (!plugin.Glamourer.Apply(id, name, layerIds.Select(ResolveLinkedDesignName).ToList()))
+        if (!plugin.Glamourer.Apply(id, name, layerIds.Select(ResolveLinkedDesignName).ToList(), quiet))
             return;
 
         if (layerIds.Count > 0)
@@ -434,7 +434,7 @@ public partial class MainWindow : Window, IDisposable
         plugin.Configuration.Save();
     }
 
-    public string? ReapplyLastWorn()
+    public string? ReapplyLastWorn(bool quiet = false)
     {
         if (!Plugin.PlayerState.IsLoaded)
             return "Log in to a character first.";
@@ -453,7 +453,7 @@ public partial class MainWindow : Window, IDisposable
             Plugin.Log.Info($"Skipped {settings.LastWornLayers.Count - layers.Count} previously worn layer(s) that no longer exist in Glamourer.");
 
         selectedDesign = baseId;
-        ApplyDesignCore(baseId, layers);
+        ApplyDesignCore(baseId, layers, quiet);
         return null;
     }
 

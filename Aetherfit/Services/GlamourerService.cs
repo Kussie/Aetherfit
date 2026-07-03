@@ -99,7 +99,9 @@ public sealed class GlamourerService : IDisposable
         }
     }
 
-    public bool Apply(Guid id, string designName, IReadOnlyList<string>? layerNames = null)
+    // quiet suppresses the success chat line and sound (e.g. automatic zone-change reapplies);
+    // errors still print so background failures don't go unnoticed.
+    public bool Apply(Guid id, string designName, IReadOnlyList<string>? layerNames = null, bool quiet = false)
     {
         try
         {
@@ -111,13 +113,17 @@ public sealed class GlamourerService : IDisposable
                 return false;
             }
 
-            SoundService.PlayApply();
-            var suffix = layerNames is not { Count: > 0 }
-                ? ""
-                : layerNames.Count == 1
-                    ? $" (+ layer \"{layerNames[0]}\")"
-                    : $" (+ layers {string.Join(", ", layerNames.Select(n => $"\"{n}\""))})";
-            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"{suffix}");
+            if (!quiet)
+            {
+                SoundService.PlayApply();
+                var suffix = layerNames is not { Count: > 0 }
+                    ? ""
+                    : layerNames.Count == 1
+                        ? $" (+ layer \"{layerNames[0]}\")"
+                        : $" (+ layers {string.Join(", ", layerNames.Select(n => $"\"{n}\""))})";
+                Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"{suffix}");
+            }
+
             Plugin.Log.Info("Applied design {Name} ({Id})", designName, id);
             return true;
         }
