@@ -33,11 +33,13 @@ public sealed class GameDataService
     private readonly ExcelSheet<Glasses>? glassesSheet;
     private readonly ExcelSheet<ClassJob>? classJobSheet;
     private readonly ExcelSheet<ClassJobCategory>? classJobCategorySheet;
+    private readonly ExcelSheet<ActionTimeline>? actionTimelineSheet;
 
     private readonly ConcurrentDictionary<ulong, string> itemNameCache = new();
     private readonly ConcurrentDictionary<byte, (string Name, uint Color)> stainCache = new();
     private readonly ConcurrentDictionary<ulong, string> glassesNameCache = new();
     private readonly ConcurrentDictionary<uint, string> jobNameCache = new();
+    private readonly ConcurrentDictionary<uint, string> actionTimelineNameCache = new();
 
     // ClassJob RowId -> role, for the jobs we surface as associations. The job list is fixed, so a static table
     // is more reliable than inferring from sheet columns, and it lets us exclude base classes (Gladiator, etc.).
@@ -71,6 +73,21 @@ public sealed class GameDataService
         glassesSheet = TryLoadSheet<Glasses>();
         classJobSheet = TryLoadSheet<ClassJob>();
         classJobCategorySheet = TryLoadSheet<ClassJobCategory>();
+        actionTimelineSheet = TryLoadSheet<ActionTimeline>();
+    }
+
+    // The timeline's key path (e.g. "emote/dance01"), or a numeric fallback when the row is missing.
+    public string ResolveActionTimelineName(uint rowId) => Resolve(actionTimelineNameCache, rowId, LookupActionTimelineName);
+
+    private string LookupActionTimelineName(uint rowId)
+    {
+        if (actionTimelineSheet != null && actionTimelineSheet.TryGetRow(rowId, out var row))
+        {
+            var text = row.Key.ExtractText();
+            if (!string.IsNullOrWhiteSpace(text))
+                return text;
+        }
+        return $"Timeline {rowId}";
     }
 
     // The name of a Glamourer design-link job condition (a ClassJobCategory, e.g. "All Classes" or "Healer").

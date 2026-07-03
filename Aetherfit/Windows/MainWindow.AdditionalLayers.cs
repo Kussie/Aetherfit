@@ -200,7 +200,10 @@ public partial class MainWindow
         if (ImGui.IsItemHovered())
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-            ImGui.SetTooltip("Shift + left-click to open in Aetherfit\nShift + right-click to open in Glamourer\nDrag onto another layer to group them into a random pick");
+            ImGui.SetTooltip("Double-click to apply\nShift + left-click to open in Aetherfit\nShift + right-click to open in Glamourer\nDrag onto another layer to group them into a random pick");
+
+            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !ImGui.GetIO().KeyShift)
+                ApplyDesignById(layer.DesignId);
 
             if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             {

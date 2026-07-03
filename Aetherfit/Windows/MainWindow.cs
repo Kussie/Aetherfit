@@ -498,7 +498,7 @@ public partial class MainWindow : Window, IDisposable
         return null;
     }
 
-    public string? ApplyRandomByTags(IReadOnlyCollection<string> tags)
+    public string? ApplyRandomByTags(IReadOnlyCollection<string> tags, bool favouritesOnly = false)
     {
         if (tags.Count == 0)
         {
@@ -509,18 +509,62 @@ public partial class MainWindow : Window, IDisposable
 
         var matching = plugin.Configuration.CachedOutfits
             .Where(kv => !plugin.Configuration.HiddenDesigns.Contains(kv.Key)
+                         && (!favouritesOnly || plugin.Configuration.FavouriteDesigns.Contains(kv.Key))
                          && tags.All(t => kv.Value.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)))
             .Select(kv => kv.Key)
             .ToList();
 
         if (matching.Count == 0)
         {
-            var msg = $"No designs match tags: {string.Join(", ", tags)}";
+            var msg = $"No {(favouritesOnly ? "favourite designs" : "designs")} match tags: {string.Join(", ", tags)}";
             Plugin.Log.Info(msg);
             return msg;
         }
 
         var pick = matching[Random.Shared.Next(matching.Count)];
+        selectedDesign = pick;
+        ApplyDesignById(pick);
+        return null;
+    }
+
+    public string? ApplyRandomFavourite(bool matchCurrentJob)
+    {
+        var favourites = plugin.Configuration.FavouriteDesigns
+            .Where(id => plugin.Configuration.CachedOutfits.ContainsKey(id)
+                         && !plugin.Configuration.HiddenDesigns.Contains(id))
+            .ToList();
+
+        if (favourites.Count == 0)
+        {
+            var msg = "No favourite designs yet — click the ☆ star on a design first.";
+            Plugin.Log.Info(msg);
+            return msg;
+        }
+
+        if (matchCurrentJob)
+        {
+            if (!Plugin.PlayerState.IsLoaded)
+            {
+                var msg = "Log in to a character first.";
+                Plugin.Log.Info(msg);
+                return msg;
+            }
+
+            var jobId = Plugin.PlayerState.ClassJob.RowId;
+            favourites = favourites
+                .Where(id => plugin.Configuration.DesignJobAssociations.TryGetValue(id, out var jobs) && jobs.Contains(jobId))
+                .ToList();
+
+            if (favourites.Count == 0)
+            {
+                var jobName = plugin.GameData.ResolveJobName(jobId);
+                var msg = $"No favourite designs associated with your current job ({jobName}).";
+                Plugin.Log.Info(msg);
+                return msg;
+            }
+        }
+
+        var pick = favourites[Random.Shared.Next(favourites.Count)];
         selectedDesign = pick;
         ApplyDesignById(pick);
         return null;

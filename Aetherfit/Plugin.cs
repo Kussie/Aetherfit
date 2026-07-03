@@ -103,8 +103,9 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage = "/aetherfit — toggle the Aetherfit window.\n"
                         + "/aetherfit random — apply a random outfit.\n"
-                        + "/aetherfit tag <tag1,tag2,...> — apply a random outfit matching any of the tags.\n"
+                        + "/aetherfit tag [favourite] <tag1,tag2,...> — apply a random outfit matching the tags, optionally favourites only.\n"
                         + "/aetherfit job — apply a random outfit associated with your current job.\n"
+                        + "/aetherfit favourite [job] — apply a random favourite outfit, optionally only one associated with your current job.\n"
                         + "/aetherfit revert — revert appearance to the game state."
         });
 
@@ -165,8 +166,19 @@ public sealed class Plugin : IDalamudPlugin
             case "tag":
             case "tags":
             {
-                var tags = rest.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var err = MainWindow.ApplyRandomByTags(tags);
+                // A leading "favourite" keyword restricts the pick to favourites; everything after it is
+                // the tag list. Tags may themselves contain spaces, so only the first word is inspected.
+                var tagArgs = rest;
+                var favouritesOnly = false;
+                var words = rest.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (words.Length > 0 && words[0].ToLowerInvariant() is "favourite" or "favorite" or "fav")
+                {
+                    favouritesOnly = true;
+                    tagArgs = words.Length > 1 ? words[1] : string.Empty;
+                }
+
+                var tags = tagArgs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var err = MainWindow.ApplyRandomByTags(tags, favouritesOnly);
                 if (err != null)
                     ChatGui.PrintError($"{ChatPrefix}{err}");
                 break;
@@ -180,14 +192,69 @@ public sealed class Plugin : IDalamudPlugin
                 break;
             }
 
+            case "favourite":
+            case "favorite":
+            case "fav":
+            {
+                var option = rest.Trim().ToLowerInvariant();
+                if (option.Length > 0 && option != "job")
+                {
+                    ChatGui.PrintError($"{ChatPrefix}Unknown option \"{rest.Trim()}\" — usage: /aetherfit favourite [job]");
+                    break;
+                }
+
+                var err = MainWindow.ApplyRandomFavourite(matchCurrentJob: option == "job");
+                if (err != null)
+                    ChatGui.PrintError($"{ChatPrefix}{err}");
+                break;
+            }
+
             case "revert":
                 MainWindow.RevertAppearance();
+                break;
+
+            case "anims":
+            case "animations":
+                PrintCurrentAnimations();
                 break;
 
             default:
                 MainWindow.Toggle();
                 break;
         }
+    }
+
+    private void PrintCurrentAnimations()
+    {
+        var snapshot = AnimationInspectionService.ReadLocalPlayerTimelines();
+        if (snapshot == null)
+        {
+            ChatGui.PrintError($"{ChatPrefix}Log in to a character first.");
+            return;
+        }
+
+        if (snapshot.ActiveSlots.Count == 0)
+        {
+            ChatGui.Print($"{ChatPrefix}No animation timelines are currently playing.");
+            return;
+        }
+
+        ChatGui.Print($"{ChatPrefix}Currently playing animation timelines:");
+        foreach (var (slot, timelineId, speed) in snapshot.ActiveSlots)
+        {
+            var line = $"{ChatPrefix}  {AnimationInspectionService.SlotLabel(slot)}: "
+                     + $"{timelineId} — {GameData.ResolveActionTimelineName(timelineId)}";
+            if (Math.Abs(speed - 1f) > 0.001f)
+                line += $" (speed ×{speed:0.##})";
+            ChatGui.Print(line);
+        }
+
+        if (snapshot.BaseOverride != 0)
+            ChatGui.Print($"{ChatPrefix}  Base override: {snapshot.BaseOverride} — {GameData.ResolveActionTimelineName(snapshot.BaseOverride)}");
+        if (snapshot.LipsOverride != 0)
+            ChatGui.Print($"{ChatPrefix}  Lips override: {snapshot.LipsOverride} — {GameData.ResolveActionTimelineName(snapshot.LipsOverride)}");
+        if (Math.Abs(snapshot.OverallSpeed - 1f) > 0.001f)
+            ChatGui.Print($"{ChatPrefix}  Overall speed: ×{snapshot.OverallSpeed:0.##}");
     }
 
     // Set while the post-login sequence is running: Glamourer state changes during this window are its
