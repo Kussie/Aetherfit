@@ -57,6 +57,8 @@ Small bugs, QOL and big dream items that have popped into my head.  When and if 
 
 Main Interface:
 
+![Screenshot 2026-07-03 130403.png](Screenshots/Screenshot%202026-07-03%20130403.png)
+
 ![Screenshot 2026-05-15 145401.png](Screenshots/Screenshot%202026-05-15%20145401.png)
 
 "Snap" options:
@@ -70,4 +72,3 @@ Cropping/Selecting area to use:
 Thumbnail View:
 
 ![Screenshot 2026-05-15 145347.png](Screenshots/Screenshot%202026-05-15%20145347.png)
-
