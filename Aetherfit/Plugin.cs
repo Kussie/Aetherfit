@@ -53,7 +53,6 @@ public sealed class Plugin : IDalamudPlugin
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
-        // Migrate the legacy GalleryFitWholeImage bool into GalleryFitMode.
         if (Configuration.GalleryFitMode == GalleryFitMode.Crop && Configuration.GalleryFitWholeImage)
         {
             Configuration.GalleryFitMode = GalleryFitMode.Letterbox;
@@ -61,8 +60,6 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.Save();
         }
 
-        // Migrate the legacy flat DesignLayers lists into DesignLayerSlots: the old list becomes a single
-        // slot, preserving the previous "pick one layer at random" behaviour.
         if (Configuration.DesignLayers.Count > 0)
         {
             foreach (var (baseId, layers) in Configuration.DesignLayers)
@@ -116,6 +113,7 @@ public sealed class Plugin : IDalamudPlugin
         ClientState.Login += OnLogin;
         ClientState.TerritoryChanged += OnTerritoryChanged;
         Glamourer.OnExternalStateFinalized += OnGlamourerStateFinalized;
+        Glamourer.OnAnyStateFinalized += OnGlamourerAnyStateFinalized;
 
         Log.Information($"===A cool log message from {PluginInterface.Manifest.Name}===");
     }
@@ -128,6 +126,7 @@ public sealed class Plugin : IDalamudPlugin
         ClientState.Login -= OnLogin;
         ClientState.TerritoryChanged -= OnTerritoryChanged;
         Glamourer.OnExternalStateFinalized -= OnGlamourerStateFinalized;
+        Glamourer.OnAnyStateFinalized -= OnGlamourerAnyStateFinalized;
         Glamourer.Dispose();
 
         WindowSystem.RemoveAllWindows();
@@ -168,8 +167,7 @@ public sealed class Plugin : IDalamudPlugin
             case "tag":
             case "tags":
             {
-                // A leading "favourite" keyword restricts the pick to favourites; everything after it is
-                // the tag list. Tags may themselves contain spaces, so only the first word is inspected.
+                // A leading "favourite" keyword restricts the pick to favourites; everything after it is the tag list. Tags may themselves contain spaces, so only the first word is inspected.
                 var tagArgs = rest;
                 var favouritesOnly = false;
                 var words = rest.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
@@ -259,25 +257,14 @@ public sealed class Plugin : IDalamudPlugin
             ChatGui.Print($"{ChatPrefix}  Overall speed: ×{snapshot.OverallSpeed:0.##}");
     }
 
-    // Set while a restore sequence (post-login or post-zone-change) is waiting for the player to
-    // spawn and Glamourer to go quiet: Glamourer state changes during this window are its own
-    // restoration work (gearset load, automation, zone reverts), not the user changing outfits.
+    // Set while a restore sequence (post-login or post-zone-change) is waiting for the player to spawn
     private bool restoreSequenceActive;
-    // The login flow owns the first restore after login; TerritoryChanged fires during that load
-    // too and must not start a competing zone sequence.
     private bool restoreIsLoginFlow;
-    // Bumped on every sequence start so in-flight RunOnTick chains from a superseded sequence
-    // (e.g. rapid consecutive zone changes) notice they are stale and stop.
     private int restoreGeneration;
-    // What to run once Glamourer goes quiet: the login action or the zone-change reapply. Kept in
-    // a field so the one-shot grace-window retry re-runs whichever action last applied.
+
     private Action? restoreContinuation;
     private DateTime lastGlamourerActivityUtc;
 
-    // After a restore applies, external design applies within this window are Glamourer's late
-    // work (automation, or the deferred finalization of our own apply on a slow redraw) rather
-    // than the user changing outfits: they must not clear the last-worn record, and they get one
-    // re-apply so late automation can't silently overwrite the restored outfit.
     private DateTime postRestoreGraceUntilUtc = DateTime.MinValue;
     private int restoreRetriesLeft;
 
@@ -301,8 +288,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void WaitForPlayerThenApply(int gen, int attemptsLeft, TimeSpan quietDeadline)
     {
-        // PlayerState loads before the character object spawns into the world, and Glamourer needs the
-        // actual object (applying earlier returns ActorNotFound), so poll until the local player exists
+        // PlayerState loads before the character object spawns into the world, and Glamourer needs the actual object (applying earlier returns ActorNotFound), so poll until the local player exists
         // rather than relying on a fixed delay. Loading screens can easily exceed any fixed timer.
         Framework.RunOnTick(() =>
         {
@@ -332,8 +318,6 @@ public sealed class Plugin : IDalamudPlugin
                 return;
             }
 
-            // Glamourer keeps touching the character for a while after spawn (gearset load, automation),
-            // and whatever applies last wins. Wait until its state changes go quiet before we apply.
             lastGlamourerActivityUtc = DateTime.UtcNow;
             WaitForGlamourerQuiet(gen, deadlineUtc: DateTime.UtcNow + quietDeadline);
         }, TimeSpan.FromSeconds(1));
@@ -382,8 +366,7 @@ public sealed class Plugin : IDalamudPlugin
             || settings.LastWornDesign == null)
             return;
 
-        // A new TerritoryChanged means a new load: StartRestoreSequence bumps restoreGeneration,
-        // cancelling any in-flight zone sequence so the newest load wins.
+        // A new TerritoryChanged means a new load: StartRestoreSequence
         StartRestoreSequence(RunZoneReapply, isLoginFlow: false,
             playerAttemptsLeft: 60, quietDeadline: TimeSpan.FromSeconds(30));
     }
@@ -404,7 +387,8 @@ public sealed class Plugin : IDalamudPlugin
         postRestoreGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(15);
     }
 
-    private void OnGlamourerStateFinalized(nint actor, StateFinalizationType type)
+    // Sees every finalization except the synchronous echo of our own IPC call
+    private void OnGlamourerAnyStateFinalized(nint actor, StateFinalizationType type)
     {
         var localPlayer = ObjectTable.LocalPlayer;
         if (localPlayer == null || actor != localPlayer.Address)
@@ -416,28 +400,42 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        if (type != StateFinalizationType.DesignApplied)
+        if (DateTime.UtcNow >= postRestoreGraceUntilUtc || restoreRetriesLeft <= 0)
             return;
 
-        if (DateTime.UtcNow < postRestoreGraceUntilUtc)
-        {
-            // A design landed right after our restore apply: Glamourer's late automation can overwrite
-            // the outfit we just restored ("whatever applies last wins"), so put ours back once.
-            if (restoreRetriesLeft > 0)
-            {
-                restoreRetriesLeft--;
-                Log.Info("A design was applied right after the restore action; re-applying once it settles.");
-                restoreSequenceActive = true;
-                lastGlamourerActivityUtc = DateTime.UtcNow;
-                // Bump the generation so a stale chain can't collide with the retry chain.
-                WaitForGlamourerQuiet(++restoreGeneration, deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(30));
-            }
+        restoreRetriesLeft--;
+        Log.Info($"Glamourer finalized state ({type}) right after the restore action; re-applying once it settles.");
+        restoreSequenceActive = true;
+        lastGlamourerActivityUtc = DateTime.UtcNow;
+        restoreContinuation = RetryRestore;
+        WaitForGlamourerQuiet(++restoreGeneration, deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(30));
+    }
 
+    private void RetryRestore()
+    {
+        var err = MainWindow.ReapplyLastWorn(quiet: true);
+        if (err != null)
+        {
+            Log.Info($"Restore retry skipped: {err}");
             return;
         }
 
-        // A design we didn't apply landed on the character, so the last-worn record no longer
-        // reflects what they are wearing. Drop it rather than reapply something stale on login.
+        postRestoreGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+    }
+
+    private void OnGlamourerStateFinalized(nint actor, StateFinalizationType type)
+    {
+        var localPlayer = ObjectTable.LocalPlayer;
+        if (localPlayer == null || actor != localPlayer.Address)
+            return;
+
+        if (restoreSequenceActive || DateTime.UtcNow < postRestoreGraceUntilUtc)
+            return;
+
+        if (type != StateFinalizationType.DesignApplied)
+            return;
+
+        // A design we didn't apply landed on the character, so the last-worn record no longer reflects what they are wearing. Drop it rather than reapply something stale on login.
         if (!PlayerState.IsLoaded
             || !Configuration.CharacterLoginSettings.TryGetValue(PlayerState.ContentId, out var settings)
             || settings.LastWornDesign == null)
@@ -457,7 +455,7 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        // The new character's race/gender feeds mod attribution, so drop anything cached for the last one.
+        // The new character's race/gender feeds mod attribution, so drop anything cached
         MainWindow.InvalidateAttributionCache();
 
         var settings = Configuration.GetOrCreateLoginSettings(PlayerState.ContentId);
@@ -478,7 +476,8 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        postRestoreGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        // Longer than the zone grace: on a cold game start
+        postRestoreGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(30);
     }
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();

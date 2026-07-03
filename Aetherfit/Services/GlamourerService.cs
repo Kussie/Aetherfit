@@ -24,6 +24,12 @@ public sealed class GlamourerService : IDisposable
     // applying a design directly in Glamourer's UI, automation, or another plugin's IPC.
     public event Action<nint, StateFinalizationType>? OnExternalStateFinalized;
 
+    // Raised for every finalization except the synchronous echo of our own IPC call - including
+    // events inside the own-change window that OnExternalStateFinalized suppresses. On a cold game
+    // start Glamourer's late work lands within seconds of our apply and overwrites it; this event
+    // is the only way to notice that.
+    public event Action<nint, StateFinalizationType>? OnAnyStateFinalized;
+
     public GlamourerService()
     {
         getDesignListExtended = new GetDesignListExtended(Plugin.PluginInterface);
@@ -42,8 +48,16 @@ public sealed class GlamourerService : IDisposable
         // the grace window catches anything Glamourer defers past our call. Deferred redraws can
         // take several seconds when many mods are still loading (e.g. right after login), so the
         // window has to be generous or our own apply gets misread as an external change.
-        if (invokingOwnChange || DateTime.UtcNow - lastOwnChangeUtc < TimeSpan.FromSeconds(5))
+        if (invokingOwnChange)
             return;
+
+        OnAnyStateFinalized?.Invoke(actor, type);
+
+        if (DateTime.UtcNow - lastOwnChangeUtc < TimeSpan.FromSeconds(5))
+        {
+            Plugin.Log.Debug("StateFinalized ({Type}) within the own-change window; not treating it as external.", type);
+            return;
+        }
 
         OnExternalStateFinalized?.Invoke(actor, type);
     }
