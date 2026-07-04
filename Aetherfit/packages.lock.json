@@ -20,6 +20,15 @@
         "resolved": "2.8.2",
         "contentHash": "+mEzejUhvJLcpTjv4Hk6ap22WiEPyEa9wg1EECFwDJim1B+fKy3l4iWlvjaoEFlfp+nB67BZp8KBiHclsEBQQw=="
       },
+      "Microsoft.ML.OnnxRuntime.Managed": {
+        "type": "Direct",
+        "requested": "[1.22.1, )",
+        "resolved": "1.22.1",
+        "contentHash": "hYGYf0BaHiTfb623kD36pYpFN0rh2Znk3QS+ZWWxnTV6iDzl1KUJYaxf7/stz28r1w6HOqUqgWcT1nOYXuf8ew==",
+        "dependencies": {
+          "System.Numerics.Tensors": "9.0.0"
+        }
+      },
       "Penumbra.Api": {
         "type": "Direct",
         "requested": "[5.15.1, )",
@@ -39,6 +48,11 @@
         "type": "Transitive",
         "resolved": "10.0.0",
         "contentHash": "bYdnhuD0XxcVTrxc8RyBjXo+AXYWJPnda3clhGz2Kakleyun1PyrzYV8RezT7ZYmR9OBSOgvpFQcvHo/K8Y90w=="
+      },
+      "System.Numerics.Tensors": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
       }
     },
     "net10.0-windows7.0/win-x64": {

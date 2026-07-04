@@ -64,6 +64,20 @@ internal static class Pills
         }
     }
 
+    // A chip that toggles on/off, coloured like the D/M/E scope toggles. Returns true when clicked.
+    public static bool DrawToggle(string label, string id, bool selected)
+    {
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);
+        ImGui.PushStyleColor(ImGuiCol.Button, selected ? UiTheme.PillBase : UiTheme.ToggleOffBg);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.PillHovered);
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.PillActive);
+        ImGui.PushStyleColor(ImGuiCol.Text, selected ? UiTheme.GoldAccent : UiTheme.PlaceholderText);
+        var clicked = ImGui.Button($"{label}##pillToggle{id}");
+        ImGui.PopStyleColor(4);
+        ImGui.PopStyleVar();
+        return clicked;
+    }
+
     // A chip that reads "label ×". Returns true when clicked, i.e. the user wants it gone. id just keeps ImGui happy.
     public static bool DrawRemovable(string label, string id)
     {

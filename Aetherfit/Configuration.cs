@@ -63,6 +63,25 @@ public class Configuration : IPluginConfiguration
 
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
+
+    // Minimum confidence for an AI tag suggestion to be shown. WD v3's F1-optimum sits around 0.26;
+    // the higher default favours precision since suggestions are reviewed by hand anyway.
+    public float TagSuggestionThreshold { get; set; } = 0.35f;
+
+    // Which tagger model to use, by TagModelStore.Models id. Unknown values fall back to the first entry.
+    public string TagSuggestionModel { get; set; } = "wd-vit-tagger-v3";
+
+    // Tags never offered as suggestions (matched case-insensitively). Seeded with composition tags
+    // that describe the screenshot rather than the outfit.
+    public List<string> TagSuggestionBlacklist { get; set; } = new() { "1girl", "1boy", "solo", "looking at viewer" };
+
+    // Case-insensitive substring rewrites applied to suggested tags before display, keyed by the
+    // text to replace — e.g. "fishnet pantyhose" is suggested as "fishnet stockings".
+    public Dictionary<string, string> TagSuggestionRenames { get; set; } = new() { ["pantyhose"] = "stockings" };
+
+    // Tags we wrote into Glamourer's design files that the running Glamourer hasn't reported via IPC
+    // yet (it only re-reads them on reload). Overlaid onto CachedOutfits each Refresh until it has.
+    public Dictionary<Guid, List<string>> PendingTagWrites { get; set; } = new();
     
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
