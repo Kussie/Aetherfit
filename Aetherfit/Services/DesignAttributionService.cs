@@ -20,7 +20,7 @@ public sealed class DesignAttributionService
 
     // Items maps a design item name -> the mod responsible for its look; Hairstyle is the mod changing the
     // applied hairstyle, if any.
-    public sealed record Result(IReadOnlyDictionary<string, string> Items, string? Hairstyle);
+    public sealed record Result(IReadOnlyDictionary<string, CachedMod> Items, CachedMod? Hairstyle);
 
     // A mod's display name, falling back to its directory when Glamourer didn't store a name.
     public static string ModDisplayName(CachedMod mod)
@@ -30,7 +30,7 @@ public sealed class DesignAttributionService
     // OrderByDescending is stable, so mods sharing a priority keep the order Glamourer listed them in.
     public Result Build(CachedOutfit details)
     {
-        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var map = new Dictionary<string, CachedMod>(StringComparer.Ordinal);
 
         // Gather the item names this design actually uses - those are the only ones worth matching against.
         var designItemNames = new HashSet<string>(StringComparer.Ordinal);
@@ -52,7 +52,7 @@ public sealed class DesignAttributionService
         var hairstyle = details.Customizations.FirstOrDefault(c => c.Key == "Hairstyle");
         var hairFragment = hairstyle == null ? null : HairChangedItemFragment(details);
         var hairValue = hairstyle?.RawValue ?? 0;
-        string? hairstyleMod = null;
+        CachedMod? hairstyleMod = null;
 
         if (designItemNames.Count == 0 && hairFragment == null)
             return new Result(map, null);
@@ -63,15 +63,14 @@ public sealed class DesignAttributionService
             if (changed.Count == 0)
                 continue;
 
-            var displayName = ModDisplayName(mod);
             foreach (var itemName in designItemNames)
             {
                 if (!map.ContainsKey(itemName) && changed.Contains(itemName))
-                    map[itemName] = displayName;
+                    map[itemName] = mod;
             }
 
             if (hairstyleMod == null && hairFragment != null && changed.Any(k => HairKeyMatches(k, hairFragment, hairValue)))
-                hairstyleMod = displayName;
+                hairstyleMod = mod;
         }
 
         return new Result(map, hairstyleMod);

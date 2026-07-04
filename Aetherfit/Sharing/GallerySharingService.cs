@@ -98,7 +98,8 @@ public sealed class GallerySharingService
                         Name = DesignAttributionService.ModDisplayName(m),
                         State = m.State,
                     }).ToList(),
-                    AffectedItems = new Dictionary<string, string>(attributed.Items),
+                    AffectedItems = attributed.Items.ToDictionary(
+                        kv => kv.Key, kv => DesignAttributionService.ModDisplayName(kv.Value)),
                 };
 
                 // Budget the design to MaxImagesPerDesign images total, the cover counting as one.

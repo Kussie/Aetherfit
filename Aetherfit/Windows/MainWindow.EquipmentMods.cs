@@ -22,8 +22,9 @@ public partial class MainWindow
     private readonly Dictionary<Guid, AffectedBy> affectedByCache = new();
 
     // Which mod (if any) is responsible for parts of a design's look: item name -> mod for equipment,
-    // plus the mod changing the applied hairstyle.
-    private sealed record AffectedBy(IReadOnlyDictionary<string, string> Items, string? Hairstyle);
+    // plus the mod changing the applied hairstyle. Items is the same map flattened to display names.
+    private sealed record AffectedBy(IReadOnlyDictionary<string, CachedMod> Mods,
+        IReadOnlyDictionary<string, string> Items, CachedMod? Hairstyle);
 
     private bool equipmentPanelOpen = true;
     private bool customizationsPanelOpen = true;
@@ -53,7 +54,7 @@ public partial class MainWindow
         ImGui.Indent();
         var slotMap = BuildSlotMap(details.Equipment);
         var bonusMap = BuildBonusMap(details.BonusItems);
-        var affectedBy = GetAffectedBy(id, details).Items;
+        var affectedBy = GetAffectedBy(id, details);
 
         var slotLabelWidth = LabelColumnWidth(details);
 
@@ -110,8 +111,9 @@ public partial class MainWindow
                 DrawCustomizationColorSwatch(c, details);
             }
 
-            if (c.Key == "Hairstyle" && hairstyleMod != null)
-                DesignDetailView.DrawAffectedByText(hairstyleMod);
+            if (c.Key == "Hairstyle" && hairstyleMod != null
+                && DesignDetailView.DrawAffectedByText(DesignAttributionService.ModDisplayName(hairstyleMod)))
+                HandleAffectedModHover(hairstyleMod);
         }
 
         ImGui.Unindent();
@@ -223,27 +225,42 @@ public partial class MainWindow
             return cached;
 
         var result = plugin.Attribution.Build(details);
-        var affected = new AffectedBy(result.Items, result.Hairstyle);
+        var names = new Dictionary<string, string>(result.Items.Count, StringComparer.Ordinal);
+        foreach (var (itemName, mod) in result.Items)
+            names[itemName] = DesignAttributionService.ModDisplayName(mod);
+
+        var affected = new AffectedBy(result.Items, names, result.Hairstyle);
         affectedByCache[id] = affected;
         return affected;
     }
 
-    private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry,
-        IReadOnlyDictionary<string, string> affectedBy)
+    private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry, AffectedBy affectedBy)
     {
         var applied = entry?.Apply == true;
         var itemName = entry == null ? null : plugin.GameData.ResolveItemName(entry.ItemId);
-        DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
-            entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, applied, affectedBy);
+        var modHovered = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+            entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, applied, affectedBy.Items);
+        if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
+            HandleAffectedModHover(mod);
     }
 
-    private void DrawBonusRow(string label, float labelWidth, CachedBonusItem? entry,
-        IReadOnlyDictionary<string, string> affectedBy)
+    private void DrawBonusRow(string label, float labelWidth, CachedBonusItem? entry, AffectedBy affectedBy)
     {
         var applied = entry?.Apply == true;
         var itemName = entry == null ? null : plugin.GameData.ResolveBonusItemName(entry.Slot, entry.ItemId);
-        DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
-            stain: 0, stain2: 0, applyStain: false, applied, affectedBy);
+        var modHovered = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+            stain: 0, stain2: 0, applyStain: false, applied, affectedBy.Items);
+        if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
+            HandleAffectedModHover(mod);
+    }
+
+    // Shift-gated, unlike the mod association rows, so a stray click doesn't open Penumbra.
+    private void HandleAffectedModHover(CachedMod mod)
+    {
+        ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        DrawModTooltip(mod);
+        if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+            plugin.Penumbra.OpenMod(mod.Directory, mod.Name);
     }
 
     private void DrawToggleRow(CachedOutfit details)
