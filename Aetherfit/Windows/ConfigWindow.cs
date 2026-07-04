@@ -220,10 +220,22 @@ public class ConfigWindow : Window, IDisposable
             return;
         }
 
-        var line = settings.LastWornLayers.Count > 0
-            ? $"Last worn: {outfit.Name} (+{settings.LastWornLayers.Count} layer{(settings.LastWornLayers.Count == 1 ? "" : "s")})"
-            : $"Last worn: {outfit.Name}";
-        ImGui.TextDisabled(line);
+        ImGui.TextDisabled("Last worn:");
+        ImGui.SameLine();
+        DesignDetailView.TextColoredUnformatted(UiTheme.ModLink, outfit.Name);
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            ImGui.SetTooltip("Open this design in Aetherfit");
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                plugin.OpenDesignInMain(lastWorn);
+        }
+
+        if (settings.LastWornLayers.Count > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled($"(+{settings.LastWornLayers.Count} layer{(settings.LastWornLayers.Count == 1 ? "" : "s")})");
+        }
     }
 
     private void DrawLoginTagPicker(CharacterLoginSettings settings)

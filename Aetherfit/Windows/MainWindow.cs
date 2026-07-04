@@ -36,6 +36,10 @@ public partial class MainWindow : Window, IDisposable
     private readonly FileDialogManager fileDialog = new();
     private const string ImageFilters = "Image{.png,.jpg,.jpeg,.webp}";
 
+    // Applied at the top of the next Draw rather than immediately: OnOpen resets the view mode when
+    // the window was closed, and this has to win over that.
+    private Guid? pendingRevealDesign;
+
     private float leftPaneWidth = 260f;
     private const float MinLeftPaneWidth = 260f;
 
@@ -65,8 +69,21 @@ public partial class MainWindow : Window, IDisposable
         RefreshDesigns();
     }
 
+    public void OpenDesign(Guid id)
+    {
+        pendingRevealDesign = id;
+        IsOpen = true;
+    }
+
     public override void Draw()
     {
+        if (pendingRevealDesign is { } reveal)
+        {
+            selectedDesign = reveal;
+            coverMode = false;
+            pendingRevealDesign = null;
+        }
+
         var style = ImGui.GetStyle();
 
         DrawTopToolbar();

@@ -482,6 +482,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();
     public void ToggleMainUi() => MainWindow.Toggle();
+    public void OpenDesignInMain(Guid id) => MainWindow.OpenDesign(id);
 
     public void SetMainWindowHiddenForCapture(bool hide)
     {
