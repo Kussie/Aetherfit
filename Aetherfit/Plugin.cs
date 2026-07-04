@@ -38,6 +38,9 @@ public sealed class Plugin : IDalamudPlugin
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
+    public TagModelStore TagModel { get; init; }
+    public TagSuggestionService TagSuggestions { get; init; }
+    public GlamourerDesignFileService GlamourerDesignFile { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
@@ -79,6 +82,9 @@ public sealed class Plugin : IDalamudPlugin
         ImageStorage = new ImageStorageService(Configuration);
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
+        TagModel = new TagModelStore(Configuration);
+        TagSuggestions = new TagSuggestionService(TagModel, Configuration);
+        GlamourerDesignFile = new GlamourerDesignFileService(Configuration);
 
         // Clean up any imported-gallery images a previous session left behind (e.g. if we crashed before tidying up).
         ImageStorage.ClearAllForeign();
@@ -128,6 +134,8 @@ public sealed class Plugin : IDalamudPlugin
         Glamourer.OnExternalStateFinalized -= OnGlamourerStateFinalized;
         Glamourer.OnAnyStateFinalized -= OnGlamourerAnyStateFinalized;
         Glamourer.Dispose();
+        TagSuggestions.Dispose();
+        TagModel.Dispose();
 
         WindowSystem.RemoveAllWindows();
 

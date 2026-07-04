@@ -156,6 +156,7 @@ public partial class MainWindow : Window, IDisposable
         designsError = null;
 
         plugin.Configuration.CachedOutfits = result.Metadata;
+        plugin.GlamourerDesignFile.ReconcilePendingWrites();
 
         // Mods might have changed since last time, so clear the affected-item caches and let the
         // "(Appearance affected by ...)" notes rebuild from fresh Penumbra data.

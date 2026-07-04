@@ -403,6 +403,8 @@ public partial class MainWindow
                             "This design has no tags yet — tags are added to the design in Glamourer.",
                             id, details.Name);
                     }
+                    ImGui.Spacing();
+                    DrawTagSuggestionsBlock(id, details);
                     ImGui.Unindent();
                     ImGui.Spacing();
                 }
