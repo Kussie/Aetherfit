@@ -35,7 +35,8 @@ internal static class DesignDetailView
 
     // One equipment/bonus row: a label column then the item name, dye swatches and "(affected by mod)" suffix.
     // itemName == null means the slot isn't in the design (greyed "(not in design)"). Bonus rows pass stain 0.
-    public static void DrawSlotRow(GameDataService gameData, string label, float labelWidth, string? itemName,
+    // Returns true while the affected-by mod name is hovered.
+    public static bool DrawSlotRow(GameDataService gameData, string label, float labelWidth, string? itemName,
         byte stain, byte stain2, bool applyStain, bool applied, IReadOnlyDictionary<string, string> affected)
     {
         var labelColor = applied ? UiTheme.AppliedText : UiTheme.StateUnset;
@@ -48,36 +49,38 @@ internal static class DesignDetailView
         if (itemName == null)
         {
             ImGui.TextColored(UiTheme.StateUnset, "(not in design)");
-            return;
+            return false;
         }
 
         ImGui.TextColored(labelColor, itemName);
         DrawStainSwatch(gameData, stain, applyStain && applied);
         DrawStainSwatch(gameData, stain2, applyStain && applied);
-        DrawAffectedSuffix(affected, applied, itemName);
+        return DrawAffectedSuffix(affected, applied, itemName);
     }
 
     // "(Appearance affected by {mod})" with the mod name tinted so it stands out. The mod name is rendered
     // format-safe (TextUnformatted) since it can originate from an imported design/bundle.
-    public static void DrawAffectedSuffix(IReadOnlyDictionary<string, string> affected, bool applied, string itemName)
+    public static bool DrawAffectedSuffix(IReadOnlyDictionary<string, string> affected, bool applied, string itemName)
     {
         if (!applied || itemName == GameDataService.NothingItemName)
-            return;
+            return false;
         if (!affected.TryGetValue(itemName, out var modName))
-            return;
+            return false;
 
-        DrawAffectedByText(modName);
+        return DrawAffectedByText(modName);
     }
 
-    // "(Appearance affected by {modName})" with the mod name tinted; rendered format-safe.
-    public static void DrawAffectedByText(string modName)
+    // "(Appearance affected by {modName})" with the mod name tinted; true while the mod name is hovered.
+    public static bool DrawAffectedByText(string modName)
     {
         ImGui.SameLine();
         ImGui.TextColored(UiTheme.StateUnset, "(Appearance affected by ");
         ImGui.SameLine(0, 0);
         TextColoredUnformatted(UiTheme.ModLink, modName);
+        var hovered = ImGui.IsItemHovered();
         ImGui.SameLine(0, 0);
         ImGui.TextColored(UiTheme.StateUnset, ")");
+        return hovered;
     }
 
     public static void DrawStainSwatch(GameDataService gameData, byte stainId, bool active)
