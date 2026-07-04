@@ -20,8 +20,10 @@ public partial class MainWindow : Window, IDisposable
     private Guid? selectedDesign;
     private DesignLeaf? hoveredDesignForTooltip;
 
-    // Session-only: when true the Edit Mode tree groups designs by job association instead of folder path.
+    // Session-only: the Edit Mode tree groups designs by job association or by tag instead of folder
+    // path. At most one grouping is active at a time.
     private bool groupByJob;
+    private bool groupByTags;
 
     // When a filter is active we force every matching tree node open and keep note of the previous state so it can be restored whe nthe filters are cleared
     private readonly Dictionary<uint, bool> treeOpenSnapshot = new();
@@ -59,6 +61,7 @@ public partial class MainWindow : Window, IDisposable
     {
         coverMode = plugin.Configuration.DefaultToCoverMode;
         groupByJob = false;
+        groupByTags = false;
         RefreshDesigns();
     }
 

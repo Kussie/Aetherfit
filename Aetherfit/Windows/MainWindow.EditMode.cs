@@ -48,7 +48,11 @@ public partial class MainWindow
             return;
         }
 
-        ImGui.Checkbox("Group by job association", ref groupByJob);
+        // The two groupings are mutually exclusive - ticking one unticks the other (both can be off).
+        if (ImGui.Checkbox("Group by job association", ref groupByJob) && groupByJob)
+            groupByTags = false;
+        if (ImGui.Checkbox("Group by tags", ref groupByTags) && groupByTags)
+            groupByJob = false;
         ImGui.Spacing();
 
         DrawFilterUi();
@@ -85,6 +89,8 @@ public partial class MainWindow
         {
             if (groupByJob)
                 DrawJobTree(hasFilter);
+            else if (groupByTags)
+                DrawTagTree(hasFilter);
             else
                 DrawTree(root, hasFilter);
         }
@@ -380,7 +386,15 @@ public partial class MainWindow
                         for (var i = 0; i < details.Tags.Count; i++)
                         {
                             if (i > 0) ImGui.SameLine();
-                            ImGui.TextColored(UiTheme.ModLink, details.Tags[i]);
+                            var tag = details.Tags[i];
+                            DesignDetailView.TextColoredUnformatted(UiTheme.ModLink, tag);
+                            if (ImGui.IsItemHovered())
+                            {
+                                ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                                ImGui.SetTooltip($"Show all designs tagged \"{tag}\"");
+                                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                                    filterTags.Add(tag);
+                            }
                         }
                     }
                     else
