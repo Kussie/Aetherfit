@@ -148,6 +148,15 @@ public partial class MainWindow : Window, IDisposable
             }
         }
 
+        // Shade the footer strip (separator down to the window edge) so the action bar stands apart.
+        var winPos = ImGui.GetWindowPos();
+        var winSize = ImGui.GetWindowSize();
+        ImGui.GetWindowDrawList().AddRectFilled(
+            new Vector2(winPos.X, ImGui.GetCursorScreenPos().Y),
+            winPos + winSize,
+            ImGui.ColorConvertFloat4ToU32(Ui.UiTheme.FooterShade),
+            ImGui.GetStyle().WindowRounding, ImDrawFlags.RoundCornersBottom);
+
         ImGui.Separator();
         DrawBottomButtons();
         DrawApplyByTagPopup();

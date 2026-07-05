@@ -69,7 +69,7 @@ public partial class MainWindow
             return;
         }
 
-        DrawFilterUi(defaultOpen: true, inlineModFilters: true);
+        DrawFilterUi(defaultOpen: true, wide: true);
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
