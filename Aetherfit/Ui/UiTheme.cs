@@ -49,6 +49,9 @@ internal static class UiTheme
     // The list/detail splitter bar when idle (turns gold on hover/drag).
     public static readonly Vector4 SplitterIdle = new(0.45f, 0.45f, 0.50f, 0.90f);
 
+    // Translucent black laid over the main window's footer strip so the action buttons read as their own bar.
+    public static readonly Vector4 FooterShade = new(0f, 0f, 0f, 0.30f);
+
     // A disabled / off pill-style toggle background.
     public static readonly Vector4 ToggleOffBg = new(0.20f, 0.20f, 0.22f, 0.6f);
 

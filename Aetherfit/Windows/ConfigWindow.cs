@@ -33,15 +33,35 @@ public class ConfigWindow : Window, IDisposable
 
     public override void Draw()
     {
-        var cfg = plugin.Configuration;
-
         DrawCharacterLine();
         ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
 
-        ImGui.TextColored(UiTheme.SectionHeader, "General");
+        using var tabBar = ImRaii.TabBar("##settingsTabs");
+        if (!tabBar.Success)
+            return;
+
+        DrawTab("General", DrawGeneralTab);
+        DrawTab("Login & Zoning", DrawLoginSection);
+        DrawTab("Commands", DrawCommandsSection);
+    }
+
+    private static void DrawTab(string label, Action drawContent)
+    {
+        using var tab = ImRaii.TabItem(label);
+        if (!tab.Success)
+            return;
+
+        using var child = ImRaii.Child($"##{label}Scroll", Vector2.Zero, false);
+        if (!child.Success)
+            return;
+
         ImGui.Spacing();
+        drawContent();
+    }
+
+    private void DrawGeneralTab()
+    {
+        var cfg = plugin.Configuration;
 
         var showThumb = cfg.ShowThumbnailOnHover;
         if (ImGui.Checkbox("Show outfit thumbnail on mouse-over", ref showThumb))
@@ -77,32 +97,22 @@ public class ConfigWindow : Window, IDisposable
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("When on, applying a base design also applies its configured layers top to bottom,\npicking one design at random from any layer that holds several.\nWhen off, the Additional Design Layers panel is hidden and no layers are applied.");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        DrawLoginSection();
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        DrawCommandsSection();
     }
 
     private static void DrawCommandsSection()
     {
-        ImGui.TextColored(UiTheme.SectionHeader, "Chat commands");
         ImGui.TextDisabled("These can also be used in game macros.");
         ImGui.Spacing();
 
         DrawCommand("/aetherfit", "Open or close the main Aetherfit window.");
         DrawCommand("/aetherfit random", "Apply a random design from your entire collection.");
-        DrawCommand("/aetherfit tag <tag1,tag2,...>",
-            "Apply a random design that has all of the listed tags. Separate multiple tags with commas.");
+        DrawCommand("/aetherfit tag [favourite] <tag1,tag2,...>",
+            "Apply a random design that has all of the listed tags. Separate multiple tags with commas. "
+            + "Add \"favourite\" before the tags to only pick from your favourites.");
         DrawCommand("/aetherfit job",
             "Apply a random design associated with your current job. Set associations per-design in the design details pane.");
+        DrawCommand("/aetherfit favourite [job]",
+            "Apply a random favourite design. Add \"job\" to only pick favourites associated with your current job.");
         DrawCommand("/aetherfit revert", "Revert your character's appearance back to the game's state.");
     }
 
@@ -120,7 +130,6 @@ public class ConfigWindow : Window, IDisposable
     private void DrawLoginSection()
     {
         var ps = Plugin.PlayerState;
-        ImGui.TextColored(UiTheme.SectionHeader, "On login & zoning");
 
         if (!ps.IsLoaded)
         {
