@@ -7,13 +7,20 @@ namespace Aetherfit.Windows;
 
 public partial class MainWindow
 {
+    // Tags containing '/' nest like folders: "tag1/tag2/tag3" shows as tag1 > tag2 > tag3.
+    private sealed class TagNode
+    {
+        public SortedDictionary<string, TagNode> Children { get; } = new(NaturalStringComparer.OrdinalIgnoreCase);
+        public List<DesignLeaf> Designs { get; } = new();
+    }
+
     private void DrawTagTree(bool hasFilter)
     {
         var allLeaves = new List<DesignLeaf>();
         CollectAllLeaves(root, allLeaves);
 
         // A design appears under every tag it carries, so it can show up multiple times.
-        var byTag = new Dictionary<string, List<DesignLeaf>>(StringComparer.OrdinalIgnoreCase);
+        var tagRoot = new TagNode();
         var untagged = new List<DesignLeaf>();
 
         foreach (var leaf in allLeaves)
@@ -29,33 +36,58 @@ public partial class MainWindow
 
             foreach (var tag in cached.Tags.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                if (!byTag.TryGetValue(tag, out var list))
+                var segments = tag.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (segments.Length == 0)
+                    segments = new[] { tag };
+
+                var node = tagRoot;
+                foreach (var segment in segments)
                 {
-                    list = new List<DesignLeaf>();
-                    byTag[tag] = list;
+                    if (!node.Children.TryGetValue(segment, out var child))
+                    {
+                        child = new TagNode();
+                        node.Children[segment] = child;
+                    }
+                    node = child;
                 }
-                list.Add(leaf);
+
+                // Two raw tags can normalise to the same path (e.g. "a/b" and "a / b") - don't list the design twice.
+                if (!node.Designs.Contains(leaf))
+                    node.Designs.Add(leaf);
             }
         }
 
-        foreach (var list in byTag.Values)
-            list.Sort((a, b) => NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName));
+        SortTagNodeDesigns(tagRoot);
 
-        foreach (var tag in byTag.Keys.OrderBy(t => t, NaturalStringComparer.OrdinalIgnoreCase))
-        {
-            if (!DrawJobGroupHeader($"{tag}##tag{tag}", hasFilter))
-                continue;
-
-            foreach (var leaf in byTag[tag])
-                DrawDesignLeaf(leaf);
-
-            ImGui.TreePop();
-        }
+        foreach (var (name, child) in tagRoot.Children)
+            DrawTagNode(name, name, child, hasFilter);
 
         if (untagged.Count > 0 && DrawJobGroupHeader("Untagged##untaggedDesigns", hasFilter))
         {
             DrawTree(BuildFolderTree(untagged), hasFilter);
             ImGui.TreePop();
         }
+    }
+
+    private static void SortTagNodeDesigns(TagNode node)
+    {
+        node.Designs.Sort((a, b) => NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName));
+        foreach (var child in node.Children.Values)
+            SortTagNodeDesigns(child);
+    }
+
+    private void DrawTagNode(string name, string path, TagNode node, bool hasFilter)
+    {
+        // The full path in the id keeps same-named subtags apart (e.g. summer/casual vs winter/casual).
+        if (!DrawJobGroupHeader($"{name}##tag{path}", hasFilter))
+            return;
+
+        foreach (var (childName, child) in node.Children)
+            DrawTagNode(childName, $"{path}/{childName}", child, hasFilter);
+
+        foreach (var leaf in node.Designs)
+            DrawDesignLeaf(leaf);
+
+        ImGui.TreePop();
     }
 }

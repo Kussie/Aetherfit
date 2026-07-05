@@ -24,7 +24,7 @@ public partial class MainWindow
     private readonly HashSet<uint> filterJobs = new();
     private ImageFilterMode filterImage = ImageFilterMode.All;
     private bool filterFavourites;
-    // Vanilla = no mods attached, Modded = has mods. Only one can be on at a time (see DrawFilterControls).
+    // Vanilla = no mods attached, Modded = has mods. Only one can be on at a time (see DrawVanillaToggle/DrawModdedToggle).
     private bool filterVanillaOnly;
     private bool filterModdedOnly;
     private List<string> availableTagsForFilter = new();
@@ -38,6 +38,14 @@ public partial class MainWindow
                               || filterVanillaOnly
                               || filterModdedOnly;
 
+    private int ActiveFilterCount => (filterName.Length > 0 ? 1 : 0)
+                                   + filterTags.Count
+                                   + filterJobs.Count
+                                   + (filterImage != ImageFilterMode.All ? 1 : 0)
+                                   + (filterFavourites ? 1 : 0)
+                                   + (filterVanillaOnly ? 1 : 0)
+                                   + (filterModdedOnly ? 1 : 0);
+
     // A cheap stamp that changes whenever any filter input does. The design-view tree uses it to re-expand
     // matches only when the filter actually changes, instead of forcing everything open every frame.
     private string FilterSignature => string.Join('|',
@@ -47,85 +55,208 @@ public partial class MainWindow
         string.Join(',', filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase)),
         string.Join(',', filterJobs.OrderBy(j => j)));
 
-    private void DrawFilterUi(bool defaultOpen = false, bool inlineModFilters = false)
+    private void DrawFilterUi(bool defaultOpen = false, bool wide = false)
     {
-        var flags = defaultOpen ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
-        if (!ImGui.CollapsingHeader("Filters", flags))
+        // AllowOverlap lets the count badge and Clear button sit on the header row itself.
+        var flags = (defaultOpen ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None)
+                  | ImGuiTreeNodeFlags.AllowItemOverlap;
+        var open = ImGui.CollapsingHeader("Filters", flags);
+        DrawFilterHeaderOverlay();
+        if (!open)
             return;
 
-        DrawFilterControls(inlineModFilters);
+        ImGui.Spacing();
+        DrawFilterControls(wide);
         DrawFilterTagsPopup();
     }
 
-    private void DrawFilterControls(bool inlineModFilters)
+    // "N active" plus a ghost Clear button, right-aligned on the collapsing header's own row so
+    // filters can be seen and cleared even while the section is collapsed.
+    private void DrawFilterHeaderOverlay()
     {
-        ImGui.PushItemWidth(-1);
-        ImGui.InputTextWithHint("##nameFilter", "Filter by name...", ref filterName, 64);
-        ImGui.PopItemWidth();
+        if (!HasAnyFilter)
+            return;
 
-        ImGui.TextDisabled("Search In:");
+        var style = ImGui.GetStyle();
+        var count = ActiveFilterCount;
+        var countText = count == 1 ? "1 active" : $"{count} active";
+        const string clearLabel = "Clear";
+        var clearW = ImGui.CalcTextSize(clearLabel).X + (style.FramePadding.X * 2);
+        var countW = ImGui.CalcTextSize(countText).X;
+
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - clearW - countW - style.ItemSpacing.X - style.FramePadding.X);
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextColored(UiTheme.GoldAccent, countText);
         ImGui.SameLine();
-        DrawSearchScopeToggle("D", "Search design name", ref searchDesignName);
-        ImGui.SameLine();
+
+        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered);
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive);
+        var clear = ImGui.Button($"{clearLabel}##clearFilters");
+        ImGui.PopStyleColor(3);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Clear all filters");
+        if (clear)
+            ClearAllFilters();
+    }
+
+    private void ClearAllFilters()
+    {
+        filterName = string.Empty;
+        searchDesignName = true;
+        searchModName = false;
+        searchEquipmentName = false;
+        filterTags.Clear();
+        filterJobs.Clear();
+        filterImage = ImageFilterMode.All;
+        filterFavourites = false;
+        filterVanillaOnly = false;
+        filterModdedOnly = false;
+    }
+
+    // Narrow (design tree pane): one control per row. Wide (gallery): two rows -
+    // name + scopes + tag/job picker, then cover image + quick toggles.
+    private void DrawFilterControls(bool wide)
+    {
+        var style = ImGui.GetStyle();
+        var scale = ImGuiHelpers.GlobalScale;
+        var inner = style.ItemInnerSpacing.X;
+        var scopeClusterW = (3 * ImGui.GetFrameHeight()) + (2 * inner);
+        var tagBtnW = 220f * scale;
+
+        var nameW = wide
+            ? ImGui.GetContentRegionAvail().X - scopeClusterW - inner - style.ItemSpacing.X - tagBtnW
+            : ImGui.GetContentRegionAvail().X - scopeClusterW - inner;
+        ImGui.SetNextItemWidth(Math.Max(120f * scale, nameW));
+        ImGui.InputTextWithHint("##nameFilter", "Filter by name...", ref filterName, 64);
+
+        ImGui.SameLine(0, inner);
+        DrawSearchScopeToggle("D", "Search design names", ref searchDesignName);
+        ImGui.SameLine(0, inner);
         DrawSearchScopeToggle("M", "Search mod names", ref searchModName);
-        ImGui.SameLine();
+        ImGui.SameLine(0, inner);
         DrawSearchScopeToggle("E", "Search equipment names", ref searchEquipmentName);
 
-        DrawSelectedTagPills();
-        DrawSelectedJobPills();
-
-        var hasTagOrJob = filterTags.Count > 0 || filterJobs.Count > 0;
-        var tagsLabel = hasTagOrJob ? "Add tag or job..." : "Filter by tag(s) or job...";
-        if (ImGui.Button(tagsLabel, new Vector2(-1, 0)))
+        if (wide)
+            ImGui.SameLine();
+        if (DrawTagJobPickerButton(wide ? tagBtnW : -1f))
         {
             RebuildAvailableFilterTags();
             tagSearchText = string.Empty;
             ImGui.OpenPopup(FilterTagsPopupId);
         }
 
+        DrawSelectedTagPills();
+        DrawSelectedJobPills();
+
+        ImGui.AlignTextToFramePadding();
         ImGui.TextDisabled("Cover Image:");
-        ImGui.SameLine();
-        ImGui.PushItemWidth(-1);
+        ImGui.SameLine(0, inner);
+        ImGui.SetNextItemWidth(wide ? 170f * scale : -1f);
         var imageIdx = (int)filterImage;
         var imageOptions = new[] { "All", "Has a cover image", "Missing cover image" };
         if (ImGui.Combo("##imgFilter", ref imageIdx, imageOptions, imageOptions.Length))
             filterImage = (ImageFilterMode)imageIdx;
-        ImGui.PopItemWidth();
 
-        ImGui.Checkbox("Show favourites only", ref filterFavourites);
-
-        // Vanilla and Modded are mutually exclusive - ticking one unticks the other (both can be off).
-        // Side by side in the gallery's wider filter pane, stacked in the narrower design view.
-        if (inlineModFilters)
+        if (wide)
             ImGui.SameLine();
-        if (ImGui.Checkbox("Vanilla only", ref filterVanillaOnly) && filterVanillaOnly)
-            filterModdedOnly = false;
+        DrawQuickToggles(wide);
+    }
+
+    private const string FavouritesToggleLabel = "★ Favourites";
+    private const string VanillaToggleLabel = "Vanilla";
+    private const string ModdedToggleLabel = "Modded";
+
+    // Favourites / Vanilla / Modded as pill toggles, matching the D/M/E scope style. In the narrow
+    // pane they wrap like the tag pills instead of overflowing.
+    private void DrawQuickToggles(bool wide)
+    {
+        if (!wide)
+        {
+            var style = ImGui.GetStyle();
+            var spacing = style.ItemSpacing.X;
+            var availRight = ImGui.GetWindowPos().X + ImGui.GetContentRegionMax().X;
+            var cursorStart = ImGui.GetCursorScreenPos().X;
+            var lineRight = cursorStart;
+            var first = true;
+
+            float PillWidth(string label) => ImGui.CalcTextSize(label).X + (style.FramePadding.X * 2);
+
+            Pills.PlaceItem(PillWidth(FavouritesToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
+            DrawFavouritesToggle();
+            Pills.PlaceItem(PillWidth(VanillaToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
+            DrawVanillaToggle();
+            Pills.PlaceItem(PillWidth(ModdedToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
+            DrawModdedToggle();
+            return;
+        }
+
+        DrawFavouritesToggle();
+        ImGui.SameLine();
+        DrawVanillaToggle();
+        ImGui.SameLine();
+        DrawModdedToggle();
+    }
+
+    private void DrawFavouritesToggle()
+    {
+        if (Pills.DrawToggle(FavouritesToggleLabel, "favFilter", filterFavourites))
+            filterFavourites = !filterFavourites;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show only favourite designs");
+    }
+
+    // Vanilla and Modded are mutually exclusive - turning one on turns the other off (both can be off).
+    private void DrawVanillaToggle()
+    {
+        if (Pills.DrawToggle(VanillaToggleLabel, "vanillaFilter", filterVanillaOnly))
+        {
+            filterVanillaOnly = !filterVanillaOnly;
+            if (filterVanillaOnly)
+                filterModdedOnly = false;
+        }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Show only designs with no mod associations");
+    }
 
-        if (inlineModFilters)
-            ImGui.SameLine();
-        if (ImGui.Checkbox("Modded only", ref filterModdedOnly) && filterModdedOnly)
-            filterVanillaOnly = false;
+    private void DrawModdedToggle()
+    {
+        if (Pills.DrawToggle(ModdedToggleLabel, "moddedFilter", filterModdedOnly))
+        {
+            filterModdedOnly = !filterModdedOnly;
+            if (filterModdedOnly)
+                filterVanillaOnly = false;
+        }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Show only designs with mod associations");
+    }
 
-        using (ImRaii.Disabled(!HasAnyFilter))
-        {
-            if (ImGui.SmallButton("Clear filters"))
-            {
-                filterName = string.Empty;
-                searchDesignName = true;
-                searchModName = false;
-                searchEquipmentName = false;
-                filterTags.Clear();
-                filterJobs.Clear();
-                filterImage = ImageFilterMode.All;
-                filterFavourites = false;
-                filterVanillaOnly = false;
-                filterModdedOnly = false;
-            }
-        }
+    // Styled like a combo (frame background, left-aligned hint text, dropdown arrow) so it reads
+    // as an input instead of a stray centered label. Returns true when clicked.
+    private bool DrawTagJobPickerButton(float width)
+    {
+        var hasAny = filterTags.Count > 0 || filterJobs.Count > 0;
+        var label = hasAny ? "Add tag or job..." : "Filter by tag(s) or job...";
+
+        ImGui.PushStyleVar(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f));
+        ImGui.PushStyleColor(ImGuiCol.Button, ImGui.GetColorU32(ImGuiCol.FrameBg));
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ImGui.GetColorU32(ImGuiCol.FrameBgHovered));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, ImGui.GetColorU32(ImGuiCol.FrameBgActive));
+        ImGui.PushStyleColor(ImGuiCol.Text, UiTheme.PlaceholderText);
+        var clicked = ImGui.Button($"{label}##tagJobPicker", new Vector2(width, 0));
+        ImGui.PopStyleColor(4);
+        ImGui.PopStyleVar();
+
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var sz = ImGui.GetFontSize() * 0.35f;
+        var center = new Vector2(max.X - ImGui.GetStyle().FramePadding.X - sz, (min.Y + max.Y) * 0.5f);
+        ImGui.GetWindowDrawList().AddTriangleFilled(
+            center + new Vector2(-sz, -sz * 0.5f),
+            center + new Vector2(sz, -sz * 0.5f),
+            center + new Vector2(0f, sz * 0.75f),
+            ImGui.ColorConvertFloat4ToU32(UiTheme.PlaceholderText));
+        return clicked;
     }
 
     // Compact letter toggle (D/M/E) standing in for a long checkbox label; the full meaning lives in the tooltip.
