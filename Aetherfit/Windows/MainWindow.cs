@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.ImGuiFileDialog;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
@@ -246,30 +248,90 @@ public partial class MainWindow : Window, IDisposable
             SortNodeDesigns(child);
     }
 
-    // The toolbar across the top, the same in both modes: gallery actions, the design count, and settings.
+    // The toolbar across the top, the same in both modes: data actions left, status and settings right.
     private void DrawTopToolbar()
     {
-        if (ImGui.Button("Refresh"))
+        var style = ImGui.GetStyle();
+
+        if (IconTextButton(FontAwesomeIcon.Sync, "Refresh"))
             RefreshDesigns();
         ImGui.SameLine();
-        ImGui.TextDisabled($"{designsCount} design(s)");
-        ImGui.SameLine();
 
-        if (ImGui.Button("Share your Designs"))
+        if (IconTextButton(FontAwesomeIcon.Upload, "Export Gallery", dropdown: true))
             ImGui.OpenPopup("##sharePopup");
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Export designs to a shareable .afgallery file (images + basic info).");
         DrawSharePopup();
         ImGui.SameLine();
 
-        if (ImGui.Button("View Shared Designs"))
+        if (IconTextButton(FontAwesomeIcon.FolderOpen, "Open Shared Gallery..."))
             OpenImportGalleryDialog();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Open another user's exported .afgallery file in a read-only viewer.");
-        ImGui.SameLine();
 
-        if (ImGui.Button("Settings"))
+        var countText = designsCount == 1 ? "1 design" : $"{designsCount} designs";
+        float gearW;
+        using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            gearW = ImGui.CalcTextSize(FontAwesomeIcon.Cog.ToIconString()).X + (style.FramePadding.X * 2);
+        var countW = ImGui.CalcTextSize(countText).X;
+
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - gearW - style.ItemSpacing.X - countW);
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextDisabled(countText);
+        ImGui.SameLine();
+        if (ImGuiComponents.IconButton(FontAwesomeIcon.Cog))
             plugin.ToggleConfigUi();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Settings");
+    }
+
+    private static float IconTextButtonWidth(FontAwesomeIcon icon, string label, bool dropdown = false)
+    {
+        var style = ImGui.GetStyle();
+        float iconW;
+        using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            iconW = ImGui.CalcTextSize(icon.ToIconString()).X;
+        var caretW = dropdown ? style.ItemInnerSpacing.X + (ImGui.GetFontSize() * 0.5f) : 0f;
+        return (style.FramePadding.X * 2) + iconW + style.ItemInnerSpacing.X + ImGui.CalcTextSize(label).X + caretW;
+    }
+
+    // Icon + label button, with a caret when it opens a menu. Drawn by hand because a single
+    // ImGui button can't mix the icon font with the text font.
+    private static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false)
+    {
+        var style = ImGui.GetStyle();
+        var iconStr = icon.ToIconString();
+        float iconW;
+        using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            iconW = ImGui.CalcTextSize(iconStr).X;
+        var textW = ImGui.CalcTextSize(label).X;
+        var caretHalf = ImGui.GetFontSize() * 0.25f;
+
+        var clicked = ImGui.Button($"##iconText{label}", new Vector2(IconTextButtonWidth(icon, label, dropdown), 0));
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var dl = ImGui.GetWindowDrawList();
+        var color = ImGui.GetColorU32(ImGuiCol.Text);
+        var x = min.X + style.FramePadding.X;
+        var textY = min.Y + style.FramePadding.Y;
+
+        using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            dl.AddText(new Vector2(x, textY), color, iconStr);
+        x += iconW + style.ItemInnerSpacing.X;
+        dl.AddText(new Vector2(x, textY), color, label);
+
+        if (dropdown)
+        {
+            x += textW + style.ItemInnerSpacing.X;
+            var centerY = (min.Y + max.Y) * 0.5f;
+            dl.AddTriangleFilled(
+                new Vector2(x, centerY - (caretHalf * 0.5f)),
+                new Vector2(x + (caretHalf * 2f), centerY - (caretHalf * 0.5f)),
+                new Vector2(x + caretHalf, centerY + (caretHalf * 0.75f)),
+                color);
+        }
+
+        return clicked;
     }
 
     // The "Share your Designs" dropdown: export everything, or just the designs left after the active filters.
@@ -300,19 +362,16 @@ public partial class MainWindow : Window, IDisposable
     private void DrawBottomButtons()
     {
         var style = ImGui.GetStyle();
-        const string revertLabel = "Revert Appearance";
         const string applyLabel = "Apply Selected";
         const string randomLabel = "Apply Random";
         const string byTagLabel = "Apply Random By Tag(s)";
 
-        var pad = style.FramePadding.X * 2 + 8 * ImGuiHelpers.GlobalScale;
-        var revertW = ImGui.CalcTextSize(revertLabel).X + pad;
-        var applyW = ImGui.CalcTextSize(applyLabel).X + pad;
-        var randomW = ImGui.CalcTextSize(randomLabel).X + pad;
-        var byTagW = ImGui.CalcTextSize(byTagLabel).X + pad;
+        var applyW = IconTextButtonWidth(FontAwesomeIcon.Check, applyLabel);
+        var randomW = IconTextButtonWidth(FontAwesomeIcon.Random, randomLabel);
+        var byTagW = IconTextButtonWidth(FontAwesomeIcon.Tags, byTagLabel);
         var rightTotal = applyW + randomW + byTagW + 2 * style.ItemSpacing.X;
 
-        if (ImGui.Button(revertLabel, new Vector2(revertW, 0)))
+        if (IconTextButton(FontAwesomeIcon.Undo, "Revert Appearance"))
             RevertAppearance();
         ImGui.SameLine();
 
@@ -324,12 +383,12 @@ public partial class MainWindow : Window, IDisposable
 
         using (ImRaii.Disabled(!hasSelection))
         {
-            if (ImGui.Button(applyLabel, new Vector2(applyW, 0)) && selectedDesign is { } id)
+            if (IconTextButton(FontAwesomeIcon.Check, applyLabel) && selectedDesign is { } id)
                 ApplyDesignById(id);
         }
         ImGui.SameLine();
 
-        if (ImGui.Button(randomLabel, new Vector2(randomW, 0)))
+        if (IconTextButton(FontAwesomeIcon.Random, randomLabel))
         {
             var err = ApplyRandomDesign();
             if (err != null) Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{err}");
@@ -339,7 +398,7 @@ public partial class MainWindow : Window, IDisposable
         var anyHasTags = plugin.Configuration.CachedOutfits.Values.Any(o => o.Tags.Count > 0);
         using (ImRaii.Disabled(!anyHasTags))
         {
-            if (ImGui.Button(byTagLabel, new Vector2(byTagW, 0)))
+            if (IconTextButton(FontAwesomeIcon.Tags, byTagLabel))
             {
                 RebuildAvailableTags();
                 ImGui.OpenPopup(ApplyByTagPopupId);

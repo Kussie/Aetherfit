@@ -3,7 +3,6 @@ using System.IO;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
-using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Aetherfit.Services;
@@ -22,7 +21,7 @@ public partial class MainWindow
     private const float TooltipImageMax = 160f;
     private const float AdditionalThumbSize = 72f;
     private const string ImageHelpText =
-        "Click an image to view it full size. Hold Shift and right-click to remove. \"+\" picks a file; \"Snap\" captures from the game.";
+        "Click an image to view it full size. Hold Shift and right-click to remove. \"Browse\" picks a file; \"Snap\" captures from the game.";
 
     private void DrawLeftPane()
     {
@@ -303,15 +302,42 @@ public partial class MainWindow
             if (body.Success)
             {
                 var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(id);
+                var isHidden = plugin.Configuration.HiddenDesigns.Contains(id);
+                var style = ImGui.GetStyle();
+                var inner = style.ItemInnerSpacing.X;
+
+                // Measure the action cluster first so the title can be ellipsized to the space that remains.
+                var frameH = ImGui.GetFrameHeight();
+                float starW, eyeW, linkW;
+                using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+                {
+                    starW = ImGui.CalcTextSize(FontAwesomeIcon.Star.ToIconString()).X
+                          + (style.FramePadding.X * 2);
+                    eyeW = ImGui.CalcTextSize((isHidden ? FontAwesomeIcon.EyeSlash : FontAwesomeIcon.Eye).ToIconString()).X
+                         + (style.FramePadding.X * 2);
+                    linkW = ImGui.CalcTextSize(FontAwesomeIcon.ExternalLinkAlt.ToIconString()).X
+                          + (style.FramePadding.X * 2);
+                }
+                var actionsW = starW + eyeW + linkW + (inner * 3);
+
                 var rowTopY = ImGui.GetCursorPosY();
+                ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (6f * ImGuiHelpers.GlobalScale));
                 ImGui.SetWindowFontScale(1.5f);
-                ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered);
-                ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive);
-                ImGui.PushStyleColor(ImGuiCol.Text, isFavourite
-                    ? UiTheme.FavouriteStar
-                    : UiTheme.FavouriteButtonOff);
-                if (ImGui.Button(isFavourite ? "★##favStar" : "☆##favStar"))
+                var titleAvail = Math.Max(50f * ImGuiHelpers.GlobalScale, ImGui.GetContentRegionAvail().X - actionsW);
+                var title = TextFit.Ellipsize(details.Name, titleAvail);
+                var titleH = ImGui.GetTextLineHeight();
+                ImGui.TextColored(UiTheme.GoldAccent, title);
+                ImGui.SetWindowFontScale(1.0f);
+                if (title != details.Name && ImGui.IsItemHovered())
+                    ImGui.SetTooltip(details.Name);
+
+                var actionY = rowTopY + Math.Max(0f, (titleH - frameH) * 0.5f);
+
+                ImGui.SameLine(0, inner);
+                ImGui.SetCursorPosY(actionY);
+                if (HeaderIconButton("favStar", FontAwesomeIcon.Star,
+                        isFavourite ? UiTheme.FavouriteStar : UiTheme.FavouriteButtonOff,
+                        new Vector2(starW, frameH)))
                 {
                     if (isFavourite)
                         plugin.Configuration.FavouriteDesigns.Remove(id);
@@ -320,33 +346,14 @@ public partial class MainWindow
                     plugin.Configuration.Save();
                     favouriteVersion++;
                 }
-                ImGui.PopStyleColor(4);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
-                var rowHeight = ImGui.GetItemRectSize().Y;
 
-                // Hidden toggle, sitting right next to the favourite star. The filled eye glyph reads larger than the
-                // thin star outline at the same scale, so render it at 1.0. Give the button the star's full row height
-                // and let ImGui vertically centre the glyph within it - that lines the eye up with the star exactly,
-                // with no font-metric guesswork.
-                var isHidden = plugin.Configuration.HiddenDesigns.Contains(id);
-                ImGui.SameLine();
-                ImGui.SetWindowFontScale(1.0f);
-                ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered);
-                ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive);
-                ImGui.PushStyleColor(ImGuiCol.Text, isHidden ? UiTheme.HiddenEyeOn : UiTheme.HiddenButtonOff);
-                bool eyeClicked;
-                using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
-                {
-                    var eyeGlyph = (isHidden ? FontAwesomeIcon.EyeSlash : FontAwesomeIcon.Eye).ToIconString();
-                    var eyeWidth = ImGui.CalcTextSize(eyeGlyph).X + (ImGui.GetStyle().FramePadding.X * 2);
-                    // The eye glyph's visual centre sits slightly above its line-box centre, so frame-centring leaves
-                    // it a touch high - nudge the button down a hair to bring it level with the star.
-                    ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (2.25f * ImGuiHelpers.GlobalScale));
-                    eyeClicked = ImGui.Button(eyeGlyph + "##hideEye", new Vector2(eyeWidth, rowHeight));
-                }
-                if (eyeClicked)
+                ImGui.SameLine(0, inner);
+                ImGui.SetCursorPosY(actionY);
+                if (HeaderIconButton("hideEye", isHidden ? FontAwesomeIcon.EyeSlash : FontAwesomeIcon.Eye,
+                        isHidden ? UiTheme.HiddenEyeOn : UiTheme.HiddenButtonOff,
+                        new Vector2(eyeW, frameH)))
                 {
                     if (isHidden)
                         plugin.Configuration.HiddenDesigns.Remove(id);
@@ -355,21 +362,14 @@ public partial class MainWindow
                     plugin.Configuration.Save();
                     hiddenVersion++;
                 }
-                ImGui.PopStyleColor(4);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(isHidden
                         ? "Hidden — click to show in the gallery and exports"
                         : "Click to hide from the gallery and exports");
 
-                ImGui.SameLine();
-                ImGui.SetWindowFontScale(1.5f);
-                ImGui.SetCursorPosY(rowTopY + ((rowHeight - ImGui.GetTextLineHeight()) * 0.5f));
-                ImGui.TextColored(UiTheme.GoldAccent, details.Name);
-                ImGui.SetWindowFontScale(1.0f);
-
-                ImGui.SameLine();
-                ImGui.SetCursorPosY(rowTopY + ((rowHeight - ImGui.GetFrameHeight()) * 0.5f));
-                if (ImGuiComponents.IconButton(FontAwesomeIcon.ExternalLinkAlt))
+                ImGui.SameLine(0, inner);
+                ImGui.SetCursorPosY(actionY);
+                if (HeaderIconButton("openGlamourer", FontAwesomeIcon.ExternalLinkAlt, null, new Vector2(linkW, frameH)))
                     plugin.Glamourer.OpenInGlamourer(id, details.Name);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Open in Glamourer");
@@ -478,11 +478,11 @@ public partial class MainWindow
             ImGui.Spacing();
 
             var thumb = AdditionalThumbSize * ImGuiHelpers.GlobalScale;
-            if (ImGui.Button("+##cover", new Vector2(thumb, thumb)))
+            if (DrawImageActionTile("coverBrowse", FontAwesomeIcon.FolderOpen, "Browse", "Pick an image file", thumb))
                 OpenImagePicker(id);
 
             ImGui.SameLine();
-            if (ImGui.Button("Snap##cover", new Vector2(thumb, thumb)))
+            if (DrawImageActionTile("coverSnap", FontAwesomeIcon.Camera, "Snap", "Capture from the game", thumb))
                 plugin.ScreenshotSetup.Begin(croppedPath => plugin.ImageStorage.SetCover(id, croppedPath));
         }
 
@@ -514,16 +514,67 @@ public partial class MainWindow
         {
             if (paths.Count > 0)
                 ImGui.SameLine();
-            if (ImGui.Button("+", new Vector2(thumb, thumb)))
+            if (DrawImageActionTile("addBrowse", FontAwesomeIcon.FolderOpen, "Browse", "Pick an image file", thumb))
                 OpenAdditionalImagePicker(id);
 
             ImGui.SameLine();
-            if (ImGui.Button("Snap", new Vector2(thumb, thumb)))
+            if (DrawImageActionTile("addSnap", FontAwesomeIcon.Camera, "Snap", "Capture from the game", thumb))
                 plugin.ScreenshotSetup.Begin(croppedPath => plugin.ImageStorage.AddAdditional(id, croppedPath));
         }
 
         if (toRemoveIndex >= 0)
             plugin.ImageStorage.RemoveAdditional(id, toRemoveIndex);
+    }
+
+    // Ghost icon button for the detail header. All three actions render through here with the same
+    // font and frame height so the glyphs line up; tint null keeps the normal text colour.
+    private static bool HeaderIconButton(string id, FontAwesomeIcon icon, Vector4? tint, Vector2 size)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered);
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive);
+        if (tint is { } t)
+            ImGui.PushStyleColor(ImGuiCol.Text, t);
+        bool clicked;
+        using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            clicked = ImGui.Button($"{icon.ToIconString()}##{id}", size);
+        ImGui.PopStyleColor(tint.HasValue ? 4 : 3);
+        return clicked;
+    }
+
+    // A square tile with an icon over a label, framed so the add/snap actions read as buttons
+    // sitting next to the image thumbnails.
+    private static bool DrawImageActionTile(string id, FontAwesomeIcon icon, string label, string tooltip, float size)
+    {
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 4f);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, ImGuiHelpers.GlobalScale);
+        ImGui.PushStyleColor(ImGuiCol.Button, UiTheme.PlaceholderBg);
+        ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(0.65f, 0.65f, 0.68f, 0.45f));
+        var clicked = ImGui.Button($"##imgTile{id}", new Vector2(size, size));
+        ImGui.PopStyleColor(2);
+        ImGui.PopStyleVar(2);
+
+        var hovered = ImGui.IsItemHovered();
+        if (hovered)
+            ImGui.SetTooltip(tooltip);
+
+        var iconStr = icon.ToIconString();
+        Vector2 iconSize;
+        using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            iconSize = ImGui.CalcTextSize(iconStr);
+        var labelSize = ImGui.CalcTextSize(label);
+        var gap = 4f * ImGuiHelpers.GlobalScale;
+
+        var dl = ImGui.GetWindowDrawList();
+        var color = ImGui.GetColorU32(hovered ? ImGuiCol.Text : ImGuiCol.TextDisabled);
+        var min = ImGui.GetItemRectMin();
+        var centerX = min.X + (size * 0.5f);
+        var startY = min.Y + ((size - (iconSize.Y + gap + labelSize.Y)) * 0.5f);
+        using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            dl.AddText(new Vector2(centerX - (iconSize.X * 0.5f), startY), color, iconStr);
+        dl.AddText(new Vector2(centerX - (labelSize.X * 0.5f), startY + iconSize.Y + gap), color, label);
+
+        return clicked;
     }
 
     private void OpenImagePicker(Guid id)
@@ -654,7 +705,10 @@ public partial class MainWindow
 
         var hovered = ImGui.IsItemHovered();
         if (hovered)
+        {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            ImGui.SetTooltip("Left-click to view full size\nShift + right-click to remove");
+        }
         return hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
     }
 
@@ -686,7 +740,10 @@ public partial class MainWindow
 
         var hovered = ImGui.IsItemHovered();
         if (hovered)
+        {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            ImGui.SetTooltip("Left-click to view full size\nShift + right-click to remove");
+        }
 
         var leftClicked = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
         if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
