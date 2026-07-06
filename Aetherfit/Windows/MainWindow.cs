@@ -105,7 +105,8 @@ public partial class MainWindow : Window, IDisposable
         else
         {
             var scale = ImGuiHelpers.GlobalScale;
-            var splitterW = 5f * scale;
+            // Wide enough to hover without pixel-hunting; the visible line stays centred in it.
+            var splitterW = 10f * scale;
             var maxLeft = Math.Max(MinLeftPaneWidth, Math.Min(460f, (ImGui.GetWindowSize().X / scale) - 200f));
             var actualLeftW = Math.Clamp(leftPaneWidth, MinLeftPaneWidth, maxLeft) * scale;
 
