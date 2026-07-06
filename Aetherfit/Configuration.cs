@@ -44,6 +44,9 @@ public class Configuration : IPluginConfiguration
     // When disabled, the Additional Design Layers panel is hidden and applying a base design never applies layers.
     public bool EnableRandomLayers { get; set; } = false;
 
+    // Set once the user closes the help blurb in the Additional Design Layers panel.
+    public bool AdditionalLayersHelpDismissed { get; set; }
+
     // Legacy: replaced by GalleryFitMode. Migrated on first plugin load if it was set to true.
     public bool GalleryFitWholeImage { get; set; } = false;
 
