@@ -43,6 +43,10 @@ internal static class UiTheme
     public static readonly Vector4 HiddenEyeOff = new(0.7f, 0.7f, 0.72f, 0.9f);
     public static readonly Vector4 HiddenButtonOff = new(0.45f, 0.45f, 0.48f, 1.0f);
 
+    // Gallery cards: the faint plate behind each cell and the hover border (selection stays gold).
+    public static readonly Vector4 CardBg = new(1f, 1f, 1f, 0.04f);
+    public static readonly Vector4 CardHoverBorder = new(0.75f, 0.72f, 0.60f, 0.75f);
+
     // Faint vertical indent guides down the design tree.
     public static readonly Vector4 TreeGuide = new(0.5f, 0.5f, 0.5f, 0.6f);
 
