@@ -37,6 +37,10 @@ public class Configuration : IPluginConfiguration
     public bool DefaultToCoverMode { get; set; } = false;
     public GalleryFitMode GalleryFitMode { get; set; } = GalleryFitMode.Crop;
 
+    public bool GalleryPinFavouritesFirst { get; set; } = true;
+    // Unscaled; the gallery derives its column count from this.
+    public float GalleryThumbTargetWidth { get; set; } = 220f;
+
     // When disabled, the Additional Design Layers panel is hidden and applying a base design never applies layers.
     public bool EnableRandomLayers { get; set; } = false;
 
