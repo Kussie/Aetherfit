@@ -194,7 +194,7 @@ public class ConfigWindow : Window, IDisposable
     private static void DrawCharacterLine()
     {
         var ps = Plugin.PlayerState;
-        ImGui.TextColored(UiTheme.SectionHeader, "Character:");
+        ImGui.TextColored(UiTheme.SectionHeader, "Current Character:");
         ImGui.SameLine();
         if (!ps.IsLoaded)
         {

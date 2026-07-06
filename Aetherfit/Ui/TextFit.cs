@@ -5,8 +5,6 @@ namespace Aetherfit.Ui;
 
 internal static class TextFit
 {
-    // Truncates with a trailing ellipsis to fit maxWidth. Measures with the current font and
-    // window font scale, so callers must have the target scale active.
     public static string Ellipsize(string text, float maxWidth)
     {
         if (ImGui.CalcTextSize(text).X <= maxWidth)

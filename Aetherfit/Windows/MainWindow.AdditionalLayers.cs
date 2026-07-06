@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Aetherfit.Services;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
@@ -37,6 +38,9 @@ public partial class MainWindow
 
         ImGui.Indent();
 
+        if (!plugin.Configuration.AdditionalLayersHelpDismissed)
+            DrawLayersHelpBox();
+
         var slots = plugin.Configuration.GetLayerSlots(id);
         DrawLayerPicker(id, slots);
         ImGui.Spacing();
@@ -66,6 +70,47 @@ public partial class MainWindow
         DrawAssociatedBaseOutfits(id);
 
         ImGui.Unindent();
+        ImGui.Spacing();
+    }
+
+    // Intro blurb for first-time users; the close button hides it for good.
+    private void DrawLayersHelpBox()
+    {
+        const string helpText =
+            "Layers apply extra designs on top of this one whenever it is applied, working top to bottom. "
+            + "A layer can hold several designs — only those matching your current job are considered, and "
+            + "when more than one qualifies, a single design is chosen at random each time. "
+            + "Useful for accessories, job variants, or randomised extras.";
+
+        var style = ImGui.GetStyle();
+        var pad = 8f * ImGuiHelpers.GlobalScale;
+        var availW = ImGui.GetContentRegionAvail().X;
+        var closeSize = ImGui.GetFrameHeight();
+        var wrapW = availW - (pad * 2) - closeSize - style.ItemSpacing.X;
+        var textH = ImGui.CalcTextSize(helpText, false, wrapW).Y;
+        var boxH = Math.Max(textH, closeSize) + (pad * 2);
+
+        var start = ImGui.GetCursorScreenPos();
+        ImGui.GetWindowDrawList().AddRectFilled(start, start + new Vector2(availW, boxH),
+            ImGui.ColorConvertFloat4ToU32(UiTheme.ToggleOffBg), 4f);
+
+        ImGui.SetCursorScreenPos(start + new Vector2(pad, pad));
+        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + wrapW);
+        ImGui.TextUnformatted(helpText);
+        ImGui.PopTextWrapPos();
+
+        ImGui.SetCursorScreenPos(new Vector2(
+            start.X + availW - closeSize - (pad * 0.5f), start.Y + (pad * 0.5f)));
+        if (HeaderIconButton("layersHelpClose", FontAwesomeIcon.Times, UiTheme.PlaceholderText,
+                new Vector2(closeSize, closeSize)))
+        {
+            plugin.Configuration.AdditionalLayersHelpDismissed = true;
+            plugin.Configuration.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Dismiss (won't be shown again)");
+
+        ImGui.SetCursorScreenPos(new Vector2(start.X, start.Y + boxH));
         ImGui.Spacing();
     }
 
