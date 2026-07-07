@@ -7,7 +7,7 @@ namespace Aetherfit.Services;
 
 public sealed class ImageStorageService
 {
-    public const int MaxAdditionalImages = 5;
+    public const int MaxAdditionalImages = 7;
     private const string AdditionalImagesSubdir = "additional";
     private const string ForeignSubdir = "foreign";
 
@@ -87,7 +87,7 @@ public sealed class ImageStorageService
             DeleteCoverFilesFor(id, imagesDir);
 
             var ext = NormalizeExtension(Path.GetExtension(sourcePath));
-            var targetName = id.ToString("N") + ext;
+            var targetName = CoverFileName(id, ext);
             var targetPath = Path.Combine(imagesDir, targetName);
             File.Copy(sourcePath, targetPath, overwrite: true);
 
@@ -120,6 +120,61 @@ public sealed class ImageStorageService
             configuration.Save();
 
         coverPathCache.Remove(id);
+
+        // Keep a cover as long as any images remain: promote the first additional into the empty slot.
+        if (configuration.OutfitAdditionalImages.TryGetValue(id, out var list) && list.Count > 0)
+            PromoteToCover(id, 0);
+    }
+
+    public void PromoteToCover(Guid id, int index)
+    {
+        if (!configuration.OutfitAdditionalImages.TryGetValue(id, out var list))
+            return;
+        if (index < 0 || index >= list.Count)
+            return;
+
+        try
+        {
+            var additionalDir = EnsureAdditionalImagesDirectory();
+            var imagesDir = EnsureImagesDirectory();
+
+            var promotedPath = Path.Combine(additionalDir, list[index]);
+            if (!File.Exists(promotedPath))
+                return;
+            var coverExt = NormalizeExtension(Path.GetExtension(list[index]));
+
+            if (configuration.OutfitImages.TryGetValue(id, out var oldCoverName)
+                && !string.IsNullOrEmpty(oldCoverName)
+                && File.Exists(Path.Combine(imagesDir, oldCoverName)))
+            {
+                var demotedName = $"{id:N}_{Guid.NewGuid():N}{NormalizeExtension(Path.GetExtension(oldCoverName))}";
+                File.Move(Path.Combine(imagesDir, oldCoverName), Path.Combine(additionalDir, demotedName));
+                list[index] = demotedName;
+            }
+            else
+            {
+                list.RemoveAt(index);
+                if (list.Count == 0)
+                    configuration.OutfitAdditionalImages.Remove(id);
+            }
+
+            DeleteCoverFilesFor(id, imagesDir);
+            var coverName = CoverFileName(id, coverExt);
+            File.Move(promotedPath, Path.Combine(imagesDir, coverName));
+            configuration.OutfitImages[id] = coverName;
+
+            configuration.Save();
+        }
+        catch (Exception ex)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to update cover image: {ex.Message}");
+            Plugin.Log.Warning(ex, "Failed to promote additional image {Index} to cover for {Id}", index, id);
+        }
+        finally
+        {
+            coverPathCache.Remove(id);
+            additionalPathsCache.Remove(id);
+        }
     }
 
     public void AddAdditional(Guid id, string sourcePath)
@@ -263,14 +318,9 @@ public sealed class ImageStorageService
         }
     }
 
-    // Image extensions we're willing to write. Anything outside this set (including separators or
-    // traversal sequences smuggled in via a shared bundle's Ext field) is forced back to ".png".
     private static readonly HashSet<string> AllowedImageExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
 
-    // Lower-cases an extension and makes sure it has a leading dot. Untrusted or unrecognised extensions
-    // (e.g. ".png/../../evil.exe" from an imported gallery) collapse to ".png" so they can't escape the
-    // target directory or write an executable type.
     public static string NormalizeExtension(string? ext)
     {
         if (string.IsNullOrWhiteSpace(ext))
@@ -281,8 +331,7 @@ public sealed class ImageStorageService
         return AllowedImageExtensions.Contains(ext) ? ext : ".png";
     }
 
-    // Belt-and-braces guard against path traversal: confirm a built path actually resolves inside the
-    // directory we intended to write to. Returns false for anything that escapes via "..", separators, etc.
+    // Belt-and-braces guard against path traversal
     private static bool IsContainedIn(string directory, string path)
     {
         var root = Path.GetFullPath(directory);
@@ -355,12 +404,17 @@ public sealed class ImageStorageService
         return dir;
     }
 
+    // A unique cover filename per set/promote. 
+    private static string CoverFileName(Guid id, string ext) => $"{id:N}_{Guid.NewGuid():N}{ext}";
+
     private static void DeleteCoverFilesFor(Guid id, string imagesDir)
     {
         if (!Directory.Exists(imagesDir))
             return;
+        // Matches both the old "{id:N}.ext" covers and the newer "{id:N}_{token}.ext" ones. Only cover
+        // files live at the top level of the images dir, so a prefix glob won't catch anything else.
         var prefix = id.ToString("N");
-        foreach (var file in Directory.EnumerateFiles(imagesDir, prefix + ".*"))
+        foreach (var file in Directory.EnumerateFiles(imagesDir, prefix + "*"))
             DeleteFileQuietly(file);
     }
 

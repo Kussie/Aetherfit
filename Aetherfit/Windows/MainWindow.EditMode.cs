@@ -19,9 +19,15 @@ public partial class MainWindow
 
     private const float RightPaneImageMax = 220f;
     private const float TooltipImageMax = 160f;
-    private const float AdditionalThumbSize = 72f;
+    // Sized to about half the cover's long side so a portrait cover fits roughly two thumbnails per column.
+    private const float AdditionalThumbSize = 104f;
     private const string ImageHelpText =
-        "Click an image to view it full size. Hold Shift and right-click to remove. \"Browse\" picks a file; \"Snap\" captures from the game.";
+        "The first image you add becomes the cover, shown large above the rest. Drag a thumbnail onto the cover (or the cover onto a thumbnail) to swap which one is the cover. "
+        + "Click an image to view it full size. Hold Shift and right-click to remove. \"Browse\" picks a file; \"Snap\" captures from the game.";
+
+    private const string ImageDragType = "AF_IMAGE";
+    private const string CoverDragType = "AF_COVER";
+    private int draggedImageIndex = -1;
 
     private void DrawLeftPane()
     {
@@ -420,18 +426,10 @@ public partial class MainWindow
                     ImGui.Spacing();
                 }
 
-                if (DrawCollapsibleSubheader("Cover Image", ref coverImagePanelOpen, ImageHelpText))
+                if (DrawCollapsibleSubheader("Images", ref imagesPanelOpen, ImageHelpText))
                 {
                     ImGui.Indent();
-                    DrawOutfitImageBlock(id);
-                    ImGui.Unindent();
-                    ImGui.Spacing();
-                }
-
-                if (DrawCollapsibleSubheader("Additional Images", ref additionalImagesPanelOpen, ImageHelpText))
-                {
-                    ImGui.Indent();
-                    DrawAdditionalImagesBlock(id);
+                    DrawImagesBlock(id);
                     ImGui.Unindent();
                     ImGui.Spacing();
                 }
@@ -457,73 +455,165 @@ public partial class MainWindow
         }
     }
 
-    private void DrawOutfitImageBlock(Guid id)
+    private void DrawImagesBlock(Guid id)
     {
-        var imagePath = plugin.ImageStorage.GetCoverPath(id);
-        var deleteRequested = false;
-        if (imagePath != null)
-        {
-            if (DrawImageScaled(imagePath, RightPaneImageMax * ImGuiHelpers.GlobalScale, clickable: true))
-                plugin.ImageViewer.Show(imagePath);
-            if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
-                deleteRequested = true;
-        }
-        else
-        {
-            ImGui.TextDisabled("No image set");
-        }
+        var coverPath = plugin.ImageStorage.GetCoverPath(id);
+        var thumb = AdditionalThumbSize * ImGuiHelpers.GlobalScale;
 
-        if (imagePath == null)
+        // With no cover there are no images at all, so the two tiles set the very first image as the cover.
+        if (coverPath == null)
         {
-            ImGui.Spacing();
-
-            var thumb = AdditionalThumbSize * ImGuiHelpers.GlobalScale;
             if (DrawImageActionTile("coverBrowse", FontAwesomeIcon.FolderOpen, "Browse", "Pick an image file", thumb))
                 OpenImagePicker(id);
-
             ImGui.SameLine();
             if (DrawImageActionTile("coverSnap", FontAwesomeIcon.Camera, "Snap", "Capture from the game", thumb))
                 plugin.ScreenshotSetup.Begin(croppedPath => plugin.ImageStorage.SetCover(id, croppedPath));
+            return;
         }
 
-        if (deleteRequested)
-            plugin.ImageStorage.RemoveCover(id);
-    }
+        // A drop during the same frame also registers as a release-click; suppress the viewer then.
+        var dragActive = !ImGui.GetDragDropPayload().IsNull;
+        var style = ImGui.GetStyle();
+        var fullAvail = ImGui.GetContentRegionAvail().X;
 
-    private void DrawAdditionalImagesBlock(Guid id)
-    {
         var paths = plugin.ImageStorage.GetAdditionalPaths(id);
-        var thumb = AdditionalThumbSize * ImGuiHelpers.GlobalScale;
+        var promoteIndex = -1;
         var toRemoveIndex = -1;
+        var deleteCover = false;
 
-        for (var i = 0; i < paths.Count; i++)
+        using (ImRaii.Group())
         {
-            if (i > 0)
-                ImGui.SameLine();
-            using (ImRaii.PushId(i))
+            if (DrawImageScaled(coverPath, RightPaneImageMax * ImGuiHelpers.GlobalScale, clickable: true, title: "Cover Image") && !dragActive)
+                plugin.ImageViewer.Show(coverPath);
+            if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
+                deleteCover = true;
+
+            // The cover can be dragged onto a thumbnail to swap them.
+            if (ImGui.BeginDragDropSource(ImGuiDragDropFlags.SourceAllowNullId))
             {
-                var clicked = DrawSquareThumbnail(paths[i], thumb, out var deleteRequested);
-                if (clicked)
-                    plugin.ImageViewer.Show(paths[i]);
-                if (deleteRequested)
-                    toRemoveIndex = i;
+                ImGui.SetDragDropPayload(CoverDragType, ReadOnlySpan<byte>.Empty);
+                DrawImageScaled(coverPath, thumb);
+                ImGui.EndDragDropSource();
+            }
+
+            // Dropping a thumbnail onto the cover promotes it (the old cover drops into the wall).
+            if (ImGui.BeginDragDropTarget())
+            {
+                if (AcceptDragPayload(ImageDragType) && draggedImageIndex >= 0)
+                    promoteIndex = draggedImageIndex;
+                ImGui.EndDragDropTarget();
+            }
+        }
+        var coverSize = ImGui.GetItemRectSize();
+
+        // Fill the space to the right of the cover with a compact grid of thumbnails (the two add tiles
+        // trailing the images). Beside the cover the cells flow top-to-bottom down to about the cover's
+        // height before starting a new column, so the wall stays as narrow as possible; when the pane is
+        // too narrow to sit beside the cover, the grid drops below it and wraps by width instead. Cells are
+        // positioned absolutely so each row/column lines up with the grid rather than the window margin.
+        var availRight = fullAvail - coverSize.X - style.ItemSpacing.X;
+        var placeRight = availRight >= thumb;
+        if (placeRight)
+            ImGui.SameLine();
+        else
+            ImGui.Spacing();
+
+        using (ImRaii.Group())
+        {
+            var origin = ImGui.GetCursorScreenPos();
+            var strideX = thumb + style.ItemSpacing.X;
+            var strideY = thumb + style.ItemSpacing.Y;
+
+            var underCap = paths.Count < ImageStorageService.MaxAdditionalImages;
+            var tileCount = underCap ? 2 : 0;
+            var totalItems = paths.Count + tileCount;
+
+            int columns = 0, rows;
+            var columnMajor = placeRight;
+            if (columnMajor)
+            {
+                // As many rows as roughly fill the cover's height, then widen into columns for the rest.
+                // Grow the row count if needed so the columns (allowing one spare cell for the tile pair)
+                // stay within the width beside the cover.
+                rows = Math.Max(1, Math.Min(totalItems, (int)Math.Round(coverSize.Y / strideY)));
+                var maxColumns = Math.Max(1, (int)((availRight + style.ItemSpacing.X) / strideX));
+                while ((totalItems + 1 + rows - 1) / rows > maxColumns && rows < totalItems + 1)
+                    rows++;
+            }
+            else
+            {
+                columns = Math.Max(1, (int)((fullAvail + style.ItemSpacing.X) / strideX));
+                rows = (totalItems + columns - 1) / columns;
+            }
+
+            // Keep the Browse/Snap pair adjacent: if the first tile would land on a column's bottom row (so
+            // the second wraps to the next column), skip that cell and start the pair at the next column top.
+            var tileGap = columnMajor && tileCount == 2 && rows > 1 && paths.Count % rows == rows - 1 ? 1 : 0;
+
+            for (var k = 0; k < totalItems; k++)
+            {
+                int col, row;
+                if (columnMajor)
+                {
+                    var slot = k < paths.Count ? k : k + tileGap;
+                    col = slot / rows;
+                    row = slot % rows;
+                }
+                else
+                {
+                    col = k % columns;
+                    row = k / columns;
+                }
+                ImGui.SetCursorScreenPos(new Vector2(origin.X + col * strideX, origin.Y + row * strideY));
+
+                if (k < paths.Count)
+                {
+                    using (ImRaii.PushId(k))
+                    {
+                        var clicked = DrawSquareThumbnail(paths[k], thumb, out var deleteRequested);
+
+                        if (ImGui.BeginDragDropSource(ImGuiDragDropFlags.SourceAllowNullId))
+                        {
+                            draggedImageIndex = k;
+                            ImGui.SetDragDropPayload(ImageDragType, ReadOnlySpan<byte>.Empty);
+                            DrawImageScaled(paths[k], thumb);
+                            ImGui.EndDragDropSource();
+                        }
+
+                        // Dropping the cover here swaps them: this thumbnail becomes the cover, the old one takes its slot.
+                        if (ImGui.BeginDragDropTarget())
+                        {
+                            if (AcceptDragPayload(CoverDragType))
+                                promoteIndex = k;
+                            ImGui.EndDragDropTarget();
+                        }
+
+                        if (clicked && !dragActive)
+                            plugin.ImageViewer.Show(paths[k]);
+                        if (deleteRequested)
+                            toRemoveIndex = k;
+                    }
+                }
+                else if (k == paths.Count)
+                {
+                    if (DrawImageActionTile("addBrowse", FontAwesomeIcon.FolderOpen, "Browse", "Pick an image file", thumb))
+                        OpenAdditionalImagePicker(id);
+                }
+                else
+                {
+                    if (DrawImageActionTile("addSnap", FontAwesomeIcon.Camera, "Snap", "Capture from the game", thumb))
+                        plugin.ScreenshotSetup.Begin(croppedPath => plugin.ImageStorage.AddAdditional(id, croppedPath));
+                }
             }
         }
 
-        if (paths.Count < ImageStorageService.MaxAdditionalImages)
-        {
-            if (paths.Count > 0)
-                ImGui.SameLine();
-            if (DrawImageActionTile("addBrowse", FontAwesomeIcon.FolderOpen, "Browse", "Pick an image file", thumb))
-                OpenAdditionalImagePicker(id);
-
-            ImGui.SameLine();
-            if (DrawImageActionTile("addSnap", FontAwesomeIcon.Camera, "Snap", "Capture from the game", thumb))
-                plugin.ScreenshotSetup.Begin(croppedPath => plugin.ImageStorage.AddAdditional(id, croppedPath));
-        }
-
-        if (toRemoveIndex >= 0)
+        // At most one of these fires per frame; promotion takes priority so a drop is never also read as a delete.
+        if (promoteIndex >= 0)
+            plugin.ImageStorage.PromoteToCover(id, promoteIndex);
+        else if (toRemoveIndex >= 0)
             plugin.ImageStorage.RemoveAdditional(id, toRemoveIndex);
+        else if (deleteCover)
+            plugin.ImageStorage.RemoveCover(id);
     }
 
     // Ghost icon button for the detail header. All three actions render through here with the same
@@ -688,7 +778,7 @@ public partial class MainWindow
         ImGui.EndTooltip();
     }
 
-    private static bool DrawImageScaled(string absolutePath, float maxSide, bool clickable = false)
+    private static bool DrawImageScaled(string absolutePath, float maxSide, bool clickable = false, string? title = null)
     {
         var tex = Plugin.TextureProvider.GetFromFile(absolutePath).GetWrapOrEmpty();
         if (tex.Width <= 0 || tex.Height <= 0)
@@ -707,9 +797,21 @@ public partial class MainWindow
         if (hovered)
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-            ImGui.SetTooltip("Left-click to view full size\nShift + right-click to remove");
+            if (title != null)
+            {
+                ImGui.BeginTooltip();
+                ImGui.TextColored(UiTheme.GoldAccent, title);
+                ImGui.TextUnformatted("Left-click to view full size");
+                ImGui.TextUnformatted("Shift + right-click to remove");
+                ImGui.EndTooltip();
+            }
+            else
+            {
+                ImGui.SetTooltip("Left-click to view full size\nShift + right-click to remove");
+            }
         }
-        return hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+        // Fire on release rather than press so grabbing the cover to drag it doesn't also open the viewer.
+        return hovered && ImGui.IsMouseReleased(ImGuiMouseButton.Left);
     }
 
     private static bool DrawSquareThumbnail(string absolutePath, float size, out bool deleteRequested)
@@ -745,7 +847,8 @@ public partial class MainWindow
             ImGui.SetTooltip("Left-click to view full size\nShift + right-click to remove");
         }
 
-        var leftClicked = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+        // Fire on release rather than press so grabbing the thumbnail to drag it doesn't also open the viewer.
+        var leftClicked = hovered && ImGui.IsMouseReleased(ImGuiMouseButton.Left);
         if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
             deleteRequested = true;
         return leftClicked;
