@@ -30,8 +30,7 @@ public partial class MainWindow
     private bool customizationsPanelOpen = true;
     private bool modsPanelOpen = true;
     private bool designLinksPanelOpen = true;
-    private bool coverImagePanelOpen = true;
-    private bool additionalImagesPanelOpen = true;
+    private bool imagesPanelOpen = true;
     private bool jobAssociationsPanelOpen = true;
     private bool tagsPanelOpen = true;
     private bool descriptionPanelOpen = true;
