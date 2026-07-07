@@ -7,7 +7,7 @@ namespace Aetherfit.Services;
 
 public sealed class ImageStorageService
 {
-    public const int MaxAdditionalImages = 7;
+    public const int MaxAdditionalImages = 8;
     private const string AdditionalImagesSubdir = "additional";
     private const string ForeignSubdir = "foreign";
 
