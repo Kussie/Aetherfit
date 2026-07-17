@@ -103,6 +103,7 @@ public sealed class Plugin : IDalamudPlugin
                         + "/aetherfit tag [favourite] <tag1,tag2,...> — apply a random outfit matching the tags, optionally favourites only.\n"
                         + "/aetherfit job — apply a random outfit associated with your current job.\n"
                         + "/aetherfit favourite [job] — apply a random favourite outfit, optionally only one associated with your current job.\n"
+                        + "/aetherfit last — reapply the last known design.\n"
                         + "/aetherfit revert — revert appearance to the game state."
         });
 
@@ -204,6 +205,14 @@ public sealed class Plugin : IDalamudPlugin
                 }
 
                 var err = MainWindow.ApplyRandomFavourite(matchCurrentJob: option == "job");
+                if (err != null)
+                    ChatGui.PrintError($"{ChatPrefix}{err}");
+                break;
+            }
+
+            case "last":
+            {
+                var err = MainWindow.ReapplyLastWorn();
                 if (err != null)
                     ChatGui.PrintError($"{ChatPrefix}{err}");
                 break;

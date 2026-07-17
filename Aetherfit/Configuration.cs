@@ -70,7 +70,8 @@ public class Configuration : IPluginConfiguration
 
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
-    
+
+
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
@@ -136,6 +137,10 @@ public class CharacterLoginSettings
     // Cleared on revert. Used by LoginAction.ReapplyLast.
     public Guid? LastWornDesign { get; set; }
     public List<Guid> LastWornLayers { get; set; } = new();
+
+    // Recently applied base designs, most recent first, capped. Random picks avoid the head
+    // outright and down-weight the rest so the same design doesn't come up in quick succession.
+    public List<Guid> RecentDesignHistory { get; set; } = new();
 
     // When enabled, Aetherfit re-applies the last-worn design (+ exact layers) after every zone
     // change, since Glamourer reverts manual state on zoning. Independent of LoginAction: it works

@@ -113,6 +113,7 @@ public class ConfigWindow : Window, IDisposable
             "Apply a random design associated with your current job. Set associations per-design in the design details pane.");
         DrawCommand("/aetherfit favourite [job]",
             "Apply a random favourite design. Add \"job\" to only pick favourites associated with your current job.");
+        DrawCommand("/aetherfit last", "Reapply the last design you had worn.");
         DrawCommand("/aetherfit revert", "Revert your character's appearance back to the game's state.");
     }
 
