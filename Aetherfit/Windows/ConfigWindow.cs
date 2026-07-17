@@ -141,6 +141,16 @@ public class ConfigWindow : Window, IDisposable
                 ImGui.PopItemWidth();
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Lower values produce more (but noisier) suggestions.");
+
+                var composites = cfg.TagSuggestionComposites;
+                if (ImGui.Checkbox("Suggest composite tags", ref composites))
+                {
+                    cfg.TagSuggestionComposites = composites;
+                    cfg.Save();
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Also suggests grouped \"category/type\" tags such as swimsuit/bikini\n"
+                                   + "or japanese clothes/kimono, alongside the plain tags.");
                 break;
 
             case TagModelStore.State.Failed:
@@ -288,6 +298,7 @@ public class ConfigWindow : Window, IDisposable
             "Apply a random design associated with your current job. Set associations per-design in the design details pane.");
         DrawCommand("/aetherfit favourite [job]",
             "Apply a random favourite design. Add \"job\" to only pick favourites associated with your current job.");
+        DrawCommand("/aetherfit last", "Reapply the last design you had worn.");
         DrawCommand("/aetherfit revert", "Revert your character's appearance back to the game's state.");
     }
 
