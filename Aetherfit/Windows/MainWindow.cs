@@ -520,7 +520,61 @@ public partial class MainWindow : Window, IDisposable
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
         settings.LastWornDesign = baseId;
         settings.LastWornLayers = new List<Guid>(layerIds);
+
+        settings.RecentDesignHistory.Remove(baseId);
+        settings.RecentDesignHistory.Insert(0, baseId);
+        if (settings.RecentDesignHistory.Count > RecentHistoryCap)
+            settings.RecentDesignHistory.RemoveRange(RecentHistoryCap, settings.RecentDesignHistory.Count - RecentHistoryCap);
+
         plugin.Configuration.Save();
+    }
+
+    private const int RecentHistoryCap = 10;
+
+    // Weighted pick that avoids recently worn designs: the most recent is excluded outright
+    // (when there's any alternative), and the rest of the history is down-weighted by recency.
+    // Falls back to a uniform pick when no character is loaded.
+    private Guid PickRandomDesign(IReadOnlyList<Guid> candidates)
+    {
+        if (candidates.Count == 1)
+            return candidates[0];
+
+        var history = Plugin.PlayerState.IsLoaded
+            && plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+            ? settings.RecentDesignHistory
+            : new List<Guid>();
+
+        // With a small pool a long history would suppress everything equally, so only let it
+        // reach back far enough to leave at least one full-weight candidate.
+        var depth = Math.Min(history.Count, candidates.Count - 1);
+
+        var pool = candidates;
+        if (depth > 0)
+        {
+            var last = history[0];
+            var filtered = candidates.Where(id => id != last).ToList();
+            if (filtered.Count > 0)
+                pool = filtered;
+        }
+
+        var weights = new double[pool.Count];
+        double total = 0;
+        for (var i = 0; i < pool.Count; i++)
+        {
+            var pos = history.IndexOf(pool[i]);
+            weights[i] = pos < 0 || pos >= depth ? 1.0 : (pos + 1.0) / (depth + 1.0);
+            total += weights[i];
+        }
+
+        var roll = Random.Shared.NextDouble() * total;
+        for (var i = 0; i < pool.Count; i++)
+        {
+            roll -= weights[i];
+            if (roll < 0)
+                return pool[i];
+        }
+
+        return pool[^1];
     }
 
     public string? ReapplyLastWorn(bool quiet = false)
@@ -581,7 +635,7 @@ public partial class MainWindow : Window, IDisposable
             return msg;
         }
 
-        var pick = ids[Random.Shared.Next(ids.Count)];
+        var pick = PickRandomDesign(ids);
         selectedDesign = pick;
         ApplyDesignById(pick);
         return null;
@@ -610,7 +664,7 @@ public partial class MainWindow : Window, IDisposable
             return msg;
         }
 
-        var pick = matching[Random.Shared.Next(matching.Count)];
+        var pick = PickRandomDesign(matching);
         selectedDesign = pick;
         ApplyDesignById(pick);
         return null;
@@ -653,7 +707,7 @@ public partial class MainWindow : Window, IDisposable
             }
         }
 
-        var pick = favourites[Random.Shared.Next(favourites.Count)];
+        var pick = PickRandomDesign(favourites);
         selectedDesign = pick;
         ApplyDesignById(pick);
         return null;
@@ -684,7 +738,7 @@ public partial class MainWindow : Window, IDisposable
             return msg;
         }
 
-        var pick = matching[Random.Shared.Next(matching.Count)];
+        var pick = PickRandomDesign(matching);
         selectedDesign = pick;
         ApplyDesignById(pick);
         return null;
