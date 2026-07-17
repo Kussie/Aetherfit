@@ -145,6 +145,14 @@ public sealed class TagSuggestionService : IDisposable
                     }
                 }
 
+                if (configuration.TagSuggestionComposites)
+                    AddCompositeTags(best);
+
+                // "sheer" isn't a Danbooru synonym of "see-through", so it can't ride the composite map.
+                // Runs after composites so "see-through dress" etc. and their "dress/see-through dress"
+                // composites fold in too, rather than just the bare "see-through" tag.
+                ReplaceTagSubstring(best, "see-through", "sheer");
+
                 lock (sync)
                 {
                     if (run.SkippedImages >= paths.Count)
@@ -172,6 +180,43 @@ public sealed class TagSuggestionService : IDisposable
         {
             Plugin.Log.Warning(ex, "Tag suggestion failed");
             Fail(run, $"Tag analysis failed: {ex.Message} Try re-downloading the model in Settings.");
+        }
+    }
+
+    // Adds "category/type" composite tags (e.g. swimsuit/bikini) derived from Danbooru implications,
+    // scored by the strongest contributing leaf. They sit alongside the flat tags they came from.
+    private static void AddCompositeTags(Dictionary<string, float> best)
+    {
+        var map = CompositeTags.Map;
+        if (map.Count == 0)
+            return;
+
+        var additions = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (tag, score) in best)
+        {
+            if (map.TryGetValue(tag, out var composite)
+                && (!additions.TryGetValue(composite, out var prev) || score > prev))
+                additions[composite] = score;
+        }
+
+        foreach (var (composite, score) in additions)
+        {
+            if (!best.TryGetValue(composite, out var prev) || score > prev)
+                best[composite] = score;
+        }
+    }
+
+    // Renames every key containing "from" to its "to" variant (e.g. "see-through dress" -> "sheer dress"),
+    // merging into an existing target key by keeping the higher score.
+    private static void ReplaceTagSubstring(Dictionary<string, float> tags, string from, string to)
+    {
+        var matches = tags.Where(kv => kv.Key.Contains(from, StringComparison.OrdinalIgnoreCase)).ToList();
+        foreach (var (key, score) in matches)
+        {
+            tags.Remove(key);
+            var renamed = key.Replace(from, to, StringComparison.OrdinalIgnoreCase);
+            if (!tags.TryGetValue(renamed, out var prev) || score > prev)
+                tags[renamed] = score;
         }
     }
 

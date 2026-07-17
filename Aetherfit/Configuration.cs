@@ -78,6 +78,10 @@ public class Configuration : IPluginConfiguration
     // Which tagger model to use, by TagModelStore.Models id. Unknown values fall back to the first entry.
     public string TagSuggestionModel { get; set; } = "wd-vit-tagger-v3";
 
+    // Also suggest composite "category/type" tags (e.g. swimsuit/bikini) derived from Danbooru's
+    // tag-implication graph, alongside the flat tags the model fired.
+    public bool TagSuggestionComposites { get; set; } = true;
+
     // Tags never offered as suggestions (matched case-insensitively). Seeded with composition tags
     // that describe the screenshot rather than the outfit.
     public List<string> TagSuggestionBlacklist { get; set; } = new() { "1girl", "1boy", "solo", "looking at viewer" };
@@ -155,6 +159,10 @@ public class CharacterLoginSettings
     // Cleared on revert. Used by LoginAction.ReapplyLast.
     public Guid? LastWornDesign { get; set; }
     public List<Guid> LastWornLayers { get; set; } = new();
+
+    // Recently applied base designs, most recent first, capped. Random picks avoid the head
+    // outright and down-weight the rest so the same design doesn't come up in quick succession.
+    public List<Guid> RecentDesignHistory { get; set; } = new();
 
     // When enabled, Aetherfit re-applies the last-worn design (+ exact layers) after every zone
     // change, since Glamourer reverts manual state on zoning. Independent of LoginAction: it works

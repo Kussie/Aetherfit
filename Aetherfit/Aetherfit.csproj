@@ -21,6 +21,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </Content>
+    <EmbeddedResource Include="Resources\composite_tags.json">
+      <LogicalName>Aetherfit.composite_tags.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
