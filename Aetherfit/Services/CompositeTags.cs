@@ -17,6 +17,23 @@ public static class CompositeTags
 
     public static IReadOnlyDictionary<string, string> Map => LazyMap.Value;
 
+    // Every garment term the map knows - leaf tags plus both halves of each composite. Used to
+    // decide whether a colour-prefixed tag is about clothing (e.g. "blue bikini") rather than a
+    // body trait ("blue eyes").
+    private static readonly Lazy<IReadOnlySet<string>> LazyClothingTerms = new(() =>
+    {
+        var terms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (leaf, composite) in Map)
+        {
+            terms.Add(leaf);
+            foreach (var part in composite.Split('/'))
+                terms.Add(part);
+        }
+        return terms;
+    });
+
+    public static IReadOnlySet<string> ClothingTerms => LazyClothingTerms.Value;
+
     private static IReadOnlyDictionary<string, string> Load()
     {
         try

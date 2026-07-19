@@ -146,7 +146,10 @@ public sealed class TagSuggestionService : IDisposable
                 }
 
                 if (configuration.TagSuggestionComposites)
+                {
                     AddCompositeTags(best);
+                    AddColourTags(best);
+                }
 
                 // "sheer" isn't a Danbooru synonym of "see-through", so it can't ride the composite map.
                 // Runs after composites so "see-through dress" etc. and their "dress/see-through dress"
@@ -204,6 +207,66 @@ public sealed class TagSuggestionService : IDisposable
             if (!best.TryGetValue(composite, out var prev) || score > prev)
                 best[composite] = score;
         }
+    }
+
+    // The colour adjectives the composite-map generator strips from garment types (tools/generate_composite_tags.py).
+    // Multi-word entries first so "light blue" isn't consumed as "light" + leftover.
+    private static readonly string[] ColourWords =
+    {
+        "light blue", "dark blue", "dark green", "light brown", "light green",
+        "black", "blue", "brown", "green", "grey", "gray", "orange", "pink", "purple",
+        "red", "white", "yellow", "aqua", "gold", "silver", "multicolored", "two-toned",
+        "rainbow", "tan", "beige",
+    };
+
+    // Adds "colour/<colour>" composites for colour-prefixed garment tags (e.g. "blue bikini" ->
+    // colour/blue). Only clothing counts - "blue eyes" or "red hair" say nothing about the outfit.
+    private static void AddColourTags(Dictionary<string, float> best)
+    {
+        var additions = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (tag, score) in best)
+        {
+            foreach (var colour in ExtractClothingColours(tag))
+            {
+                var composite = $"colour/{colour}";
+                if (!additions.TryGetValue(composite, out var prev) || score > prev)
+                    additions[composite] = score;
+            }
+        }
+
+        foreach (var (composite, score) in additions)
+        {
+            if (!best.TryGetValue(composite, out var prev) || score > prev)
+                best[composite] = score;
+        }
+    }
+
+    private static IReadOnlyList<string> ExtractClothingColours(string tag)
+    {
+        List<string>? colours = null;
+        var rest = tag;
+        while (true)
+        {
+            var colour = Array.Find(ColourWords, c =>
+                rest.StartsWith(c, StringComparison.OrdinalIgnoreCase)
+                && (rest.Length == c.Length || rest[c.Length] == ' '));
+            if (colour == null)
+                break;
+            (colours ??= new()).Add(colour == "gray" ? "grey" : colour);
+            rest = rest[colour.Length..].TrimStart();
+        }
+
+        if (colours == null)
+            return Array.Empty<string>();
+
+        // A bare colour tag counts as-is; otherwise the remainder must be a garment the composite
+        // map knows, so body traits and scenery don't colour the outfit.
+        if (rest.Length > 0
+            && !CompositeTags.ClothingTerms.Contains(rest)
+            && !CompositeTags.Map.ContainsKey(tag))
+            return Array.Empty<string>();
+
+        return colours;
     }
 
     // Renames every key containing "from" to its "to" variant (e.g. "see-through dress" -> "sheer dress"),

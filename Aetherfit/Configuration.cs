@@ -34,6 +34,12 @@ public class Configuration : IPluginConfiguration
     public Dictionary<Guid, List<string>> OutfitAdditionalImages { get; set; } = new();
 
     public bool ShowThumbnailOnHover { get; set; } = true;
+
+    // While the image viewer is open, selecting a different design switches it to that design's cover image.
+    public bool ImageViewerFollowsSelection { get; set; } = false;
+
+    // Arrow keys move the design selection in the main window (tree and gallery), Enter applies it.
+    public bool ArrowKeyNavigation { get; set; } = false;
     public bool DefaultToCoverMode { get; set; } = false;
     public GalleryFitMode GalleryFitMode { get; set; } = GalleryFitMode.Crop;
 
@@ -102,13 +108,10 @@ public class Configuration : IPluginConfiguration
         Plugin.PluginInterface.SavePluginConfig(this);
     }
 
-    // Every tag used across cached outfits, de-duplicated case-insensitively and sorted for display.
+    // Every tag used across cached outfits (plus the segments of composite tags, so "bikini" is
+    // offered when only "swimsuit/bikini" exists), de-duplicated case-insensitively and sorted.
     public List<string> DistinctSortedTags()
-        => CachedOutfits.Values
-            .SelectMany(o => o.Tags)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        => Services.TagMatching.WithSegments(CachedOutfits.Values.SelectMany(o => o.Tags));
 
     public List<uint> GetJobAssociations(Guid id)
         => DesignJobAssociations.TryGetValue(id, out var jobs) ? jobs : new();

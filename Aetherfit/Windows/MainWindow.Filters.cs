@@ -433,7 +433,7 @@ public partial class MainWindow
         if (filterTags.Count > 0)
         {
             if (cached == null || cached.Tags.Count == 0) return false;
-            if (!filterTags.All(t => cached.Tags.Contains(t, StringComparer.OrdinalIgnoreCase))) return false;
+            if (!filterTags.All(t => TagMatching.AnyMatch(cached.Tags, t))) return false;
         }
 
         if (filterJobs.Count > 0)
