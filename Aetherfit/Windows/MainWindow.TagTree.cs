@@ -66,7 +66,6 @@ public partial class MainWindow
         {
             DrawTree(BuildFolderTree(untagged), hasFilter);
             ImGui.TreePop();
-            PopNavFolder();
         }
     }
 
@@ -90,6 +89,5 @@ public partial class MainWindow
             DrawDesignLeaf(leaf);
 
         ImGui.TreePop();
-        PopNavFolder();
     }
 }

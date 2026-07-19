@@ -251,21 +251,15 @@ public partial class MainWindow
         var avail = ImGui.GetContentRegionAvail().X;
         // As many columns as the target thumbnail width allows.
         var target = Math.Max(CoverMinThumbSize, plugin.Configuration.GalleryThumbTargetWidth) * ImGuiHelpers.GlobalScale;
-        galleryColumns = Math.Max(1, (int)((avail + spacing) / (target + spacing)));
-        var thumbWidth = Math.Max(CoverMinThumbSize, (avail - (galleryColumns - 1) * spacing) / galleryColumns);
+        var columns = Math.Max(1, (int)((avail + spacing) / (target + spacing)));
+        var thumbWidth = Math.Max(CoverMinThumbSize, (avail - (columns - 1) * spacing) / columns);
         var thumbHeight = thumbWidth * CoverAspectRatio;
 
         for (var i = 0; i < visible.Count; i++)
         {
-            if (i % galleryColumns != 0)
+            if (i % columns != 0)
                 ImGui.SameLine();
             DrawCoverCell(visible[i], thumbWidth, thumbHeight);
-
-            if (navPendingScroll && selectedDesign == visible[i].Id)
-            {
-                ImGui.SetScrollHereY(0.5f);
-                navPendingScroll = false;
-            }
         }
     }
 

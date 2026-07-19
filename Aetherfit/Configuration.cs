@@ -37,9 +37,6 @@ public class Configuration : IPluginConfiguration
 
     // While the image viewer is open, selecting a different design switches it to that design's cover image.
     public bool ImageViewerFollowsSelection { get; set; } = false;
-
-    // Arrow keys move the design selection in the main window (tree and gallery), Enter applies it.
-    public bool ArrowKeyNavigation { get; set; } = false;
     public bool DefaultToCoverMode { get; set; } = false;
     public GalleryFitMode GalleryFitMode { get; set; } = GalleryFitMode.Crop;
 
