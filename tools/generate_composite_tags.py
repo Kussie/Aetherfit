@@ -20,6 +20,7 @@ VOCAB_URL = "https://huggingface.co/SmilingWolf/wd-vit-tagger-v3/resolve/main/se
 # Top-level categories that anchor a composite. Intermediate types (bikini, kimono, bra...) must NOT
 # be here, or their variants group under them instead of collapsing to the category.
 ROOTS = {
+    "tops",
     "swimsuit","dress","skirt","shirt","shorts","pants","jacket","coat","sweater",
     "thighhighs","pantyhose","socks","kneehighs","gloves","hat","shoes","boots","leotard",
     "bodysuit","japanese_clothes","apron","cape","scarf","necktie",
@@ -34,6 +35,25 @@ SYNTHETIC = {
     "strappy_heels": "shoes",
     "platform_heels": "shoes",
     "sandals": "shoes",
+    # Upper-body garments Danbooru leaves orphaned (or models as roots) all group under "tops".
+    "shirt": "tops",
+    "sweater": "tops",
+    "hoodie": "tops",
+    "cardigan": "tops",
+    "vest": "tops",
+    "crop_top": "tops",
+    "tube_top": "tops",
+    "tank_top": "tops",
+    "camisole": "tops",
+    "bustier": "tops",
+    "corset": "tops",
+    "bandeau": "tops",
+    "sports_bra": "tops",
+    "undershirt": "tops",
+    "tunic": "tops",
+    "breast_curtains": "tops",
+    "sarashi": "tops",
+    "cropped_shirt": "shirt",
 }
 
 # Colour adjectives stripped from a type so "black_dress" yields nothing but "china_dress" survives.
@@ -117,7 +137,8 @@ def main():
 
     mapping = {}
     for leaf in vocab:
-        if leaf in ROOTS or NOISE.search(leaf):
+        # Roots normally can't be leaves, unless a synthetic edge rolls them up (shirt -> tops/shirt).
+        if (leaf in ROOTS and leaf not in SYNTHETIC) or NOISE.search(leaf):
             continue
         path = find_path(leaf, imp)
         if not path:

@@ -54,10 +54,17 @@ public partial class MainWindow
         }
 
         // The two groupings are mutually exclusive - ticking one unticks the other (both can be off).
-        if (ImGui.Checkbox("Group by job association", ref groupByJob) && groupByJob)
-            groupByTags = false;
-        if (ImGui.Checkbox("Group by tags", ref groupByTags) && groupByTags)
-            groupByJob = false;
+        // Node ids differ per grouping, so the captured ancestor chain must not carry over.
+        if (ImGui.Checkbox("Group by job association", ref groupByJob))
+        {
+            if (groupByJob) groupByTags = false;
+            navSelectedLeafAncestors = Array.Empty<uint>();
+        }
+        if (ImGui.Checkbox("Group by tags", ref groupByTags))
+        {
+            if (groupByTags) groupByJob = false;
+            navSelectedLeafAncestors = Array.Empty<uint>();
+        }
         ImGui.Spacing();
 
         DrawFilterUi();
@@ -68,6 +75,9 @@ public partial class MainWindow
         using var treeChild = ImRaii.Child("OutfitTreeScroll", Vector2.Zero, false);
         if (!treeChild.Success)
             return;
+
+        // Tree-node open state lives in this child's storage; the end-of-frame key handler needs it.
+        navTreeStorage = ImGui.GetStateStorage();
 
         var hasFilter = HasAnyFilter;
         // Whenthe filter clears, restore every tree node we forced open back to its pre-filter state
@@ -118,12 +128,14 @@ public partial class MainWindow
             // Capture the row's logical left edge before drawing; a Selectable's item rect extends half an
             // ItemSpacing to the left of this, so we can't rely on GetItemRectMin for the tick's anchor.
             var rowX = ImGui.GetCursorScreenPos().X;
+            var nodeId = ImGui.GetID(name);
             var open = ImGui.TreeNodeEx(name, ImGuiTreeNodeFlags.SpanAvailWidth);
             // Connect this node to its parent's vertical guide with a short horizontal tick.
             DrawTreeItemTick(depth, rowX);
 
             if (open)
             {
+                PushNavFolder(nodeId);
                 // Glamourer-style indent guide: a faint vertical line down the left of this folder's
                 // children. We capture the top before drawing them and the bottom after, then draw the
                 // line between - drawing happens after the children so its extent is known.
@@ -143,6 +155,7 @@ public partial class MainWindow
                         ImGui.ColorConvertFloat4ToU32(TreeGuideColor), ImGuiHelpers.GlobalScale);
 
                 ImGui.TreePop();
+                PopNavFolder();
             }
         }
 
@@ -189,6 +202,7 @@ public partial class MainWindow
             ImGui.PushStyleColor(ImGuiCol.Text, design.Color);
 
         var selected = selectedDesign == design.Id;
+        RecordNavLeaf(design);
         // Favourites keep the star glyph; other designs get a hand-drawn dot (after the Selectable) so we
         // can size it precisely. Either way leave a little room at the start of the label for the marker.
         var label = isFavourite
@@ -196,6 +210,12 @@ public partial class MainWindow
             : $"   {design.DisplayName}##{design.Id}";
         if (ImGui.Selectable(label, selected))
             selectedDesign = design.Id;
+
+        if (navPendingScroll && selected)
+        {
+            ImGui.SetScrollHereY(0.5f);
+            navPendingScroll = false;
+        }
 
         if (!isFavourite)
             DrawLeafDot(hasColor ? design.Color : ImGui.GetColorU32(ImGuiCol.Text));

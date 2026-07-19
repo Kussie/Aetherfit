@@ -72,6 +72,24 @@ public class ConfigWindow : Window, IDisposable
             cfg.Save();
         }
 
+        var followSelection = cfg.ImageViewerFollowsSelection;
+        if (ImGui.Checkbox("Image viewer follows the selected design", ref followSelection))
+        {
+            cfg.ImageViewerFollowsSelection = followSelection;
+            cfg.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("While the image viewer window is open, selecting a different design\nswitches it to that design's cover image.");
+
+        var arrowNav = cfg.ArrowKeyNavigation;
+        if (ImGui.Checkbox("Navigate designs with arrow keys", ref arrowNav))
+        {
+            cfg.ArrowKeyNavigation = arrowNav;
+            cfg.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("While the Aetherfit window is focused: Up/Down move through designs,\nLeft/Right collapse/expand folders (or move between tiles in Gallery Mode),\nand Enter applies the selected design.");
+
         var defaultCover = cfg.DefaultToCoverMode;
         if (ImGui.Checkbox("Open the main window in Gallery Mode by default", ref defaultCover))
         {
@@ -150,7 +168,8 @@ public class ConfigWindow : Window, IDisposable
                 }
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Also suggests grouped \"category/type\" tags such as swimsuit/bikini\n"
-                                   + "or japanese clothes/kimono, alongside the plain tags.");
+                                   + "or japanese clothes/kimono, plus colour/... tags for coloured\n"
+                                   + "garments (e.g. blue bikini also suggests colour/blue).");
                 break;
 
             case TagModelStore.State.Failed:

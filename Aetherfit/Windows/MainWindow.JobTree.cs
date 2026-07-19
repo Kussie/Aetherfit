@@ -55,12 +55,14 @@ public partial class MainWindow
                 DrawJobNode(job, byJob[job.RowId], hasFilter);
 
             ImGui.TreePop();
+            PopNavFolder();
         }
 
         if (unassigned.Count > 0 && DrawJobGroupHeader("Unassigned##unassignedJobs", hasFilter))
         {
             DrawTree(BuildFolderTree(unassigned), hasFilter);
             ImGui.TreePop();
+            PopNavFolder();
         }
     }
 
@@ -77,18 +79,26 @@ public partial class MainWindow
         }
 
         ForceOpenIfFiltering(label, hasFilter);
+        var nodeId = ImGui.GetID(label);
         if (ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.SpanAvailWidth))
         {
+            PushNavFolder(nodeId);
             foreach (var leaf in leaves)
                 DrawDesignLeaf(leaf);
             ImGui.TreePop();
+            PopNavFolder();
         }
     }
 
+    // Callers must pair the TreePop of an opened header with PopNavFolder.
     private bool DrawJobGroupHeader(string label, bool hasFilter)
     {
         ForceOpenIfFiltering(label, hasFilter);
-        return ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.SpanAvailWidth);
+        var nodeId = ImGui.GetID(label);
+        var open = ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.SpanAvailWidth);
+        if (open)
+            PushNavFolder(nodeId);
+        return open;
     }
 
     // Shared by DrawTree and the job tree. While a filter is active we remember each node's pre-filter

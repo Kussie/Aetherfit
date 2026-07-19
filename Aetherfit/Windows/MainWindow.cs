@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Services;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
@@ -20,6 +21,7 @@ public partial class MainWindow : Window, IDisposable
     private int designsCount;
     private string? designsError;
     private Guid? selectedDesign;
+    private Guid? viewerFollowedDesign;
     private DesignLeaf? hoveredDesignForTooltip;
 
     // Session-only: the Edit Mode tree groups designs by job association or by tag instead of folder
@@ -79,6 +81,8 @@ public partial class MainWindow : Window, IDisposable
 
     public override void Draw()
     {
+        BeginNavFrame();
+
         if (pendingRevealDesign is { } reveal)
         {
             selectedDesign = reveal;
@@ -165,6 +169,17 @@ public partial class MainWindow : Window, IDisposable
         DrawApplyByTagPopup();
 
         fileDialog.Draw();
+
+        // Before the viewer-follow check so a keyboard move is picked up the same frame.
+        HandleArrowKeyNavigation();
+
+        // Checked once per frame so it catches selection changes from anywhere (tree, gallery, random applies).
+        if (selectedDesign != viewerFollowedDesign)
+        {
+            viewerFollowedDesign = selectedDesign;
+            if (plugin.Configuration.ImageViewerFollowsSelection && selectedDesign is { } followId)
+                plugin.ImageViewer.SyncTo(plugin.ImageStorage.GetCoverPath(followId));
+        }
     }
 
     private void RefreshDesigns()
@@ -654,7 +669,7 @@ public partial class MainWindow : Window, IDisposable
         var matching = plugin.Configuration.CachedOutfits
             .Where(kv => !plugin.Configuration.HiddenDesigns.Contains(kv.Key)
                          && (!favouritesOnly || plugin.Configuration.FavouriteDesigns.Contains(kv.Key))
-                         && tags.All(t => kv.Value.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)))
+                         && tags.All(t => TagMatching.AnyMatch(kv.Value.Tags, t)))
             .Select(kv => kv.Key)
             .ToList();
 
