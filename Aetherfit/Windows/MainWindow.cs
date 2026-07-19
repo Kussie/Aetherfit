@@ -81,8 +81,6 @@ public partial class MainWindow : Window, IDisposable
 
     public override void Draw()
     {
-        BeginNavFrame();
-
         if (pendingRevealDesign is { } reveal)
         {
             selectedDesign = reveal;
@@ -169,9 +167,6 @@ public partial class MainWindow : Window, IDisposable
         DrawApplyByTagPopup();
 
         fileDialog.Draw();
-
-        // Before the viewer-follow check so a keyboard move is picked up the same frame.
-        HandleArrowKeyNavigation();
 
         // Checked once per frame so it catches selection changes from anywhere (tree, gallery, random applies).
         if (selectedDesign != viewerFollowedDesign)

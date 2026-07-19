@@ -81,15 +81,6 @@ public class ConfigWindow : Window, IDisposable
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("While the image viewer window is open, selecting a different design\nswitches it to that design's cover image.");
 
-        var arrowNav = cfg.ArrowKeyNavigation;
-        if (ImGui.Checkbox("Navigate designs with arrow keys", ref arrowNav))
-        {
-            cfg.ArrowKeyNavigation = arrowNav;
-            cfg.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("While the Aetherfit window is focused: Up/Down move through designs,\nLeft/Right collapse/expand folders (or move between tiles in Gallery Mode),\nand Enter applies the selected design.");
-
         var defaultCover = cfg.DefaultToCoverMode;
         if (ImGui.Checkbox("Open the main window in Gallery Mode by default", ref defaultCover))
         {
