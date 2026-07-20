@@ -100,9 +100,14 @@ public class Configuration : IPluginConfiguration
     // Tags we wrote into Glamourer's design files that the running Glamourer hasn't reported via IPC
     // yet (it only re-reads them on reload). Overlaid onto CachedOutfits each Refresh until it has.
     public Dictionary<Guid, List<string>> PendingTagWrites { get; set; } = new();
-    
+
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
+
+    // Round-trips config fields this build doesn't know about (e.g. settings written by an
+    // experimental branch), so switching builds doesn't silently wipe them on the next save.
+    [Newtonsoft.Json.JsonExtensionData]
+    private IDictionary<string, Newtonsoft.Json.Linq.JToken>? ExtensionData { get; set; }
 
     [NonSerialized]
     private Services.ConfigurationSaver? saver;

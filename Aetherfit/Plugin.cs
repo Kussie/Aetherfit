@@ -42,6 +42,7 @@ public sealed class Plugin : IDalamudPlugin
     public TagModelStore TagModel { get; init; }
     public TagSuggestionService TagSuggestions { get; init; }
     public GlamourerDesignFileService GlamourerDesignFile { get; init; }
+
     public RestoreSequenceService Restore { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
