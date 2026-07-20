@@ -31,6 +31,7 @@ public sealed class Plugin : IDalamudPlugin
     private const string CommandName = "/aetherfit";
 
     public Configuration Configuration { get; init; }
+    public OutfitCacheStore OutfitCache { get; init; }
     public GlamourerService Glamourer { get; init; }
     public PenumbraService Penumbra { get; init; }
     public GameDataService GameData { get; init; }
@@ -38,15 +39,17 @@ public sealed class Plugin : IDalamudPlugin
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
+    public RestoreSequenceService Restore { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
-    private MainWindow MainWindow { get; init; }
+    internal MainWindow MainWindow { get; init; }
     public ImageViewerWindow ImageViewer { get; init; }
     public ScreenshotSetupWindow ScreenshotSetup { get; init; }
     public ScreenshotCropWindow ScreenshotCrop { get; init; }
     public ForeignGalleryWindow ForeignGallery { get; init; }
 
+    private readonly ConfigurationSaver configSaver;
     private bool mainWindowOpenBeforeCapture;
 
     public Plugin()
@@ -72,6 +75,13 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.Save();
         }
 
+        // Attached after the migrations above so those still write directly.
+        configSaver = new ConfigurationSaver(Configuration);
+        Configuration.AttachSaver(configSaver);
+
+        OutfitCache = new OutfitCacheStore(Configuration);
+        OutfitCache.Load();
+
         Glamourer = new GlamourerService();
         Penumbra = new PenumbraService();
         GameData = new GameDataService();
@@ -80,8 +90,10 @@ public sealed class Plugin : IDalamudPlugin
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
 
-        // Clean up any imported-gallery images a previous session left behind (e.g. if we crashed before tidying up).
+        // Clean up any imported-gallery images or in-flight captures a previous session left behind
+        // (e.g. if we crashed before tidying up).
         ImageStorage.ClearAllForeign();
+        ImageStorage.ClearAllTemp();
 
         ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
@@ -96,15 +108,11 @@ public sealed class Plugin : IDalamudPlugin
         WindowSystem.AddWindow(ScreenshotCrop);
         WindowSystem.AddWindow(ForeignGallery);
 
+        Restore = new RestoreSequenceService(this);
+
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "/aetherfit — toggle the Aetherfit window.\n"
-                        + "/aetherfit random — apply a random outfit.\n"
-                        + "/aetherfit tag [favourite] <tag1,tag2,...> — apply a random outfit matching the tags, optionally favourites only.\n"
-                        + "/aetherfit job — apply a random outfit associated with your current job.\n"
-                        + "/aetherfit favourite [job] — apply a random favourite outfit, optionally only one associated with your current job.\n"
-                        + "/aetherfit last — reapply the last known design.\n"
-                        + "/aetherfit revert — revert appearance to the game state."
+            HelpMessage = UsageText
         });
 
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
@@ -115,8 +123,6 @@ public sealed class Plugin : IDalamudPlugin
         ClientState.TerritoryChanged += OnTerritoryChanged;
         Glamourer.OnExternalStateFinalized += OnGlamourerStateFinalized;
         Glamourer.OnAnyStateFinalized += OnGlamourerAnyStateFinalized;
-
-        Log.Information($"===A cool log message from {PluginInterface.Manifest.Name}===");
     }
 
     public void Dispose()
@@ -139,7 +145,28 @@ public sealed class Plugin : IDalamudPlugin
         ScreenshotCrop.Dispose();
         ForeignGallery.Dispose();
 
+        // Last, so anything the disposals above still saved gets flushed to disk.
+        configSaver.Dispose();
+
         CommandManager.RemoveHandler(CommandName);
+    }
+
+    // One source of truth for command usage: the installer help, /aetherfit help, and the
+    // unknown-subcommand error all print this.
+    private const string UsageText =
+        "/aetherfit — toggle the Aetherfit window.\n"
+      + "/aetherfit random — apply a random outfit.\n"
+      + "/aetherfit tag [favourite] <tag1,tag2,...> — apply a random outfit matching the tags, optionally favourites only.\n"
+      + "/aetherfit job — apply a random outfit associated with your current job.\n"
+      + "/aetherfit favourite [job] — apply a random favourite outfit, optionally only one associated with your current job.\n"
+      + "/aetherfit last — reapply the last known design.\n"
+      + "/aetherfit revert — revert appearance to the game state.\n"
+      + "/aetherfit help — show this list.";
+
+    private void PrintUsage()
+    {
+        foreach (var line in UsageText.Split('\n'))
+            ChatGui.Print($"{ChatPrefix}{line}");
     }
 
     private void OnCommand(string command, string args)
@@ -227,8 +254,13 @@ public sealed class Plugin : IDalamudPlugin
                 PrintCurrentAnimations();
                 break;
 
+            case "help":
+                PrintUsage();
+                break;
+
             default:
-                MainWindow.Toggle();
+                ChatGui.PrintError($"{ChatPrefix}Unknown subcommand \"{verb}\".");
+                PrintUsage();
                 break;
         }
     }
@@ -266,228 +298,15 @@ public sealed class Plugin : IDalamudPlugin
             ChatGui.Print($"{ChatPrefix}  Overall speed: ×{snapshot.OverallSpeed:0.##}");
     }
 
-    // Set while a restore sequence (post-login or post-zone-change) is waiting for the player to spawn
-    private bool restoreSequenceActive;
-    private bool restoreIsLoginFlow;
-    private int restoreGeneration;
+    private void OnLogin() => Restore.BeginLoginRestore();
 
-    private Action? restoreContinuation;
-    private DateTime lastGlamourerActivityUtc;
+    private void OnTerritoryChanged(uint territoryId) => Restore.HandleTerritoryChanged();
 
-    private DateTime postRestoreGraceUntilUtc = DateTime.MinValue;
-    private int restoreRetriesLeft;
-
-    private void OnLogin()
-    {
-        // Slow logins (heavy mod loads) can keep Glamourer busy for a long time, so be generous.
-        StartRestoreSequence(RunLoginAction, isLoginFlow: true,
-            playerAttemptsLeft: 120, quietDeadline: TimeSpan.FromSeconds(60));
-    }
-
-    private void StartRestoreSequence(Action continuation, bool isLoginFlow,
-                                      int playerAttemptsLeft, TimeSpan quietDeadline)
-    {
-        restoreSequenceActive = true;
-        restoreIsLoginFlow = isLoginFlow;
-        restoreRetriesLeft = 1;
-        restoreContinuation = continuation;
-        var gen = ++restoreGeneration;
-        WaitForPlayerThenApply(gen, playerAttemptsLeft, quietDeadline);
-    }
-
-    private void WaitForPlayerThenApply(int gen, int attemptsLeft, TimeSpan quietDeadline)
-    {
-        // PlayerState loads before the character object spawns into the world, and Glamourer needs the actual object (applying earlier returns ActorNotFound), so poll until the local player exists
-        // rather than relying on a fixed delay. Loading screens can easily exceed any fixed timer.
-        Framework.RunOnTick(() =>
-        {
-            if (gen != restoreGeneration)
-                return;
-
-            if (!ClientState.IsLoggedIn)
-            {
-                restoreSequenceActive = false;
-                return;
-            }
-
-            if (ObjectTable.LocalPlayer == null)
-            {
-                if (attemptsLeft > 0)
-                {
-                    WaitForPlayerThenApply(gen, attemptsLeft - 1, quietDeadline);
-                }
-                else
-                {
-                    restoreSequenceActive = false;
-                    Log.Warning("Local player never spawned; skipping the restore action.");
-                    if (restoreIsLoginFlow)
-                        ChatGui.PrintError($"{ChatPrefix}Skipped the login action: the character never finished loading.");
-                }
-
-                return;
-            }
-
-            lastGlamourerActivityUtc = DateTime.UtcNow;
-            WaitForGlamourerQuiet(gen, deadlineUtc: DateTime.UtcNow + quietDeadline);
-        }, TimeSpan.FromSeconds(1));
-    }
-
-    private void WaitForGlamourerQuiet(int gen, DateTime deadlineUtc)
-    {
-        Framework.RunOnTick(() =>
-        {
-            if (gen != restoreGeneration)
-                return;
-
-            if (!ClientState.IsLoggedIn)
-            {
-                restoreSequenceActive = false;
-                return;
-            }
-
-            var quiet = DateTime.UtcNow - lastGlamourerActivityUtc >= TimeSpan.FromSeconds(3);
-            if (!quiet && DateTime.UtcNow < deadlineUtc)
-            {
-                WaitForGlamourerQuiet(gen, deadlineUtc);
-                return;
-            }
-
-            if (!quiet)
-                Log.Warning("Glamourer was still busy at the settle deadline; applying anyway.");
-
-            restoreSequenceActive = false;
-            restoreIsLoginFlow = false;
-            restoreContinuation?.Invoke();
-        }, TimeSpan.FromSeconds(1));
-    }
-
-    private void OnTerritoryChanged(uint territoryId)
-    {
-        if (restoreSequenceActive && restoreIsLoginFlow)
-            return;
-
-        if (!ClientState.IsLoggedIn || !PlayerState.IsLoaded)
-            return;
-
-        // Read-only lookup on purpose: don't create/save settings from an event firing every zone.
-        if (!Configuration.CharacterLoginSettings.TryGetValue(PlayerState.ContentId, out var settings)
-            || !settings.ReapplyOnZoneChange
-            || settings.LastWornDesign == null)
-            return;
-
-        // A new TerritoryChanged means a new load: StartRestoreSequence
-        StartRestoreSequence(RunZoneReapply, isLoginFlow: false,
-            playerAttemptsLeft: 60, quietDeadline: TimeSpan.FromSeconds(30));
-    }
-
-    private void RunZoneReapply()
-    {
-        if (!PlayerState.IsLoaded)
-            return;
-
-        var err = MainWindow.ReapplyLastWorn(quiet: true);
-        if (err != null)
-        {
-            // Stale record (e.g. design deleted) — chat-erroring on every zone would spam.
-            Log.Info($"Zone-change reapply skipped: {err}");
-            return;
-        }
-
-        postRestoreGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(15);
-    }
-
-    // Sees every finalization except the synchronous echo of our own IPC call
     private void OnGlamourerAnyStateFinalized(nint actor, StateFinalizationType type)
-    {
-        var localPlayer = ObjectTable.LocalPlayer;
-        if (localPlayer == null || actor != localPlayer.Address)
-            return;
-
-        if (restoreSequenceActive)
-        {
-            lastGlamourerActivityUtc = DateTime.UtcNow;
-            return;
-        }
-
-        if (DateTime.UtcNow >= postRestoreGraceUntilUtc || restoreRetriesLeft <= 0)
-            return;
-
-        restoreRetriesLeft--;
-        Log.Info($"Glamourer finalized state ({type}) right after the restore action; re-applying once it settles.");
-        restoreSequenceActive = true;
-        lastGlamourerActivityUtc = DateTime.UtcNow;
-        restoreContinuation = RetryRestore;
-        WaitForGlamourerQuiet(++restoreGeneration, deadlineUtc: DateTime.UtcNow + TimeSpan.FromSeconds(30));
-    }
-
-    private void RetryRestore()
-    {
-        var err = MainWindow.ReapplyLastWorn(quiet: true);
-        if (err != null)
-        {
-            Log.Info($"Restore retry skipped: {err}");
-            return;
-        }
-
-        postRestoreGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(15);
-    }
+        => Restore.HandleAnyStateFinalized(actor, type);
 
     private void OnGlamourerStateFinalized(nint actor, StateFinalizationType type)
-    {
-        var localPlayer = ObjectTable.LocalPlayer;
-        if (localPlayer == null || actor != localPlayer.Address)
-            return;
-
-        if (restoreSequenceActive || DateTime.UtcNow < postRestoreGraceUntilUtc)
-            return;
-
-        if (type != StateFinalizationType.DesignApplied)
-            return;
-
-        // A design we didn't apply landed on the character, so the last-worn record no longer reflects what they are wearing. Drop it rather than reapply something stale on login.
-        if (!PlayerState.IsLoaded
-            || !Configuration.CharacterLoginSettings.TryGetValue(PlayerState.ContentId, out var settings)
-            || settings.LastWornDesign == null)
-            return;
-
-        settings.LastWornDesign = null;
-        settings.LastWornLayers.Clear();
-        Configuration.Save();
-        Log.Info("Cleared the last-worn design record: a design was applied outside Aetherfit.");
-    }
-
-    private void RunLoginAction()
-    {
-        if (!PlayerState.IsLoaded)
-        {
-            Log.Warning("PlayerState was not loaded when the login action ran; skipping it.");
-            return;
-        }
-
-        // The new character's race/gender feeds mod attribution, so drop anything cached
-        MainWindow.InvalidateAttributionCache();
-
-        var settings = Configuration.GetOrCreateLoginSettings(PlayerState.ContentId);
-        if (settings.LoginAction == LoginAction.None)
-            return;
-
-        string? err = settings.LoginAction switch
-        {
-            LoginAction.ApplyRandom => MainWindow.ApplyRandomDesign(),
-            LoginAction.ApplyRandomByTag => MainWindow.ApplyRandomByTags(settings.LoginTags),
-            LoginAction.ReapplyLast => MainWindow.ReapplyLastWorn(),
-            _ => null,
-        };
-
-        if (err != null)
-        {
-            ChatGui.PrintError($"{ChatPrefix}{err}");
-            return;
-        }
-
-        // Longer than the zone grace: on a cold game start
-        postRestoreGraceUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(30);
-    }
+        => Restore.HandleExternalStateFinalized(actor, type);
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();
     public void ToggleMainUi() => MainWindow.Toggle();

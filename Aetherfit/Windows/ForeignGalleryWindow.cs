@@ -131,7 +131,7 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
             query = query.Where(d => d.Name.IndexOf(filterName, StringComparison.OrdinalIgnoreCase) >= 0);
 
         if (filterTags.Count > 0)
-            query = query.Where(d => filterTags.All(t => d.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)));
+            query = query.Where(d => filterTags.All(t => TagMatching.AnyMatch(d.Tags, t)));
 
         if (filterJobs.Count > 0)
             query = query.Where(d => filterJobs.Any(d.Jobs.Contains));
@@ -217,12 +217,9 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         ImGui.InputTextWithHint("##foreignFilterSearch", "Search tags or jobs...", ref filterSearchText, 64);
         ImGui.Separator();
 
-        var availableTags = gallery!.Designs
-            .SelectMany(d => d.Tags)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var availableTags = TagMatching.WithSegments(gallery!.Designs.SelectMany(d => d.Tags))
             .Where(t => !filterTags.Contains(t) &&
                         (filterSearchText.Length == 0 || t.Contains(filterSearchText, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var availableJobs = gallery.Designs

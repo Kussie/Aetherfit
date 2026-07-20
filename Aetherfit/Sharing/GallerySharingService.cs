@@ -45,101 +45,154 @@ public sealed class GallerySharingService
         this.attribution = attribution;
     }
 
-    // onlyIds, when given, limits the export to those designs (e.g. the currently filtered list); null exports all.
-    public bool ExportToFile(string sharerLabel, string path, IReadOnlySet<Guid>? onlyIds = null)
-    {
-        try
-        {
-            if (!path.EndsWith(FileExtension, StringComparison.OrdinalIgnoreCase))
-                path += FileExtension;
+    // True while an export or import runs on its background thread. Set and cleared on the framework
+    // thread, which is also where the UI reads it.
+    public bool IsBusy { get; private set; }
 
-            var snapshot = new SharedGallery
+    // onlyIds, when given, limits the export to those designs (e.g. the currently filtered list); null exports all.
+    // The snapshot (metadata + image paths) is taken on the caller's thread; the slow part — re-encoding
+    // every image and writing the zip — runs on a background thread so the game doesn't freeze.
+    public void ExportToFileAsync(string sharerLabel, string path, IReadOnlySet<Guid>? onlyIds = null)
+    {
+        if (IsBusy)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}An export or import is already running.");
+            return;
+        }
+
+        if (!path.EndsWith(FileExtension, StringComparison.OrdinalIgnoreCase))
+            path += FileExtension;
+
+        var snapshot = new SharedGallery
+        {
+            SharerLabel = string.IsNullOrWhiteSpace(sharerLabel) ? "Shared Gallery" : sharerLabel,
+            CreatedAt = DateTimeOffset.Now,
+        };
+
+        var items = new List<(SharedDesign Design, string? CoverPath, List<string> AdditionalPaths)>();
+        foreach (var (id, outfit) in configuration.CachedOutfits)
+        {
+            if (onlyIds != null && !onlyIds.Contains(id))
+                continue;
+
+            // Hidden designs are never exported, regardless of which export path was taken.
+            if (configuration.HiddenDesigns.Contains(id))
+                continue;
+
+            var attributed = attribution.Build(outfit);
+            var design = new SharedDesign
             {
-                SharerLabel = string.IsNullOrWhiteSpace(sharerLabel) ? "Shared Gallery" : sharerLabel,
-                CreatedAt = DateTimeOffset.Now,
+                SourceId = id,
+                Name = outfit.Name,
+                Description = outfit.Description,
+                Tags = new List<string>(outfit.Tags),
+                Jobs = new List<uint>(configuration.GetJobAssociations(id)),
+                Equipment = outfit.Equipment.Select(e => new SharedEquipment
+                {
+                    Slot = e.Slot,
+                    ItemId = e.ItemId,
+                    Stain = e.Stain,
+                    Stain2 = e.Stain2,
+                    Apply = e.Apply,
+                    ApplyStain = e.ApplyStain,
+                }).ToList(),
+                BonusItems = outfit.BonusItems.Select(b => new SharedBonusItem
+                {
+                    Slot = b.Slot,
+                    ItemId = b.ItemId,
+                    Apply = b.Apply,
+                }).ToList(),
+                Mods = outfit.Mods.Select(m => new SharedMod
+                {
+                    Name = DesignAttributionService.ModDisplayName(m),
+                    State = m.State,
+                }).ToList(),
+                AffectedItems = attributed.Items.ToDictionary(
+                    kv => kv.Key, kv => DesignAttributionService.ModDisplayName(kv.Value)),
             };
 
-            // Each design just names its image entries; the shrunk bytes get written into the zip further down.
-            var imageEntries = new List<(string Entry, byte[] Bytes)>();
-            foreach (var (id, outfit) in configuration.CachedOutfits)
-            {
-                if (onlyIds != null && !onlyIds.Contains(id))
-                    continue;
-
-                // Hidden designs are never exported, regardless of which export path was taken.
-                if (configuration.HiddenDesigns.Contains(id))
-                    continue;
-
-                var attributed = attribution.Build(outfit);
-                var design = new SharedDesign
-                {
-                    SourceId = id,
-                    Name = outfit.Name,
-                    Description = outfit.Description,
-                    Tags = new List<string>(outfit.Tags),
-                    Jobs = new List<uint>(configuration.GetJobAssociations(id)),
-                    Equipment = outfit.Equipment.Select(e => new SharedEquipment
-                    {
-                        Slot = e.Slot,
-                        ItemId = e.ItemId,
-                        Stain = e.Stain,
-                        Stain2 = e.Stain2,
-                        Apply = e.Apply,
-                        ApplyStain = e.ApplyStain,
-                    }).ToList(),
-                    BonusItems = outfit.BonusItems.Select(b => new SharedBonusItem
-                    {
-                        Slot = b.Slot,
-                        ItemId = b.ItemId,
-                        Apply = b.Apply,
-                    }).ToList(),
-                    Mods = outfit.Mods.Select(m => new SharedMod
-                    {
-                        Name = DesignAttributionService.ModDisplayName(m),
-                        State = m.State,
-                    }).ToList(),
-                    AffectedItems = attributed.Items.ToDictionary(
-                        kv => kv.Key, kv => DesignAttributionService.ModDisplayName(kv.Value)),
-                };
-
-                // Budget the design to MaxImagesPerDesign images total, the cover counting as one.
-                var imageCount = 0;
-                var cover = EncodeForBundle(imageStorage.GetCoverPath(id));
-                if (cover is { } c)
-                {
-                    var entry = $"images/{id:N}{c.Ext}";
-                    imageEntries.Add((entry, c.Bytes));
-                    design.Cover = new SharedImage { Ext = c.Ext, Entry = entry };
-                    imageCount++;
-                }
-
-                var additionalPaths = imageStorage.GetAdditionalPaths(id);
-                for (var i = 0; i < additionalPaths.Count && imageCount < MaxImagesPerDesign; i++)
-                {
-                    var encoded = EncodeForBundle(additionalPaths[i]);
-                    if (encoded is not { } a) continue;
-                    var entry = $"images/{id:N}_{i}{a.Ext}";
-                    imageEntries.Add((entry, a.Bytes));
-                    design.AdditionalImages.Add(new SharedImage { Ext = a.Ext, Entry = entry });
-                    imageCount++;
-                }
-
-                snapshot.Designs.Add(design);
-            }
-
-            WriteBundle(path, snapshot, imageEntries);
-            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Exported {snapshot.Designs.Count} design(s) to {Path.GetFileName(path)}.");
-            return true;
+            snapshot.Designs.Add(design);
+            items.Add((design, imageStorage.GetCoverPath(id),
+                new List<string>(imageStorage.GetAdditionalPaths(id))));
         }
-        catch (Exception ex)
+
+        IsBusy = true;
+        var finalPath = path;
+        System.Threading.Tasks.Task.Run(() =>
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to export gallery: {ex.Message}");
-            Plugin.Log.Warning(ex, "Failed to export gallery to {Path}", path);
-            return false;
-        }
+            try
+            {
+                // Each design just names its image entries; the shrunk bytes get written into the zip below.
+                var imageEntries = new List<(string Entry, byte[] Bytes)>();
+                foreach (var (design, coverPath, additionalPaths) in items)
+                {
+                    // Budget the design to MaxImagesPerDesign images total, the cover counting as one.
+                    var imageCount = 0;
+                    var cover = EncodeForBundle(coverPath);
+                    if (cover is { } c)
+                    {
+                        var entry = $"images/{design.SourceId:N}{c.Ext}";
+                        imageEntries.Add((entry, c.Bytes));
+                        design.Cover = new SharedImage { Ext = c.Ext, Entry = entry };
+                        imageCount++;
+                    }
+
+                    for (var i = 0; i < additionalPaths.Count && imageCount < MaxImagesPerDesign; i++)
+                    {
+                        var encoded = EncodeForBundle(additionalPaths[i]);
+                        if (encoded is not { } a) continue;
+                        var entry = $"images/{design.SourceId:N}_{i}{a.Ext}";
+                        imageEntries.Add((entry, a.Bytes));
+                        design.AdditionalImages.Add(new SharedImage { Ext = a.Ext, Entry = entry });
+                        imageCount++;
+                    }
+                }
+
+                WriteBundle(finalPath, snapshot, imageEntries);
+                PrintOnFramework($"{Plugin.ChatPrefix}Exported {snapshot.Designs.Count} design(s) to {Path.GetFileName(finalPath)}.");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Warning(ex, "Failed to export gallery to {Path}", finalPath);
+                PrintErrorOnFramework($"{Plugin.ChatPrefix}Failed to export gallery: {ex.Message}");
+            }
+            finally
+            {
+                Plugin.Framework.RunOnFrameworkThread(() => IsBusy = false);
+            }
+        });
     }
 
-    public ForeignGallery? ImportFromFile(string path)
+    // Reads and unpacks the bundle on a background thread (it's pure file IO), then hands the result
+    // to onLoaded back on the framework thread.
+    public void ImportFromFileAsync(string path, Action<ForeignGallery> onLoaded)
+    {
+        if (IsBusy)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}An export or import is already running.");
+            return;
+        }
+
+        IsBusy = true;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            var result = ImportFromFile(path);
+            Plugin.Framework.RunOnFrameworkThread(() =>
+            {
+                IsBusy = false;
+                if (result != null)
+                    onLoaded(result);
+            });
+        });
+    }
+
+    private static void PrintOnFramework(string message)
+        => Plugin.Framework.RunOnFrameworkThread(() => Plugin.ChatGui.Print(message));
+
+    private static void PrintErrorOnFramework(string message)
+        => Plugin.Framework.RunOnFrameworkThread(() => Plugin.ChatGui.PrintError(message));
+
+    private ForeignGallery? ImportFromFile(string path)
     {
         try
         {
@@ -174,7 +227,7 @@ public sealed class GallerySharingService
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to import gallery: {ex.Message}");
+            PrintErrorOnFramework($"{Plugin.ChatPrefix}Failed to import gallery: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to import gallery from {Path}", path);
             return null;
         }
@@ -265,7 +318,7 @@ public sealed class GallerySharingService
     private static void WarnIfNewer(SharedGallery snapshot)
     {
         if (snapshot.FormatVersion > SharedGallery.CurrentFormatVersion)
-            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}This gallery was made with a newer version of Aetherfit; some details may not show correctly.");
+            PrintOnFramework($"{Plugin.ChatPrefix}This gallery was made with a newer version of Aetherfit; some details may not show correctly.");
     }
 
     // Pulls an image's bytes out of the zip entry (new bundles) or the inline base64 (old ones), whichever it has.

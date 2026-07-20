@@ -32,11 +32,18 @@ public class ImageViewerWindow : Window, IDisposable
         BringToFront();
     }
 
+    // Swaps the displayed image without opening the window or stealing focus.
+    public void SyncTo(string? path)
+    {
+        if (IsOpen)
+            imagePath = path;
+    }
+
     public override void Draw()
     {
         if (string.IsNullOrEmpty(imagePath) || !File.Exists(imagePath))
         {
-            ImGui.TextDisabled("Image is no longer available.");
+            ImGui.TextDisabled("No image to display.");
             return;
         }
 

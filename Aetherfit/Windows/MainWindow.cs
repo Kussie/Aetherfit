@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Services;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
@@ -20,6 +21,7 @@ public partial class MainWindow : Window, IDisposable
     private int designsCount;
     private string? designsError;
     private Guid? selectedDesign;
+    private Guid? viewerFollowedDesign;
     private DesignLeaf? hoveredDesignForTooltip;
 
     // Session-only: the Edit Mode tree groups designs by job association or by tag instead of folder
@@ -50,7 +52,7 @@ public partial class MainWindow : Window, IDisposable
     private readonly HashSet<string> selectedTagsForApply = new(StringComparer.OrdinalIgnoreCase);
 
     public MainWindow(Plugin plugin)
-        : base("Aetherfit##With a hidden ID", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+        : base("Aetherfit###AetherfitMain", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         SizeConstraints = new WindowSizeConstraints
         {
@@ -59,9 +61,13 @@ public partial class MainWindow : Window, IDisposable
         };
 
         this.plugin = plugin;
+        Plugin.Framework.Update += OnFrameworkUpdate;
     }
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        Plugin.Framework.Update -= OnFrameworkUpdate;
+    }
 
     public override void OnOpen()
     {
@@ -165,33 +171,84 @@ public partial class MainWindow : Window, IDisposable
         DrawApplyByTagPopup();
 
         fileDialog.Draw();
+
+        // Checked once per frame so it catches selection changes from anywhere (tree, gallery, random applies).
+        if (selectedDesign != viewerFollowedDesign)
+        {
+            viewerFollowedDesign = selectedDesign;
+            if (plugin.Configuration.ImageViewerFollowsSelection && selectedDesign is { } followId)
+                plugin.ImageViewer.SyncTo(plugin.ImageStorage.GetCoverPath(followId));
+        }
     }
+
+    // A refresh in flight: the design list is fetched up front (one cheap IPC call), while the
+    // per-design metadata IPC calls are spread over framework ticks so a large collection doesn't
+    // stall a frame. The previous CachedOutfits stay live until the new set is complete.
+    private sealed class RefreshJob
+    {
+        public required IReadOnlyList<GlamourerService.DesignInfo> Designs { get; init; }
+        public Dictionary<Guid, CachedOutfit> Metadata { get; } = new();
+        public int Index;
+    }
+
+    private RefreshJob? activeRefresh;
+
+    public bool IsRefreshing => activeRefresh != null;
 
     private void RefreshDesigns()
     {
-        designListGeneration++;
-        var result = plugin.Glamourer.FetchDesigns();
-        if (result.Error != null)
+        var list = plugin.Glamourer.FetchDesignList();
+        if (list.Error != null)
         {
             root = new FolderNode();
             designsCount = 0;
-            designsError = result.Error;
+            designsError = list.Error;
+            activeRefresh = null;
+            designListGeneration++;
             return;
         }
 
-        root = BuildFolderTree(result.Designs
+        // The tree only needs the list, so it shows immediately; metadata streams in behind it.
+        root = BuildFolderTree(list.Designs
             .Select(d => new DesignLeaf(d.Id, d.DisplayName, d.FullPath, d.Color)));
-        designsCount = result.Designs.Count;
+        designsCount = list.Designs.Count;
         designsError = null;
+        designListGeneration++;
 
-        plugin.Configuration.CachedOutfits = result.Metadata;
+        activeRefresh = new RefreshJob { Designs = list.Designs };
+    }
+
+    private void OnFrameworkUpdate(Dalamud.Plugin.Services.IFramework framework)
+    {
+        if (activeRefresh is not { } job)
+            return;
+
+        // A small per-tick budget keeps the game responsive while the metadata streams in.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (job.Index < job.Designs.Count && sw.ElapsedMilliseconds < 4)
+        {
+            var design = job.Designs[job.Index++];
+            if (plugin.Glamourer.FetchDesignMetadata(design.Id) is { } outfit)
+                job.Metadata[design.Id] = outfit;
+        }
+
+        if (job.Index >= job.Designs.Count)
+            FinishRefresh(job);
+    }
+
+    private void FinishRefresh(RefreshJob job)
+    {
+        activeRefresh = null;
+
+        plugin.Configuration.CachedOutfits = job.Metadata;
+        plugin.OutfitCache.Save();
 
         // Mods might have changed since last time, so clear the affected-item caches and let the
         // "(Appearance affected by ...)" notes rebuild from fresh Penumbra data.
         plugin.Penumbra.ClearChangedItemsCache();
         affectedByCache.Clear();
 
-        var validIds = new HashSet<Guid>(result.Designs.Select(d => d.Id));
+        var validIds = new HashSet<Guid>(job.Designs.Select(d => d.Id));
         plugin.ImageStorage.CleanupRemovedDesigns(validIds);
 
         var staleJobAssociations = plugin.Configuration.DesignJobAssociations.Keys
@@ -208,6 +265,9 @@ public partial class MainWindow : Window, IDisposable
             selectedDesign = null;
 
         plugin.Configuration.Save();
+
+        // Metadata feeds the filters and detail panes, so the cached visible list must rebuild.
+        designListGeneration++;
     }
 
     private static FolderNode BuildFolderTree(IEnumerable<DesignLeaf> leaves)
@@ -254,23 +314,39 @@ public partial class MainWindow : Window, IDisposable
     {
         var style = ImGui.GetStyle();
 
-        if (IconTextButton(FontAwesomeIcon.Sync, "Refresh"))
-            RefreshDesigns();
+        using (ImRaii.Disabled(IsRefreshing))
+        {
+            if (IconTextButton(FontAwesomeIcon.Sync, "Refresh"))
+                RefreshDesigns();
+        }
         ImGui.SameLine();
 
-        if (IconTextButton(FontAwesomeIcon.Upload, "Export Gallery", dropdown: true))
-            ImGui.OpenPopup("##sharePopup");
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Export designs to a shareable .afgallery file (images + basic info).");
+        var sharingBusy = plugin.GallerySharing.IsBusy;
+        using (ImRaii.Disabled(sharingBusy))
+        {
+            if (IconTextButton(FontAwesomeIcon.Upload, "Export Gallery", dropdown: true))
+                ImGui.OpenPopup("##sharePopup");
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(sharingBusy
+                ? "An export or import is already running."
+                : "Export designs to a shareable .afgallery file (images + basic info).");
         DrawSharePopup();
         ImGui.SameLine();
 
-        if (IconTextButton(FontAwesomeIcon.FolderOpen, "Open Shared Gallery..."))
-            OpenImportGalleryDialog();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Open another user's exported .afgallery file in a read-only viewer.");
+        using (ImRaii.Disabled(sharingBusy))
+        {
+            if (IconTextButton(FontAwesomeIcon.FolderOpen, "Open Shared Gallery..."))
+                OpenImportGalleryDialog();
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(sharingBusy
+                ? "An export or import is already running."
+                : "Open another user's exported .afgallery file in a read-only viewer.");
 
-        var countText = designsCount == 1 ? "1 design" : $"{designsCount} designs";
+        var countText = IsRefreshing && activeRefresh is { } job
+            ? $"Loading {job.Index}/{designsCount}..."
+            : designsCount == 1 ? "1 design" : $"{designsCount} designs";
         float gearW;
         using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
             gearW = ImGui.CalcTextSize(FontAwesomeIcon.Cog.ToIconString()).X + (style.FramePadding.X * 2);
@@ -653,7 +729,7 @@ public partial class MainWindow : Window, IDisposable
         var matching = plugin.Configuration.CachedOutfits
             .Where(kv => !plugin.Configuration.HiddenDesigns.Contains(kv.Key)
                          && (!favouritesOnly || plugin.Configuration.FavouriteDesigns.Contains(kv.Key))
-                         && tags.All(t => kv.Value.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)))
+                         && tags.All(t => TagMatching.AnyMatch(kv.Value.Tags, t)))
             .Select(kv => kv.Key)
             .ToList();
 
