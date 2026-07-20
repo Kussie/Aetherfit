@@ -25,7 +25,11 @@ public class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 0;
 
+    // Persisted separately by OutfitCacheStore (it's derived data and large); ShouldSerialize keeps it
+    // out of the plugin config while still deserializing configs from before the split.
     public Dictionary<Guid, CachedOutfit> CachedOutfits { get; set; } = new();
+
+    public bool ShouldSerializeCachedOutfits() => false;
 
     // Filenames (not full paths) of user-supplied images stored in {ConfigDirectory}/images/.
     public Dictionary<Guid, string> OutfitImages { get; set; } = new();
@@ -100,9 +104,18 @@ public class Configuration : IPluginConfiguration
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
+    [NonSerialized]
+    private Services.ConfigurationSaver? saver;
+
+    public void AttachSaver(Services.ConfigurationSaver configSaver) => saver = configSaver;
+
     public void Save()
     {
-        Plugin.PluginInterface.SavePluginConfig(this);
+        // Coalesced through the saver; a direct write only happens before it exists (startup migrations).
+        if (saver != null)
+            saver.Request();
+        else
+            Plugin.PluginInterface.SavePluginConfig(this);
     }
 
     // Every tag used across cached outfits (plus the segments of composite tags, so "bikini" is

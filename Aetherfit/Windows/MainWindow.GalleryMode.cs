@@ -108,7 +108,7 @@ public partial class MainWindow
             (success, path) =>
             {
                 if (success && !string.IsNullOrEmpty(path))
-                    plugin.GallerySharing.ExportToFile(label, path, onlyIds);
+                    plugin.GallerySharing.ExportToFileAsync(label, path, onlyIds);
             });
     }
 
@@ -122,9 +122,7 @@ public partial class MainWindow
             {
                 if (!success || paths.Count == 0)
                     return;
-                var foreign = plugin.GallerySharing.ImportFromFile(paths[0]);
-                if (foreign != null)
-                    plugin.ForeignGallery.Show(foreign);
+                plugin.GallerySharing.ImportFromFileAsync(paths[0], plugin.ForeignGallery.Show);
             },
             1);
     }

@@ -75,41 +75,38 @@ public sealed class GlamourerService : IDisposable
 
     public sealed record DesignInfo(Guid Id, string DisplayName, string FullPath, uint Color);
 
-    public sealed record FetchResult(
-        IReadOnlyList<DesignInfo> Designs,
-        Dictionary<Guid, CachedOutfit> Metadata,
-        string? Error);
+    public sealed record DesignListResult(IReadOnlyList<DesignInfo> Designs, string? Error);
 
-    public FetchResult FetchDesigns()
+    // The list is one cheap IPC call; per-design metadata is fetched separately (FetchDesignMetadata)
+    // so a refresh can spread those calls over several frames instead of stalling one.
+    public DesignListResult FetchDesignList()
     {
         try
         {
             var data = getDesignListExtended.Invoke();
             var designs = new List<DesignInfo>(data.Count);
-            var metadata = new Dictionary<Guid, CachedOutfit>(data.Count);
-
             foreach (var (guid, tuple) in data)
-            {
                 designs.Add(new DesignInfo(guid, tuple.DisplayName, tuple.FullPath, tuple.DisplayColor));
-
-                try
-                {
-                    var jobject = getDesignJObject.Invoke(guid);
-                    if (jobject != null)
-                        metadata[guid] = ParseOutfit(jobject);
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.Warning(ex, "Failed to cache metadata for design {Id}", guid);
-                }
-            }
-
-            return new FetchResult(designs, metadata, null);
+            return new DesignListResult(designs, null);
         }
         catch (Exception ex)
         {
             Plugin.Log.Warning(ex, "Failed to fetch Glamourer designs");
-            return new FetchResult(Array.Empty<DesignInfo>(), new Dictionary<Guid, CachedOutfit>(), ex.Message);
+            return new DesignListResult(Array.Empty<DesignInfo>(), ex.Message);
+        }
+    }
+
+    public CachedOutfit? FetchDesignMetadata(Guid id)
+    {
+        try
+        {
+            var jobject = getDesignJObject.Invoke(id);
+            return jobject != null ? ParseOutfit(jobject) : null;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to cache metadata for design {Id}", id);
+            return null;
         }
     }
 
