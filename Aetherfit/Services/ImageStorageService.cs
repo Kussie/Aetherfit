@@ -10,6 +10,7 @@ public sealed class ImageStorageService
     public const int MaxAdditionalImages = 8;
     private const string AdditionalImagesSubdir = "additional";
     private const string ForeignSubdir = "foreign";
+    private const string TempSubdir = "temp";
 
     private readonly Configuration configuration;
     private readonly Dictionary<Guid, string?> coverPathCache = [];
@@ -33,6 +34,11 @@ public sealed class ImageStorageService
     // images so we can wipe it without touching anything local.
     public string ForeignRootDirectory =>
         Path.Combine(ImagesDirectory, ForeignSubdir);
+
+    // In-flight screenshot captures and crops. Wiped wholesale on startup, so a crash mid-flow
+    // can't leave files behind among the user's real images.
+    public static string TempDirectoryPath =>
+        Path.Combine(ImagesDirectoryPath, TempSubdir);
 
     public string ForeignDirectory(string originKey) =>
         Path.Combine(ForeignRootDirectory, originKey);
@@ -315,6 +321,19 @@ public sealed class ImageStorageService
         catch (Exception ex)
         {
             Plugin.Log.Warning(ex, "Failed to clear foreign gallery cache root");
+        }
+    }
+
+    public void ClearAllTemp()
+    {
+        try
+        {
+            if (Directory.Exists(TempDirectoryPath))
+                Directory.Delete(TempDirectoryPath, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to clear temp capture directory");
         }
     }
 

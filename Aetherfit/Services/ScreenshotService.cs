@@ -24,7 +24,7 @@ public sealed class ScreenshotService
             try
             {
                 var (png, _, _) = ScreenshotCaptureService.CaptureGameWindow();
-                var dir = EnsureImagesDir();
+                var dir = EnsureTempDir();
                 var path = Path.Combine(dir, $"capture_{Guid.NewGuid():N}.png");
                 File.WriteAllBytes(path, png);
                 onAfterCapture();
@@ -41,7 +41,7 @@ public sealed class ScreenshotService
     
     public string CropTempToOutput(string tempCapturePath, int x, int y, int w, int h)
     {
-        var dir = EnsureImagesDir();
+        var dir = EnsureTempDir();
         var croppedPath = Path.Combine(dir, $"crop_{Guid.NewGuid():N}.png");
         ScreenshotCaptureService.CropAndSave(tempCapturePath, croppedPath, x, y, w, h);
         return croppedPath;
@@ -55,9 +55,9 @@ public sealed class ScreenshotService
         catch (Exception ex) { Plugin.Log.Warning(ex, "Failed to delete temp screenshot {Path}", path); }
     }
 
-    private static string EnsureImagesDir()
+    private static string EnsureTempDir()
     {
-        var dir = ImageStorageService.ImagesDirectoryPath;
+        var dir = ImageStorageService.TempDirectoryPath;
         Directory.CreateDirectory(dir);
         return dir;
     }

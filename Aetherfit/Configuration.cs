@@ -25,7 +25,11 @@ public class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 0;
 
+    // Persisted separately by OutfitCacheStore (it's derived data and large); ShouldSerialize keeps it
+    // out of the plugin config while still deserializing configs from before the split.
     public Dictionary<Guid, CachedOutfit> CachedOutfits { get; set; } = new();
+
+    public bool ShouldSerializeCachedOutfits() => false;
 
     // Filenames (not full paths) of user-supplied images stored in {ConfigDirectory}/images/.
     public Dictionary<Guid, string> OutfitImages { get; set; } = new();
@@ -34,6 +38,9 @@ public class Configuration : IPluginConfiguration
     public Dictionary<Guid, List<string>> OutfitAdditionalImages { get; set; } = new();
 
     public bool ShowThumbnailOnHover { get; set; } = true;
+
+    // While the image viewer is open, selecting a different design switches it to that design's cover image.
+    public bool ImageViewerFollowsSelection { get; set; } = false;
     public bool DefaultToCoverMode { get; set; } = false;
     public GalleryFitMode GalleryFitMode { get; set; } = GalleryFitMode.Crop;
 
@@ -71,22 +78,32 @@ public class Configuration : IPluginConfiguration
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
 
-
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
+    // Round-trips config fields this build doesn't know about (e.g. settings written by an
+    // experimental branch), so switching builds doesn't silently wipe them on the next save.
+    [Newtonsoft.Json.JsonExtensionData]
+    private IDictionary<string, Newtonsoft.Json.Linq.JToken>? ExtensionData { get; set; }
+
+    [NonSerialized]
+    private Services.ConfigurationSaver? saver;
+
+    public void AttachSaver(Services.ConfigurationSaver configSaver) => saver = configSaver;
+
     public void Save()
     {
-        Plugin.PluginInterface.SavePluginConfig(this);
+        // Coalesced through the saver; a direct write only happens before it exists (startup migrations).
+        if (saver != null)
+            saver.Request();
+        else
+            Plugin.PluginInterface.SavePluginConfig(this);
     }
 
-    // Every tag used across cached outfits, de-duplicated case-insensitively and sorted for display.
+    // Every tag used across cached outfits (plus the segments of composite tags, so "bikini" is
+    // offered when only "swimsuit/bikini" exists), de-duplicated case-insensitively and sorted.
     public List<string> DistinctSortedTags()
-        => CachedOutfits.Values
-            .SelectMany(o => o.Tags)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        => Services.TagMatching.WithSegments(CachedOutfits.Values.SelectMany(o => o.Tags));
 
     public List<uint> GetJobAssociations(Guid id)
         => DesignJobAssociations.TryGetValue(id, out var jobs) ? jobs : new();

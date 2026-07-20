@@ -70,6 +70,15 @@ public class ConfigWindow : Window, IDisposable
             cfg.Save();
         }
 
+        var followSelection = cfg.ImageViewerFollowsSelection;
+        if (ImGui.Checkbox("Image viewer follows the selected design", ref followSelection))
+        {
+            cfg.ImageViewerFollowsSelection = followSelection;
+            cfg.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("While the image viewer window is open, selecting a different design\nswitches it to that design's cover image.");
+
         var defaultCover = cfg.DefaultToCoverMode;
         if (ImGui.Checkbox("Open the main window in Gallery Mode by default", ref defaultCover))
         {
