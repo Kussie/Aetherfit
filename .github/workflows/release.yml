@@ -15,7 +15,7 @@ jobs:
             version: ${{ steps.version.outputs.version }}
         
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v7
               with:
                   submodules: recursive
                   fetch-depth: 0
@@ -29,7 +29,7 @@ jobs:
                   "DALAMUD_HOME=$env:GITHUB_WORKSPACE\dalamud_dist" | Out-File -Append $env:GITHUB_ENV
 
             - name: Setup .NET
-              uses: actions/setup-dotnet@v4
+              uses: actions/setup-dotnet@v6
               with:
                   dotnet-version: '10.x'
 
@@ -48,7 +48,7 @@ jobs:
               run: Compress-Archive -Path "Aetherfit\bin\Release\win-x64\*" -DestinationPath latest.zip
 
             - name: Create release
-              uses: softprops/action-gh-release@v2
+              uses: softprops/action-gh-release@v3
               with:
                   tag_name: v${{ steps.version.outputs.version }}
                   files: latest.zip
