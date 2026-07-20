@@ -79,14 +79,37 @@ public sealed class TagModelStore : IDisposable
     public float Progress { get { lock (sync) return progress; } }
     public string? LastError { get { lock (sync) return lastError; } }
 
-    public long RemainingDownloadBytes
-        => (File.Exists(ModelPath) ? 0 : SelectedModel.ModelBytes)
-         + (File.Exists(OnnxRuntimeDllPath) ? 0 : OrtZipBytes);
+    public long RemainingDownloadBytes => GetSizes().Remaining;
 
-    public long TotalBytesOnDisk
-        => Directory.Exists(modelsRoot)
+    public long TotalBytesOnDisk => GetSizes().OnDisk;
+
+    // The settings window reads the two size properties every frame while open; cache the file-system
+    // walk behind a short TTL so that doesn't turn into per-frame disk IO.
+    private (long Remaining, long OnDisk)? sizeCache;
+    private DateTime sizeCacheAtUtc;
+    private static readonly TimeSpan SizeCacheTtl = TimeSpan.FromSeconds(5);
+
+    private (long Remaining, long OnDisk) GetSizes()
+    {
+        lock (sync)
+        {
+            if (sizeCache is { } cached && DateTime.UtcNow - sizeCacheAtUtc < SizeCacheTtl)
+                return cached;
+        }
+
+        var remaining = (File.Exists(ModelPath) ? 0 : SelectedModel.ModelBytes)
+                      + (File.Exists(OnnxRuntimeDllPath) ? 0 : OrtZipBytes);
+        var onDisk = Directory.Exists(modelsRoot)
             ? new DirectoryInfo(modelsRoot).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length)
             : 0;
+
+        lock (sync)
+        {
+            sizeCache = (remaining, onDisk);
+            sizeCacheAtUtc = DateTime.UtcNow;
+            return sizeCache.Value;
+        }
+    }
 
     public bool IsModelDownloaded(ModelInfo model)
         => File.Exists(Path.Combine(modelsRoot, model.Id, "model.onnx"));
@@ -111,6 +134,7 @@ public sealed class TagModelStore : IDisposable
             if (state == State.Downloading)
                 return;
             lastError = null;
+            sizeCache = null;
             state = FilesPresent(SelectedModel) ? State.Ready : State.NotDownloaded;
         }
     }
@@ -161,6 +185,10 @@ public sealed class TagModelStore : IDisposable
                 state = FilesPresent(SelectedModel) ? State.Ready : State.NotDownloaded;
                 lastError = "Some files are in use and could not be deleted. Restart the game and try again.";
             }
+            finally
+            {
+                sizeCache = null;
+            }
         }
     }
 
@@ -200,6 +228,7 @@ public sealed class TagModelStore : IDisposable
                     lastError = "Download finished but files are missing. Try again.";
                 }
                 currentFile = null;
+                sizeCache = null;
             }
         }
         catch (OperationCanceledException)

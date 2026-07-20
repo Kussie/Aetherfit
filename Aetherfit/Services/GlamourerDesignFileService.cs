@@ -15,12 +15,14 @@ public sealed class GlamourerDesignFileService
     private const int BackupsKeptPerDesign = 3;
 
     private readonly Configuration configuration;
+    private readonly OutfitCacheStore outfitCache;
     private readonly string designsDir;
     private readonly string backupDir;
 
-    public GlamourerDesignFileService(Configuration configuration)
+    public GlamourerDesignFileService(Configuration configuration, OutfitCacheStore outfitCache)
     {
         this.configuration = configuration;
+        this.outfitCache = outfitCache;
         var configRoot = Plugin.PluginInterface.ConfigDirectory.Parent!.FullName;
         designsDir = Path.Combine(configRoot, "Glamourer", "designs");
         backupDir = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "glamourer-backups");
@@ -46,6 +48,7 @@ public sealed class GlamourerDesignFileService
                 if (!cached.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
                     cached.Tags.Add(tag);
             }
+            outfitCache.Save();
         }
 
         var pending = configuration.PendingTagWrites.TryGetValue(id, out var list) ? list : new List<string>();
