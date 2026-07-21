@@ -19,7 +19,7 @@ public sealed class GallerySharingService
 
     // A shared gallery is a showcase, not a backup, so shrink the images down before they go in.
     private const int MaxImageDimension = 1600;
-    private const long JpegQuality = 85;
+    private const int JpegQuality = 85;
 
     // Import guardrails against malicious bundles (oversized files, zip/gzip bombs, manifest floods). These
     // are deliberately generous - a real showcase won't come close - they just stop a crafted file from

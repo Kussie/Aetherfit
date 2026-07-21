@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
     <Target Name="PackagePlugin" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
-        <DalamudPackager
-            ProjectDir="$(ProjectDir)"
-            OutputPath="$(OutputPath)"
-            AssemblyName="$(AssemblyName)"
-            MakeZip="true"/>
+        <DalamudPackager ProjectDir="$(ProjectDir)" OutputPath="$(OutputPath)" AssemblyName="$(AssemblyName)" MakeZip="true" />
     </Target>
   <PropertyGroup>
     <Version>$(AetherfitVersion)</Version>
@@ -26,6 +22,6 @@
   <ItemGroup>
     <PackageReference Include="Glamourer.Api" Version="2.8.2" />
     <PackageReference Include="Penumbra.Api" Version="5.15.1" />
-    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 </Project>
