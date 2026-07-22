@@ -122,6 +122,17 @@ public sealed class GalleryLiveShareService : IDisposable
             signaling = signal;
             WireCommonSignalingEvents(signal);
             signal.OnPeerJoined += () => _ = OnHostPeerJoinedAsync(sharerLabel, onlyIds, ct);
+            signal.OnAnswer += sdp =>
+            {
+                try
+                {
+                    peerConnection?.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = sdp });
+                }
+                catch (Exception ex)
+                {
+                    Fail($"Failed to apply the remote answer: {ex.Message}");
+                }
+            };
 
             await signal.ConnectAndJoinAsync(plugin.Configuration.SignalingServerUrl, code);
             StartHandshakeTimeoutWatch(ct);
