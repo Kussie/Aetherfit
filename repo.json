@@ -3,7 +3,7 @@
         "Author": "Kussie ",
         "Name": "Aetherfit",
         "InternalName": "Aetherfit",
-        "TestingAssemblyVersion": "2607.173.0.0",
+        "TestingAssemblyVersion": "2607.176.0.0",
         "AssemblyVersion": "2607.173.0.0",
         "Description": "A custom simple frontend for applying designs from Glamourer. Lets you browse and apply designs, and optionally upload your own images to more easily be able to decide on which design to wear.",
         "IconUrl": "https://raw.githubusercontent.com/Kussie/Aetherfit/master/Data/icon.png",
