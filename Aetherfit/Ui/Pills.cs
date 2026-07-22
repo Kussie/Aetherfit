@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
+using Aetherfit.Services;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Textures.TextureWraps;
 
 namespace Aetherfit.Ui;
 
@@ -41,6 +45,69 @@ internal static class Pills
 
         if (removed)
             onRemove(toRemove!);
+    }
+
+    public static (FontAwesomeIcon Icon, Vector4 Color) FilterStateIcon(FilterState state) => state switch
+    {
+        FilterState.Include => (FontAwesomeIcon.CheckSquare, UiTheme.StateOn),
+        FilterState.Exclude => (FontAwesomeIcon.MinusSquare, UiTheme.StateOff),
+        _                   => (FontAwesomeIcon.Square, UiTheme.StateUnset),
+    };
+
+    public static string FilterStateTooltip(string label, FilterState state) => state switch
+    {
+        FilterState.Include => $"Including \"{label}\" — click to exclude it instead",
+        FilterState.Exclude => $"Excluding \"{label}\" — click to clear",
+        _                   => $"Click to require \"{label}\"",
+    };
+
+    // Draws a full-width Selectable and overlays drawContent on top of it, so the whole row (icon
+    // included, not just whatever text drawContent renders) is the click target. Returns true when clicked.
+    public static bool DrawOverlaySelectable(string id, Action drawContent, string? tooltip = null)
+    {
+        var rowStart = ImGui.GetCursorPos();
+        var clicked = ImGui.Selectable($"##{id}");
+        var hovered = ImGui.IsItemHovered();
+        var rowEnd = ImGui.GetCursorPos();
+
+        ImGui.SetCursorPos(rowStart);
+        drawContent();
+        ImGui.SetCursorPos(rowEnd);
+
+        if (hovered && tooltip != null)
+            ImGui.SetTooltip(tooltip);
+
+        return clicked;
+    }
+
+    // A tri-state checkbox (unset/include/exclude) with `label` as its text. Returns true when clicked,
+    // i.e. the caller should cycle the filter state.
+    public static bool DrawFilterCheckbox(string label, FilterState state, string id)
+    {
+        var (icon, color) = FilterStateIcon(state);
+        return DrawOverlaySelectable(id, () =>
+        {
+            DesignDetailView.DrawFontAwesome(icon, color);
+            ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
+            ImGui.TextUnformatted(label);
+        }, FilterStateTooltip(label, state));
+    }
+
+    // Same as DrawFilterCheckbox, with a job icon between the checkbox and the name.
+    public static bool DrawJobFilterCheckbox(string name, FilterState state, IDalamudTextureWrap? icon, float lineHeight, string id)
+    {
+        var (stateIcon, color) = FilterStateIcon(state);
+        return DrawOverlaySelectable(id, () =>
+        {
+            DesignDetailView.DrawFontAwesome(stateIcon, color);
+            ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
+            if (icon != null)
+            {
+                ImGui.Image(icon.Handle, new Vector2(lineHeight, lineHeight));
+                ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
+            }
+            ImGui.TextUnformatted(name);
+        }, FilterStateTooltip(name, state));
     }
 
     // Lays pills out left to right and wraps to a new line when the next one won't fit. The caller hangs onto
