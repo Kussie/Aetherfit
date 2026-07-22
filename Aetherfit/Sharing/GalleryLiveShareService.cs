@@ -433,13 +433,20 @@ public sealed class GalleryLiveShareService : IDisposable
             TryDeleteTemp(tempBundlePath);
     }
 
+    // Nulls everything out after disposing it, so a second call (e.g. Cancel() immediately
+    // followed by a fresh HostAsync/JoinAsync) is a safe no-op instead of double-disposing.
     private void TeardownConnections()
     {
         sessionCts?.Cancel();
+        sessionCts?.Dispose();
+        sessionCts = null;
         try { dataChannel?.close(); } catch { /* already gone */ }
         try { peerConnection?.close(); } catch { /* already gone */ }
         peerConnection?.Dispose();
+        peerConnection = null;
+        dataChannel = null;
         signaling?.Dispose();
+        signaling = null;
         receiveBuffer?.Dispose();
         receiveBuffer = null;
     }
@@ -447,11 +454,6 @@ public sealed class GalleryLiveShareService : IDisposable
     private void ResetState()
     {
         TeardownConnections();
-        sessionCts?.Dispose();
-        sessionCts = null;
-        signaling = null;
-        peerConnection = null;
-        dataChannel = null;
         tempBundlePath = null;
         receiveTotalBytes = 0;
         failGuard = 0;
@@ -483,9 +485,5 @@ public sealed class GalleryLiveShareService : IDisposable
         return new string(chars);
     }
 
-    public void Dispose()
-    {
-        TeardownConnections();
-        sessionCts?.Dispose();
-    }
+    public void Dispose() => TeardownConnections();
 }

@@ -321,64 +321,31 @@ public partial class MainWindow : Window, IDisposable
         }
         ImGui.SameLine();
 
-        // Export/import and live-share track separate busy flags: waiting on a live-share peer can take
-        // minutes and shouldn't lock out ordinary export/import, only starting a second live share.
-        var galleryBusy = plugin.GallerySharing.IsBusy;
-        var liveBusy = plugin.LiveShare.IsBusy;
-        var liveDisabled = liveBusy || galleryBusy || string.IsNullOrWhiteSpace(plugin.Configuration.SignalingServerUrl);
-
-        using (ImRaii.Disabled(galleryBusy))
-        {
-            if (IconTextButton(FontAwesomeIcon.Upload, "Export Gallery", dropdown: true))
-                ImGui.OpenPopup("##sharePopup");
-        }
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip(galleryBusy
-                ? "An export or import is already running."
-                : "Export designs to a shareable .afgallery file (images + basic info).");
+        // Each dropdown's individual entries disable themselves against their own relevant busy
+        // flag (see DrawSharePopup/DrawOpenGalleryPopup) rather than gating the whole button, so
+        // e.g. waiting on a live-share peer doesn't lock out an unrelated plain export/import.
+        if (IconTextButton(FontAwesomeIcon.Upload, "Export Gallery", dropdown: true))
+            ImGui.OpenPopup("##sharePopup");
         DrawSharePopup();
         ImGui.SameLine();
 
-        using (ImRaii.Disabled(galleryBusy))
-        {
-            if (IconTextButton(FontAwesomeIcon.FolderOpen, "Open Shared Gallery..."))
-                OpenImportGalleryDialog();
-        }
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip(galleryBusy
-                ? "An export or import is already running."
-                : "Open another user's exported .afgallery file in a read-only viewer.");
-        ImGui.SameLine();
+        if (IconTextButton(FontAwesomeIcon.FolderOpen, "Open Shared Gallery", dropdown: true))
+            ImGui.OpenPopup("##openGalleryPopup");
+        DrawOpenGalleryPopup();
 
-        using (ImRaii.Disabled(liveDisabled))
+        // Deferred to here (root scope, outside either dropdown's own popup) - see the comment on
+        // openShareLiveRequested/openReceiveLiveRequested for why these can't be opened inline.
+        if (openShareLiveRequested)
         {
-            if (IconTextButton(FontAwesomeIcon.BroadcastTower, "Share Live"))
-                OpenShareLiveDialog();
+            ImGui.OpenPopup("##shareLivePopup");
+            openShareLiveRequested = false;
         }
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip(liveBusy
-                ? "A live share is already running."
-                : galleryBusy
-                    ? "An export or import is already running."
-                    : string.IsNullOrWhiteSpace(plugin.Configuration.SignalingServerUrl)
-                        ? "Set a signaling server address in Settings first."
-                        : "Share your gallery directly with another online player.");
+        if (openReceiveLiveRequested)
+        {
+            ImGui.OpenPopup("##receiveLivePopup");
+            openReceiveLiveRequested = false;
+        }
         DrawShareLivePopup();
-        ImGui.SameLine();
-
-        using (ImRaii.Disabled(liveDisabled))
-        {
-            if (IconTextButton(FontAwesomeIcon.SatelliteDish, "Receive Live"))
-                OpenReceiveLiveDialog();
-        }
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip(liveBusy
-                ? "A live share is already running."
-                : galleryBusy
-                    ? "An export or import is already running."
-                    : string.IsNullOrWhiteSpace(plugin.Configuration.SignalingServerUrl)
-                        ? "Set a signaling server address in Settings first."
-                        : "Receive a gallery directly from another online player.");
         DrawReceiveLivePopup();
 
         var countText = IsRefreshing && activeRefresh is { } job
@@ -471,6 +438,22 @@ public partial class MainWindow : Window, IDisposable
             ImGui.SetTooltip(hasFilter
                 ? "Export only the designs currently shown by the active filters."
                 : "Set a filter first to export only the designs that remain visible.");
+
+        ImGui.Separator();
+
+        var liveBusy = plugin.LiveShare.IsBusy;
+        var liveConfigured = !string.IsNullOrWhiteSpace(plugin.Configuration.SignalingServerUrl);
+        using (ImRaii.Disabled(liveBusy || !liveConfigured))
+        {
+            if (ImGui.Selectable("Share Live..."))
+                OpenShareLiveDialog();
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(liveBusy
+                ? "A live share is already running."
+                : !liveConfigured
+                    ? "Set a signaling server address in Settings first."
+                    : "Share your gallery directly with another online player.");
     }
 
     private void DrawBottomButtons()

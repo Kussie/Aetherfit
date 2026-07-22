@@ -150,8 +150,10 @@ internal sealed class LiveShareSignalingClient : IDisposable
     {
         receiveCts?.Cancel();
         receiveCts?.Dispose();
+        receiveCts = null;
         try { socket?.Abort(); }
         catch { /* already gone */ }
         socket?.Dispose();
+        socket = null;
     }
 }
