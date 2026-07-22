@@ -31,8 +31,9 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
     private bool openDetailsThisFrame;
 
     private string filterName = string.Empty;
-    private readonly HashSet<string> filterTags = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<uint> filterJobs = new();
+    // true = must have the tag/job, false = must not have it; a key absent from the map is left alone.
+    private readonly Dictionary<string, bool> filterTags = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<uint, bool> filterJobs = new();
     private string filterSearchText = string.Empty;
 
     public ForeignGalleryWindow(Plugin plugin)
@@ -131,10 +132,10 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
             query = query.Where(d => d.Name.IndexOf(filterName, StringComparison.OrdinalIgnoreCase) >= 0);
 
         if (filterTags.Count > 0)
-            query = query.Where(d => filterTags.All(t => TagMatching.AnyMatch(d.Tags, t)));
+            query = query.Where(d => filterTags.MatchesFilter(d.Tags));
 
         if (filterJobs.Count > 0)
-            query = query.Where(d => filterJobs.Any(d.Jobs.Contains));
+            query = query.Where(d => filterJobs.MatchesFilter(d.Jobs));
 
         return query
             .OrderBy(d => d.Name, NaturalStringComparer.OrdinalIgnoreCase)
@@ -152,16 +153,12 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         ImGui.InputTextWithHint("##foreignNameFilter", "Filter by name...", ref filterName, 64);
         ImGui.PopItemWidth();
 
-        DrawSelectedFilterPills();
-
-        var hasTagOrJob = filterTags.Count > 0 || filterJobs.Count > 0;
-        var addLabel = hasTagOrJob ? "Add tag or job..." : "Filter by tag(s) or job...";
-        if (ImGui.Button(addLabel, new Vector2(-1, 0)))
+        if (DrawTagJobPickerButton())
         {
             filterSearchText = string.Empty;
             ImGui.OpenPopup(AddFilterPopupId);
         }
-        DrawAddFilterPopup();
+        DrawTagJobPopup();
 
         using (ImRaii.Disabled(!HasAnyFilter))
         {
@@ -174,37 +171,17 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         }
     }
 
-    private void DrawSelectedFilterPills()
+    private bool DrawTagJobPickerButton()
     {
-        string? dropTag = null;
-        foreach (var tag in filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
-            if (DrawFilterPill(tag, $"tag{tag}"))
-                dropTag = tag;
-        if (dropTag != null)
-            filterTags.Remove(dropTag);
-
-        uint? dropJob = null;
-        foreach (var job in filterJobs.OrderBy(j => j))
-            if (DrawFilterPill(plugin.GameData.ResolveJobName(job), $"job{job}"))
-                dropJob = job;
-        if (dropJob is { } removed)
-            filterJobs.Remove(removed);
-
-        if (filterTags.Count > 0 || filterJobs.Count > 0)
-            ImGui.NewLine();
+        var count = filterTags.Count + filterJobs.Count;
+        var label = count == 0 ? "Filter by tag(s) or job..." : count == 1 ? "1 tag/job filter active" : $"{count} tag/job filters active";
+        return ImGui.Button(label, new Vector2(-1, 0));
     }
 
-    // One chip on the active-filter row. Returns true when the user clicks it to take that filter off.
-    private static bool DrawFilterPill(string label, string id)
-    {
-        var clicked = Pills.DrawRemovable(label, id);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip($"Remove \"{label}\"");
-        ImGui.SameLine();
-        return clicked;
-    }
-
-    private void DrawAddFilterPopup()
+    // Every tag and job in the shared gallery as its own tri-state checkbox row. Tags/jobs stay listed with
+    // their current state rather than disappearing once picked (there are no pills once the popup is closed -
+    // reopening it is how you check what's currently filtered).
+    private void DrawTagJobPopup()
     {
         using var popup = ImRaii.Popup(AddFilterPopupId);
         if (!popup.Success)
@@ -218,14 +195,12 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         ImGui.Separator();
 
         var availableTags = TagMatching.WithSegments(gallery!.Designs.SelectMany(d => d.Tags))
-            .Where(t => !filterTags.Contains(t) &&
-                        (filterSearchText.Length == 0 || t.Contains(filterSearchText, StringComparison.OrdinalIgnoreCase)))
+            .Where(t => filterSearchText.Length == 0 || t.Contains(filterSearchText, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         var availableJobs = gallery.Designs
             .SelectMany(d => d.Jobs)
             .Distinct()
-            .Where(j => !filterJobs.Contains(j))
             .Select(j => (RowId: j, Name: plugin.GameData.ResolveJobName(j)))
             .Where(j => filterSearchText.Length == 0 || j.Name.Contains(filterSearchText, StringComparison.OrdinalIgnoreCase))
             .OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
@@ -233,37 +208,42 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
 
         if (availableTags.Count == 0 && availableJobs.Count == 0)
         {
-            ImGui.TextDisabled(filterSearchText.Length > 0 ? "No matching tags or jobs." : "Nothing left to filter by.");
+            ImGui.TextDisabled(filterSearchText.Length > 0 ? "No matching tags or jobs." : "Nothing to filter by.");
+            ImGui.Separator();
+            if (ImGui.Button("Done", new Vector2(-1, 0)))
+                ImGui.CloseCurrentPopup();
+            return;
         }
-        else
+
+        var rowHeight = ImGui.GetTextLineHeightWithSpacing();
+        var totalRows = (availableTags.Count > 0 ? availableTags.Count + 1 : 0)
+                      + (availableJobs.Count > 0 ? availableJobs.Count + 1 : 0);
+        var listHeight = Math.Min(totalRows, 12) * rowHeight;
+
+        using (var scroll = ImRaii.Child("ForeignTagJobList", new Vector2(260 * ImGuiHelpers.GlobalScale, listHeight), false))
         {
-            var rowHeight = ImGui.GetTextLineHeightWithSpacing();
-            var listHeight = Math.Min(availableTags.Count + availableJobs.Count, 10) * rowHeight;
-            using var scroll = ImRaii.Child("ForeignTagJobList", new Vector2(240 * ImGuiHelpers.GlobalScale, listHeight), false);
             if (scroll.Success)
             {
-                foreach (var tag in availableTags)
+                if (availableTags.Count > 0)
                 {
-                    if (ImGui.Selectable($"{tag}##foreignAddTag{tag}"))
-                    {
-                        filterTags.Add(tag);
-                        filterSearchText = string.Empty;
-                    }
+                    ImGui.TextColored(UiTheme.SectionHeader, "Tags");
+                    foreach (var tag in availableTags)
+                        if (Pills.DrawFilterCheckbox(tag, filterTags.GetFilterState(tag), $"foreignTagCb{tag}"))
+                            filterTags.CycleFilterState(tag);
                 }
 
-                var lineH = ImGui.GetTextLineHeight();
-                foreach (var job in availableJobs)
+                if (availableJobs.Count > 0)
                 {
-                    var icon = plugin.GameData.GetJobIcon(job.RowId);
-                    if (icon != null)
+                    if (availableTags.Count > 0)
+                        ImGui.Spacing();
+                    ImGui.TextColored(UiTheme.SectionHeader, "Jobs");
+
+                    var lineH = ImGui.GetTextLineHeight();
+                    foreach (var job in availableJobs)
                     {
-                        ImGui.Image(icon.Handle, new Vector2(lineH, lineH));
-                        ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
-                    }
-                    if (ImGui.Selectable($"{job.Name}##foreignAddJob{job.RowId}"))
-                    {
-                        filterJobs.Add(job.RowId);
-                        filterSearchText = string.Empty;
+                        var icon = plugin.GameData.GetJobIcon(job.RowId);
+                        if (Pills.DrawJobFilterCheckbox(job.Name, filterJobs.GetFilterState(job.RowId), icon, lineH, $"foreignJobCb{job.RowId}"))
+                            filterJobs.CycleFilterState(job.RowId);
                     }
                 }
             }

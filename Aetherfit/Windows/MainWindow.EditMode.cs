@@ -399,7 +399,7 @@ public partial class MainWindow
                                 ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
                                 ImGui.SetTooltip($"Show all designs tagged \"{tag}\"");
                                 if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                                    filterTags.Add(tag);
+                                    filterTags[tag] = true;
                             }
                         }
                     }

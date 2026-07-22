@@ -20,14 +20,16 @@ public partial class MainWindow
     private bool searchDesignName = true;   // preserves current default behaviour
     private bool searchModName;
     private bool searchEquipmentName;
-    private readonly HashSet<string> filterTags = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<uint> filterJobs = new();
+    // true = must have the tag/job, false = must not have it; a key absent from the map is left alone.
+    private readonly Dictionary<string, bool> filterTags = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<uint, bool> filterJobs = new();
     private ImageFilterMode filterImage = ImageFilterMode.All;
     private bool filterFavourites;
     // Vanilla = no mods attached, Modded = has mods. Only one can be on at a time (see DrawVanillaToggle/DrawModdedToggle).
     private bool filterVanillaOnly;
     private bool filterModdedOnly;
     private List<string> availableTagsForFilter = new();
+    private int cachedAvailableTagsGeneration = -1;
     private string tagSearchText = string.Empty;
 
     private bool HasAnyFilter => filterName.Length > 0
@@ -52,8 +54,9 @@ public partial class MainWindow
         filterName,
         searchDesignName, searchModName, searchEquipmentName,
         (int)filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly,
-        string.Join(',', filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase)),
-        string.Join(',', filterJobs.OrderBy(j => j)));
+        string.Join(',', filterTags.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(kv => $"{kv.Key}:{kv.Value}")),
+        string.Join(',', filterJobs.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}")));
 
     private void DrawFilterUi(bool defaultOpen = false, bool wide = false)
     {
@@ -141,13 +144,10 @@ public partial class MainWindow
             ImGui.SameLine();
         if (DrawTagJobPickerButton(wide ? tagBtnW : -1f))
         {
-            RebuildAvailableFilterTags();
+            EnsureAvailableFilterTags();
             tagSearchText = string.Empty;
             ImGui.OpenPopup(FilterTagsPopupId);
         }
-
-        DrawSelectedTagPills();
-        DrawSelectedJobPills();
 
         ImGui.AlignTextToFramePadding();
         ImGui.TextDisabled("Cover Image:");
@@ -168,7 +168,7 @@ public partial class MainWindow
     private const string ModdedToggleLabel = "Modded";
 
     // Favourites / Vanilla / Modded as pill toggles, matching the D/M/E scope style. In the narrow
-    // pane they wrap like the tag pills instead of overflowing.
+    // pane they wrap instead of overflowing.
     private void DrawQuickToggles(bool wide)
     {
         if (!wide)
@@ -231,12 +231,38 @@ public partial class MainWindow
             ImGui.SetTooltip("Show only designs with mod associations");
     }
 
+    // Compact letter toggle (D/M/E) standing in for a long checkbox label; the full meaning lives in the tooltip.
+    private static void DrawSearchScopeToggle(string letter, string tooltip, ref bool enabled)
+    {
+        var size = ImGui.GetFrameHeight();
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);
+        ImGui.PushStyleColor(ImGuiCol.Button,
+            enabled ? UiTheme.PillBase : UiTheme.ToggleOffBg);
+        ImGui.PushStyleColor(ImGuiCol.Text,
+            enabled ? UiTheme.GoldAccent : UiTheme.PlaceholderText);
+        if (ImGui.Button($"{letter}##scope{letter}", new Vector2(size, size)))
+            enabled = !enabled;
+        ImGui.PopStyleColor(2);
+        ImGui.PopStyleVar();
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
+    }
+
+    private void EnsureAvailableFilterTags()
+    {
+        if (cachedAvailableTagsGeneration == designListGeneration)
+            return;
+        availableTagsForFilter = plugin.Configuration.DistinctSortedTags();
+        cachedAvailableTagsGeneration = designListGeneration;
+    }
+
     // Styled like a combo (frame background, left-aligned hint text, dropdown arrow) so it reads
     // as an input instead of a stray centered label. Returns true when clicked.
     private bool DrawTagJobPickerButton(float width)
     {
-        var hasAny = filterTags.Count > 0 || filterJobs.Count > 0;
-        var label = hasAny ? "Add tag or job..." : "Filter by tag(s) or job...";
+        var count = filterTags.Count + filterJobs.Count;
+        var label = count == 0 ? "Filter by tag(s) or job..." : count == 1 ? "1 tag/job filter active" : $"{count} tag/job filters active";
 
         ImGui.PushStyleVar(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f));
         ImGui.PushStyleColor(ImGuiCol.Button, ImGui.GetColorU32(ImGuiCol.FrameBg));
@@ -259,63 +285,9 @@ public partial class MainWindow
         return clicked;
     }
 
-    // Compact letter toggle (D/M/E) standing in for a long checkbox label; the full meaning lives in the tooltip.
-    private static void DrawSearchScopeToggle(string letter, string tooltip, ref bool enabled)
-    {
-        var size = ImGui.GetFrameHeight();
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);
-        ImGui.PushStyleColor(ImGuiCol.Button,
-            enabled ? UiTheme.PillBase : UiTheme.ToggleOffBg);
-        ImGui.PushStyleColor(ImGuiCol.Text,
-            enabled ? UiTheme.GoldAccent : UiTheme.PlaceholderText);
-        if (ImGui.Button($"{letter}##scope{letter}", new Vector2(size, size)))
-            enabled = !enabled;
-        ImGui.PopStyleColor(2);
-        ImGui.PopStyleVar();
-
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(tooltip);
-    }
-
-    private void DrawSelectedTagPills()
-    {
-        if (filterTags.Count == 0) return;
-
-        Pills.DrawRemovableRow(
-            filterTags.OrderBy(t => t, StringComparer.OrdinalIgnoreCase),
-            tag => tag,
-            tag => filterTags.Remove(tag));
-    }
-
-    private void DrawSelectedJobPills()
-    {
-        if (filterJobs.Count == 0) return;
-
-        var style = ImGui.GetStyle();
-        var spacing = style.ItemSpacing.X;
-        var availRight = ImGui.GetWindowPos().X + ImGui.GetContentRegionMax().X;
-        var cursorStart = ImGui.GetCursorScreenPos().X;
-        var lineRight = cursorStart;
-        var first = true;
-
-        uint? toRemove = null;
-        foreach (var job in filterJobs.OrderBy(j => j))
-        {
-            var width = MeasureJobPill(job);
-            Pills.PlaceItem(width, ref first, ref lineRight, cursorStart, spacing, availRight);
-            if (DrawJobPill(job))
-                toRemove = job;
-        }
-
-        if (toRemove is { } remove)
-            filterJobs.Remove(remove);
-    }
-
-    private void RebuildAvailableFilterTags()
-    {
-        availableTagsForFilter = plugin.Configuration.DistinctSortedTags();
-    }
-
+    // Every tag and job as its own tri-state checkbox row. Tags/jobs stay listed with their current state
+    // rather than disappearing once picked (there are no pills to show state once the popup is closed -
+    // reopening it is how you check what's currently filtered).
     private void DrawFilterTagsPopup()
     {
         using var popup = ImRaii.Popup(FilterTagsPopupId);
@@ -325,66 +297,65 @@ public partial class MainWindow
         if (ImGui.IsWindowAppearing())
             ImGui.SetKeyboardFocusHere();
 
-        ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##tagSearch", "Search tags or jobs...", ref tagSearchText, 64);
+        var scale = ImGuiHelpers.GlobalScale;
+        var allJobs = plugin.GameData.GetSelectableJobs();
+
+        ImGui.SetNextItemWidth(260 * scale);
+        ImGui.InputTextWithHint("##tagJobSearch", "Search tags or jobs...", ref tagSearchText, 64);
         ImGui.Separator();
 
-        var unselectedTags = availableTagsForFilter
-            .Where(t => !filterTags.Contains(t) &&
-                        (tagSearchText.Length == 0 ||
-                         t.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase)))
+        var matchingTags = availableTagsForFilter
+            .Where(t => tagSearchText.Length == 0 || t.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var matchingJobs = allJobs
+            .Where(j => tagSearchText.Length == 0 || j.Name.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var unselectedJobs = plugin.GameData.GetSelectableJobs()
-            .Where(j => !filterJobs.Contains(j.RowId) &&
-                        (tagSearchText.Length == 0 ||
-                         j.Name.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
-
-        if (unselectedTags.Count == 0 && unselectedJobs.Count == 0)
+        if (matchingTags.Count == 0 && matchingJobs.Count == 0)
         {
-            ImGui.TextDisabled(tagSearchText.Length > 0 ? "No matching tags or jobs." : "All tags and jobs are selected.");
+            ImGui.TextDisabled(availableTagsForFilter.Count == 0 && allJobs.Count == 0
+                ? "No tags or jobs to filter by yet."
+                : "No matching tags or jobs.");
         }
         else
         {
             var rowHeight = ImGui.GetTextLineHeightWithSpacing();
-            // Account for the role headings interleaved with the job rows when sizing the list.
-            var jobRows = unselectedJobs.Count + unselectedJobs.Select(j => j.Role).Distinct().Count();
-            var totalRows = unselectedTags.Count + jobRows;
-            var listHeight = Math.Min(totalRows, 10) * rowHeight;
-            using var scroll = ImRaii.Child("TagJobList", new Vector2(240 * ImGuiHelpers.GlobalScale, listHeight), false);
+            // Account for the "Tags"/"Jobs" headings and the role headings interleaved with the job rows.
+            var jobRoleHeadings = matchingJobs.Select(j => j.Role).Distinct().Count();
+            var totalRows = (matchingTags.Count > 0 ? matchingTags.Count + 1 : 0)
+                          + (matchingJobs.Count > 0 ? matchingJobs.Count + jobRoleHeadings + 1 : 0);
+            var listHeight = Math.Min(totalRows, 12) * rowHeight;
+
+            using var scroll = ImRaii.Child("TagJobList", new Vector2(260 * scale, listHeight), false);
             if (scroll.Success)
             {
-                foreach (var tag in unselectedTags)
+                if (matchingTags.Count > 0)
                 {
-                    if (ImGui.Selectable(tag))
-                    {
-                        filterTags.Add(tag);
-                        tagSearchText = string.Empty;
-                    }
+                    ImGui.TextColored(UiTheme.SectionHeader, "Tags");
+                    foreach (var tag in matchingTags)
+                        if (Pills.DrawFilterCheckbox(tag, filterTags.GetFilterState(tag), $"filterTagCb{tag}"))
+                            filterTags.CycleFilterState(tag);
                 }
 
-                var lineH = ImGui.GetTextLineHeight();
-                JobRole? lastRole = null;
-                foreach (var job in unselectedJobs)
+                if (matchingJobs.Count > 0)
                 {
-                    if (lastRole != job.Role)
-                    {
-                        ImGui.TextDisabled(GameDataService.RoleLabel(job.Role));
-                        lastRole = job.Role;
-                    }
+                    if (matchingTags.Count > 0)
+                        ImGui.Spacing();
+                    ImGui.TextColored(UiTheme.SectionHeader, "Jobs");
 
-                    var icon = plugin.GameData.GetJobIcon(job.RowId);
-                    if (icon != null)
+                    var lineH = ImGui.GetTextLineHeight();
+                    JobRole? lastRole = null;
+                    foreach (var job in matchingJobs)
                     {
-                        ImGui.Image(icon.Handle, new Vector2(lineH, lineH));
-                        ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
-                    }
+                        if (lastRole != job.Role)
+                        {
+                            ImGui.TextDisabled(GameDataService.RoleLabel(job.Role));
+                            lastRole = job.Role;
+                        }
 
-                    if (ImGui.Selectable($"{job.Name}##filterjob{job.RowId}"))
-                    {
-                        filterJobs.Add(job.RowId);
-                        tagSearchText = string.Empty;
+                        var icon = plugin.GameData.GetJobIcon(job.RowId);
+                        if (Pills.DrawJobFilterCheckbox(job.Name, filterJobs.GetFilterState(job.RowId), icon, lineH, $"filterJobCb{job.RowId}"))
+                            filterJobs.CycleFilterState(job.RowId);
                     }
                 }
             }
@@ -430,17 +401,11 @@ public partial class MainWindow
         if (filterName.Length > 0 && !NameFilterMatches(design, cached))
             return false;
 
-        if (filterTags.Count > 0)
-        {
-            if (cached == null || cached.Tags.Count == 0) return false;
-            if (!filterTags.All(t => TagMatching.AnyMatch(cached.Tags, t))) return false;
-        }
+        if (!filterTags.MatchesFilter((IReadOnlyCollection<string>?)cached?.Tags ?? Array.Empty<string>()))
+            return false;
 
-        if (filterJobs.Count > 0)
-        {
-            var jobs = plugin.Configuration.GetJobAssociations(design.Id);
-            if (!filterJobs.Any(jobs.Contains)) return false;
-        }
+        if (!filterJobs.MatchesFilter(plugin.Configuration.GetJobAssociations(design.Id)))
+            return false;
 
         if (filterImage != ImageFilterMode.All)
         {

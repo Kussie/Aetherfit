@@ -39,7 +39,8 @@ public partial class MainWindow
     private bool cachedSearchModName;
     private bool cachedSearchEquipmentName;
     private ImageFilterMode cachedFilterImage;
-    private HashSet<string> cachedFilterTags = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, bool> cachedFilterTags = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<uint, bool> cachedFilterJobs = new();
     private GallerySortField cachedSortField;
     private bool cachedSortAscending = true;
     private bool cachedFilterFavourites;
@@ -192,6 +193,15 @@ public partial class MainWindow
         ImGui.TextDisabled(countText);
     }
 
+    private static bool FiltersEqual<TKey>(Dictionary<TKey, bool> a, Dictionary<TKey, bool> b) where TKey : notnull
+    {
+        if (a.Count != b.Count) return false;
+        foreach (var (key, include) in a)
+            if (!b.TryGetValue(key, out var otherInclude) || include != otherInclude)
+                return false;
+        return true;
+    }
+
     private bool IsGalleryCacheStale() =>
         cachedGeneration != designListGeneration ||
         cachedSortField != gallerySortField ||
@@ -201,7 +211,8 @@ public partial class MainWindow
         cachedSearchDesignName != searchDesignName ||
         cachedSearchModName != searchModName ||
         cachedSearchEquipmentName != searchEquipmentName ||
-        !cachedFilterTags.SetEquals(filterTags) ||
+        !FiltersEqual(cachedFilterTags, filterTags) ||
+        !FiltersEqual(cachedFilterJobs, filterJobs) ||
         cachedFilterFavourites != filterFavourites ||
         cachedFilterVanillaOnly != filterVanillaOnly ||
         cachedFilterModdedOnly != filterModdedOnly ||
@@ -223,7 +234,8 @@ public partial class MainWindow
         cachedSearchDesignName = searchDesignName;
         cachedSearchModName = searchModName;
         cachedSearchEquipmentName = searchEquipmentName;
-        cachedFilterTags = new HashSet<string>(filterTags, StringComparer.OrdinalIgnoreCase);
+        cachedFilterTags = new Dictionary<string, bool>(filterTags, StringComparer.OrdinalIgnoreCase);
+        cachedFilterJobs = new Dictionary<uint, bool>(filterJobs);
         cachedFilterFavourites = filterFavourites;
         cachedFilterVanillaOnly = filterVanillaOnly;
         cachedFilterModdedOnly = filterModdedOnly;
