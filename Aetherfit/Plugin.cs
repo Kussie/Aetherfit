@@ -39,6 +39,7 @@ public sealed class Plugin : IDalamudPlugin
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
+    public GalleryLiveShareService LiveShare { get; init; }
     public RestoreSequenceService Restore { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
@@ -89,11 +90,13 @@ public sealed class Plugin : IDalamudPlugin
         ImageStorage = new ImageStorageService(Configuration);
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
+        LiveShare = new GalleryLiveShareService(this);
 
         // Clean up any imported-gallery images or in-flight captures a previous session left behind
         // (e.g. if we crashed before tidying up).
         ImageStorage.ClearAllForeign();
         ImageStorage.ClearAllTemp();
+        GalleryLiveShareService.ClearAllTemp();
 
         ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
@@ -144,6 +147,7 @@ public sealed class Plugin : IDalamudPlugin
         ScreenshotSetup.Dispose();
         ScreenshotCrop.Dispose();
         ForeignGallery.Dispose();
+        LiveShare.Dispose();
 
         // Last, so anything the disposals above still saved gets flushed to disk.
         configSaver.Dispose();

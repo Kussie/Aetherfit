@@ -81,6 +81,10 @@ public class Configuration : IPluginConfiguration
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
+    // Address of the standalone signaling server used to pair two players for a live gallery share.
+    // It only ever relays a WebRTC handshake - never the bundle itself.
+    public string SignalingServerUrl { get; set; } = string.Empty;
+
     // Round-trips config fields this build doesn't know about (e.g. settings written by an
     // experimental branch), so switching builds doesn't silently wipe them on the next save.
     [Newtonsoft.Json.JsonExtensionData]
