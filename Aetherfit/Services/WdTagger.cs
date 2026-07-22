@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 
 namespace Aetherfit.Services;
 
@@ -108,47 +109,33 @@ internal sealed class WdTagger : IDisposable
     // float32 in BGR order with raw 0-255 values.
     private DenseTensor<float> Preprocess(string imagePath)
     {
-        using var src = new Bitmap(imagePath);
+        using var src = Image.Load<Rgb24>(imagePath);
         var side = Math.Max(src.Width, src.Height);
 
-        using var canvas = new Bitmap(inputSize, inputSize, PixelFormat.Format24bppRgb);
-        using (var g = Graphics.FromImage(canvas))
-        {
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-            g.Clear(Color.White);
+        var scale = (float)inputSize / side;
+        var w = Math.Max(1, (int)Math.Round(src.Width * scale));
+        var h = Math.Max(1, (int)Math.Round(src.Height * scale));
+        src.Mutate(ctx => ctx.Resize(new ResizeOptions { Size = new Size(w, h), Sampler = KnownResamplers.Bicubic }));
 
-            var scale = (float)inputSize / side;
-            var w = src.Width * scale;
-            var h = src.Height * scale;
-            g.DrawImage(src, (inputSize - w) / 2f, (inputSize - h) / 2f, w, h);
-        }
+        using var canvas = new Image<Rgb24>(inputSize, inputSize, Color.White.ToPixel<Rgb24>());
+        canvas.Mutate(ctx => ctx.DrawImage(src, new Point((inputSize - w) / 2, (inputSize - h) / 2), 1f));
 
         var tensor = new DenseTensor<float>(new[] { 1, inputSize, inputSize, 3 });
-        var data = canvas.LockBits(new Rectangle(0, 0, inputSize, inputSize),
-            ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
-        try
+        canvas.ProcessPixelRows(accessor =>
         {
-            unsafe
+            for (var y = 0; y < inputSize; y++)
             {
-                for (var y = 0; y < inputSize; y++)
+                var row = accessor.GetRowSpan(y);
+                for (var x = 0; x < inputSize; x++)
                 {
-                    // 24bpp GDI+ rows are laid out B,G,R — exactly the channel order the model wants.
-                    var row = (byte*)data.Scan0 + y * data.Stride;
-                    for (var x = 0; x < inputSize; x++)
-                    {
-                        var px = row + x * 3;
-                        tensor[0, y, x, 0] = px[0];
-                        tensor[0, y, x, 1] = px[1];
-                        tensor[0, y, x, 2] = px[2];
-                    }
+                    // model wants BGR order
+                    var px = row[x];
+                    tensor[0, y, x, 0] = px.B;
+                    tensor[0, y, x, 1] = px.G;
+                    tensor[0, y, x, 2] = px.R;
                 }
             }
-        }
-        finally
-        {
-            canvas.UnlockBits(data);
-        }
+        });
 
         return tensor;
     }

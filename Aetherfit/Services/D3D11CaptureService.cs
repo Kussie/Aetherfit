@@ -1,7 +1,6 @@
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 
@@ -122,40 +121,33 @@ internal static unsafe class D3D11CaptureService
         }
     }
 
+    // Backbuffer alpha is always opaque, so this writes a plain RGB (color type 2) PNG rather than RGBA.
     private static byte[] ToPng(int width, int height, uint format, uint rowPitch, void* srcData)
     {
-        // GDI's Format32bppArgb is BGRA in memory, so RGBA sources need R and B swapped. Otherwise get a much darker image then what is shown on screen
-        bool swapRB = format is FmtR8G8B8A8 or FmtR8G8B8A8Srgb;
+        // B8G8R8A8 is laid out B,G,R,A in memory, so it needs the R/B swap to land in the RGB byte order the PNG wants.
+        bool swapRB = format is FmtB8G8R8A8 or FmtB8G8R8A8Srgb;
+        var src = (byte*)srcData;
 
-        using var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        var bits = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-        try
+        var stride = 1 + width * 3; // filter-type byte + RGB per pixel
+        var raw = new byte[(long)height * stride];
+        for (int y = 0; y < height; y++)
         {
-            var src = (byte*)srcData;
-            var dst = (byte*)bits.Scan0;
+            byte* srcRow = src + y * rowPitch;
+            var rowOffset = y * stride + 1; // raw[y*stride] stays 0 (filter type "None")
 
-            for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
             {
-                byte* srcRow = src + y * rowPitch;
-                byte* dstRow = dst + y * bits.Stride;
-
-                for (int x = 0; x < width; x++)
-                {
-                    dstRow[x * 4 + 0] = swapRB ? srcRow[x * 4 + 2] : srcRow[x * 4 + 0];
-                    dstRow[x * 4 + 1] = srcRow[x * 4 + 1];
-                    dstRow[x * 4 + 2] = swapRB ? srcRow[x * 4 + 0] : srcRow[x * 4 + 2];
-                    dstRow[x * 4 + 3] = 255;
-                }
+                var b0 = srcRow[x * 4 + 0];
+                var b1 = srcRow[x * 4 + 1];
+                var b2 = srcRow[x * 4 + 2];
+                var o = rowOffset + x * 3;
+                raw[o + 0] = swapRB ? b2 : b0;
+                raw[o + 1] = b1;
+                raw[o + 2] = swapRB ? b0 : b2;
             }
         }
-        finally
-        {
-            bmp.UnlockBits(bits);
-        }
 
-        using var ms = new MemoryStream();
-        bmp.Save(ms, ImageFormat.Png);
-        return ms.ToArray();
+        return PngEncoder.Encode(width, height, raw);
     }
 
     private static void VtRelease(nint com)
