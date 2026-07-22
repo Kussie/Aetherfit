@@ -152,10 +152,11 @@ public partial class MainWindow
 
         ImGui.Spacing();
         var finished = live.Phase is LiveSharePhase.Done or LiveSharePhase.Failed;
+        // Always reset back to Idle here, even on "Close" - otherwise Phase stays stuck at
+        // Done/Failed and reopening the popup just shows the same stale state again.
         if (ImGui.Button(finished ? "Close" : "Cancel"))
         {
-            if (!finished)
-                live.Cancel();
+            live.Cancel();
             ImGui.CloseCurrentPopup();
         }
     }
@@ -214,10 +215,11 @@ public partial class MainWindow
 
         ImGui.Spacing();
         var finished = live.Phase is LiveSharePhase.Done or LiveSharePhase.Failed;
+        // Always reset back to Idle here, even on "Close" - otherwise Phase stays stuck at
+        // Done/Failed and reopening the popup just shows the same stale state again.
         if (ImGui.Button(finished ? "Close" : "Cancel"))
         {
-            if (!finished)
-                live.Cancel();
+            live.Cancel();
             ImGui.CloseCurrentPopup();
         }
     }
