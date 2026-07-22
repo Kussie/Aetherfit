@@ -59,17 +59,12 @@ public class Configuration : IPluginConfiguration
 
     public HashSet<Guid> FavouriteDesigns { get; set; } = new();
 
-    // Designs the user has hidden: they are kept out of the gallery view and excluded from exports,
-    // but remain visible in the design tree so they can be unhidden from the detail header.
     public HashSet<Guid> HiddenDesigns { get; set; } = new();
 
     // User-authored associations between a design and one or more ClassJob RowIds. Stored here (not on CachedOutfit)
     // because CachedOutfits is wholly replaced from Glamourer metadata on every Refresh.
     public Dictionary<Guid, List<uint>> DesignJobAssociations { get; set; } = new();
 
-    // Additional design layers: applying a base design also applies its layer slots top-down. Each slot holds
-    // one or more designs; one job-matching design is picked (at random when the slot holds several) and
-    // applied before moving to the next slot. Keyed by base design id.
     public Dictionary<Guid, List<DesignLayerSlot>> DesignLayerSlots { get; set; } = new();
 
     // Legacy: replaced by DesignLayerSlots. Migrated on first plugin load into a single slot per base design.
@@ -81,9 +76,12 @@ public class Configuration : IPluginConfiguration
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
-    // Address of the standalone signaling server used to pair two players for a live gallery share.
-    // It only ever relays a WebRTC handshake - never the bundle itself.
-    public string SignalingServerUrl { get; set; } = "wss://aetherfit-signaling.kussie.deno.net/signal";
+    // Remembers the sender's last-picked expiry preset (minutes) across sessions.
+    public int LiveShareDefaultTtlMinutes { get; set; } = 30;
+
+    // A random, locally-generated token (not derived from the character/account) sent with live-share uploads so the backend can replace this install's previous share instead of accumulating one per upload.
+    // Deliberately not tied to any player-identifying data - see GalleryLiveShareService.
+    public string LiveShareInstallId { get; set; } = string.Empty;
 
     // Round-trips config fields this build doesn't know about (e.g. settings written by an
     // experimental branch), so switching builds doesn't silently wipe them on the next save.
@@ -162,10 +160,6 @@ public class CharacterLoginSettings
     // Recently applied base designs, most recent first, capped. Random picks avoid the head
     // outright and down-weight the rest so the same design doesn't come up in quick succession.
     public List<Guid> RecentDesignHistory { get; set; } = new();
-
-    // When enabled, Aetherfit re-applies the last-worn design (+ exact layers) after every zone
-    // change, since Glamourer reverts manual state on zoning. Independent of LoginAction: it works
-    // off the LastWorn record, which is written on every Aetherfit apply regardless of settings.
     public bool ReapplyOnZoneChange { get; set; } = false;
 }
 

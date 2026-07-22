@@ -1,54 +1,47 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using SIPSorcery.Net;
 
 namespace Aetherfit.Sharing;
 
 public enum LiveSharePhase
 {
     Idle,
-    WaitingForPeer,     // host: pairing code shown, no guest yet
-    Connecting,         // guest: joined, waiting for the offer
-    Handshaking,        // WebRTC offer/answer/ICE in flight
     ExportingBundle,    // host: building the temp .afgallery file
-    Transferring,       // data channel open, bytes moving
+    Uploading,          // host: sending it to the live-share backend
+    Ready,              // host: code generated, waiting to be redeemed (or already forgotten about)
+    Downloading,        // guest: fetching the bundle by code
     Importing,          // guest: handing the received file to GallerySharingService
     Done,
     Failed,
 }
 
-// Transfers a gallery bundle directly to another player's plugin over a live WebRTC data channel,
-// instead of the manual "export a file, send it yourself" flow. It never reimplements the bundle
-// format: the host does a completely normal export to a temp file and streams those exact bytes;
-// the guest writes them to a temp file and does a completely normal import.
+// Shares a gallery bundle with another player via a short-lived upload/download backend (a Cloudflare
+// Worker + R2 bucket) instead of a live peer-to-peer connection. It never reimplements the bundle
+// format: the host does a completely normal export to a temp file and uploads those exact bytes; the
+// guest writes the response to a temp file and does a completely normal import. Neither side needs to
+// be online at the same time - the code just has to be redeemed before it expires.
 public sealed class GalleryLiveShareService : IDisposable
 {
-    private const string DataChannelLabel = "afgallery";
-    private const int ChunkSize = 16 * 1024;
-    // Local sanity cap only - the authoritative size guardrail is GallerySharingService's own,
-    // enforced when the received bytes are handed to ImportFromFileAsync.
-    private const long MaxTransferBytes = 512L * 1024 * 1024;
-    private const string CodeAlphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"; // no 0/O/1/I/L
-    private const int CodeLength = 6;
-    private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(30);
+    // Stays comfortably under the Worker's own ~95MB cap (itself under Cloudflare Workers' 100MB
+    // free-plan request body limit), so an oversized bundle is rejected locally before attempting an
+    // upload that would fail anyway.
+    private const long MaxUploadBytes = 90L * 1024 * 1024;
+    private const string ApiBaseUrl = "https://aetherfit-live-share.kussie.workers.dev";
+    private const string ClientHeaderName = "X-Aetherfit-Client";
+    private const string ClientHeaderValue = "aetherfit-plugin";
+    private const string IdentityHeaderName = "X-Aetherfit-Identity";
+    private static readonly HttpClient Http = new();
 
     private readonly Plugin plugin;
-
-    private LiveShareSignalingClient? signaling;
-    private RTCPeerConnection? peerConnection;
-    private RTCDataChannel? dataChannel;
-    private CancellationTokenSource? sessionCts;
+    private CancellationTokenSource? operationCts;
     private string? tempBundlePath;
-    private MemoryStream? receiveBuffer;
-    private long receiveTotalBytes;
-    private int failGuard;
 
     public GalleryLiveShareService(Plugin plugin)
     {
@@ -58,8 +51,15 @@ public sealed class GalleryLiveShareService : IDisposable
     public bool IsBusy { get; private set; }
     public LiveSharePhase Phase { get; private set; } = LiveSharePhase.Idle;
     public string? PairingCode { get; private set; }
-    public float Progress { get; private set; }
+    public DateTimeOffset? ExpiresAt { get; private set; }
+    public int RequestedTtlSeconds { get; private set; }
     public string? ErrorMessage { get; private set; }
+
+    // A single continuous 0-1 value spanning both steps of each side (export+upload on the host,
+    // download+import on the guest) - deliberately doesn't reset between them. Export/import don't
+    // report granular progress (GallerySharingService just has an IsBusy flag), so those steps get a
+    // small fixed head-start/tail rather than true byte-level tracking; upload/download are real.
+    public float Progress { get; private set; }
 
     private static string TempRoot =>
         Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "live-share-temp");
@@ -77,7 +77,7 @@ public sealed class GalleryLiveShareService : IDisposable
         }
     }
 
-    public void HostAsync(string sharerLabel, IReadOnlySet<Guid>? onlyIds)
+    public void HostAsync(string sharerLabel, IReadOnlySet<Guid>? onlyIds, int ttlMinutes)
     {
         if (IsBusy)
         {
@@ -87,12 +87,13 @@ public sealed class GalleryLiveShareService : IDisposable
 
         ResetState();
         IsBusy = true;
-        Phase = LiveSharePhase.WaitingForPeer;
-        PairingCode = GenerateCode();
+        Phase = LiveSharePhase.ExportingBundle;
+        Progress = 0.05f;
+        RequestedTtlSeconds = ttlMinutes * 60;
 
         var cts = new CancellationTokenSource();
-        sessionCts = cts;
-        _ = RunHostAsync(sharerLabel, onlyIds, PairingCode, cts.Token);
+        operationCts = cts;
+        _ = RunHostAsync(sharerLabel, onlyIds, cts.Token);
     }
 
     public void JoinAsync(string code)
@@ -105,50 +106,21 @@ public sealed class GalleryLiveShareService : IDisposable
 
         ResetState();
         IsBusy = true;
-        Phase = LiveSharePhase.Connecting;
+        Phase = LiveSharePhase.Downloading;
 
         var cts = new CancellationTokenSource();
-        sessionCts = cts;
+        operationCts = cts;
         _ = RunGuestAsync(code.Trim(), cts.Token);
     }
 
+    // Also used to dismiss a finished/failed modal - always resets fully back to Idle so reopening
+    // the modal shows a fresh picker rather than stale state.
     public void Cancel() => Teardown(LiveSharePhase.Idle, errorMessage: null);
 
-    private async Task RunHostAsync(string sharerLabel, IReadOnlySet<Guid>? onlyIds, string code, CancellationToken ct)
+    private async Task RunHostAsync(string sharerLabel, IReadOnlySet<Guid>? onlyIds, CancellationToken ct)
     {
         try
         {
-            var signal = new LiveShareSignalingClient();
-            signaling = signal;
-            WireCommonSignalingEvents(signal);
-            signal.OnPeerJoined += () => _ = OnHostPeerJoinedAsync(sharerLabel, onlyIds, ct);
-            signal.OnAnswer += sdp =>
-            {
-                try
-                {
-                    peerConnection?.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = sdp });
-                }
-                catch (Exception ex)
-                {
-                    Fail($"Failed to apply the remote answer: {ex.Message}");
-                }
-            };
-
-            await signal.ConnectAndJoinAsync(plugin.Configuration.SignalingServerUrl, code);
-            StartHandshakeTimeoutWatch(ct);
-        }
-        catch (Exception ex)
-        {
-            Fail($"Couldn't reach the signaling server: {ex.Message}");
-        }
-    }
-
-    private async Task OnHostPeerJoinedAsync(string sharerLabel, IReadOnlySet<Guid>? onlyIds, CancellationToken ct)
-    {
-        try
-        {
-            SetOnFramework(() => Phase = LiveSharePhase.ExportingBundle);
-
             Directory.CreateDirectory(TempRoot);
             var tempPath = Path.Combine(TempRoot, $"{Guid.NewGuid():N}{GallerySharingService.FileExtension}");
             tempBundlePath = tempPath;
@@ -163,21 +135,54 @@ public sealed class GalleryLiveShareService : IDisposable
                 return;
             }
 
-            SetOnFramework(() => Phase = LiveSharePhase.Handshaking);
+            var bytes = await File.ReadAllBytesAsync(tempPath, ct);
+            if (bytes.LongLength > MaxUploadBytes)
+            {
+                Fail($"That gallery is too large to share live ({bytes.LongLength / 1024 / 1024}MB, "
+                   + $"limit ~{MaxUploadBytes / 1024 / 1024}MB). Try a filtered/smaller share, or use the regular file export instead.");
+                return;
+            }
 
-            var pc = CreatePeerConnection(ct);
-            peerConnection = pc;
-            var dc = await pc.createDataChannel(DataChannelLabel, new RTCDataChannelInit { ordered = true });
-            dataChannel = dc;
-            dc.onopen += () => _ = SendBundleAsync(tempPath, ct);
+            SetOnFramework(() => Phase = LiveSharePhase.Uploading);
 
-            var offer = pc.createOffer(new RTCOfferOptions());
-            await pc.setLocalDescription(offer);
-            await signaling!.SendOfferAsync(offer.sdp);
+            using var content = new ProgressableByteArrayContent(bytes, fraction =>
+                SetOnFramework(() => Progress = 0.05f + (float)fraction * 0.95f));
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiBaseUrl}/upload?ttl={RequestedTtlSeconds}") { Content = content };
+            request.Headers.Add(ClientHeaderName, ClientHeaderValue);
+            request.Headers.Add(IdentityHeaderName, GetOrCreateInstallId());
+            using var response = await Http.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                Fail($"Upload failed ({(int)response.StatusCode}).");
+                return;
+            }
+
+            var json = JObject.Parse(await response.Content.ReadAsStringAsync(ct));
+            var code = json["code"]?.ToString();
+            var expiresAtMs = json["expiresAt"]?.Value<long>() ?? 0;
+            if (string.IsNullOrEmpty(code) || expiresAtMs <= 0)
+            {
+                Fail("The server returned an unexpected response.");
+                return;
+            }
+
+            TryDeleteTemp(tempPath);
+            SetOnFramework(() =>
+            {
+                PairingCode = code;
+                ExpiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expiresAtMs);
+                Phase = LiveSharePhase.Ready;
+                IsBusy = false;
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled/torn down; Teardown already handled state.
         }
         catch (Exception ex)
         {
-            Fail($"Failed to start the transfer: {ex.Message}");
+            Fail($"Failed to share the gallery: {ex.Message}");
         }
     }
 
@@ -185,135 +190,71 @@ public sealed class GalleryLiveShareService : IDisposable
     {
         try
         {
-            var signal = new LiveShareSignalingClient();
-            signaling = signal;
-            WireCommonSignalingEvents(signal);
-            signal.OnOffer += sdp => _ = OnGuestOfferAsync(sdp, ct);
-
-            await signal.ConnectAndJoinAsync(plugin.Configuration.SignalingServerUrl, code);
-            StartHandshakeTimeoutWatch(ct);
-        }
-        catch (Exception ex)
-        {
-            Fail($"Couldn't reach the signaling server: {ex.Message}");
-        }
-    }
-
-    private async Task OnGuestOfferAsync(string offerSdp, CancellationToken ct)
-    {
-        try
-        {
-            SetOnFramework(() => Phase = LiveSharePhase.Handshaking);
-
-            var pc = CreatePeerConnection(ct);
-            peerConnection = pc;
-            pc.ondatachannel += dc =>
+            if (string.IsNullOrWhiteSpace(code))
             {
-                dataChannel = dc;
-                dc.onmessage += (_, protocol, data) => HandleIncoming(protocol, data);
-            };
+                Fail("Enter a pairing code first.");
+                return;
+            }
 
-            pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = offerSdp });
-            var answer = pc.createAnswer(new RTCAnswerOptions());
-            await pc.setLocalDescription(answer);
-            await signaling!.SendAnswerAsync(answer.sdp);
-        }
-        catch (Exception ex)
-        {
-            Fail($"Failed to accept the connection: {ex.Message}");
-        }
-    }
-
-    private RTCPeerConnection CreatePeerConnection(CancellationToken ct)
-    {
-        var config = new RTCConfiguration
-        {
-            iceServers = new List<RTCIceServer> { new() { urls = "stun:stun.l.google.com:19302" } },
-        };
-        var pc = new RTCPeerConnection(config, 0, null, false);
-
-        pc.onicecandidate += candidate =>
-        {
-            // A null/empty candidate signals end-of-gathering; nothing to relay.
-            if (candidate?.candidate is { Length: > 0 })
-                _ = signaling!.SendIceCandidateAsync(candidate.candidate, candidate.sdpMid, candidate.sdpMLineIndex);
-        };
-        pc.onconnectionstatechange += state =>
-        {
-            if (state is RTCPeerConnectionState.failed or RTCPeerConnectionState.disconnected or RTCPeerConnectionState.closed)
-                HandleConnectionLost();
-        };
-
-        return pc;
-    }
-
-    private void WireCommonSignalingEvents(LiveShareSignalingClient signal)
-    {
-        signal.OnIceCandidate += (candidate, sdpMid, sdpMLineIndex) =>
-        {
-            try
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{ApiBaseUrl}/download/{Uri.EscapeDataString(code)}");
+            request.Headers.Add(ClientHeaderName, ClientHeaderValue);
+            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
             {
-                peerConnection?.addIceCandidate(new RTCIceCandidateInit
+                Fail("That code is invalid or has expired.");
+                return;
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                Fail($"Download failed ({(int)response.StatusCode}).");
+                return;
+            }
+
+            var totalBytes = response.Content.Headers.ContentLength ?? -1;
+            var buffer = new byte[81920];
+            using var bodyStream = new MemoryStream();
+            await using (var responseStream = await response.Content.ReadAsStreamAsync(ct))
+            {
+                int read;
+                while ((read = await responseStream.ReadAsync(buffer, ct)) > 0)
                 {
-                    candidate = candidate,
-                    sdpMid = sdpMid,
-                    sdpMLineIndex = (ushort)(sdpMLineIndex ?? 0),
-                });
+                    bodyStream.Write(buffer, 0, read);
+                    if (totalBytes > 0)
+                    {
+                        var fraction = (float)bodyStream.Length / totalBytes * 0.9f;
+                        SetOnFramework(() => Progress = fraction);
+                    }
+                }
             }
-            catch (Exception ex)
+            var bytes = bodyStream.ToArray();
+
+            Directory.CreateDirectory(TempRoot);
+            var tempPath = Path.Combine(TempRoot, $"{Guid.NewGuid():N}{GallerySharingService.FileExtension}");
+            tempBundlePath = tempPath;
+            await File.WriteAllBytesAsync(tempPath, bytes, ct);
+
+            SetOnFramework(() =>
             {
-                Plugin.Log.Warning(ex, "Failed to add a remote ICE candidate");
-            }
-        };
-        signal.OnPeerLeft += HandleConnectionLost;
-        signal.OnServerError += message => Fail(message);
-        signal.OnTransportError += message => Fail($"Connection to the signaling server failed: {message}");
-    }
+                Phase = LiveSharePhase.Importing;
+                Progress = 0.95f;
+            });
 
-    private void HandleConnectionLost()
-    {
-        var phase = Phase;
-        if (phase is LiveSharePhase.Idle or LiveSharePhase.Done or LiveSharePhase.Failed)
-            return;
-
-        Fail(phase is LiveSharePhase.WaitingForPeer or LiveSharePhase.Connecting or LiveSharePhase.Handshaking
-            ? "Couldn't establish a direct connection — this can happen with certain router/NAT setups. A relay fallback isn't available yet."
-            : "The other player disconnected before the transfer finished.");
-    }
-
-    private void StartHandshakeTimeoutWatch(CancellationToken ct)
-    {
-        _ = Task.Run(async () =>
-        {
-            try { await Task.Delay(HandshakeTimeout, ct); }
-            catch (OperationCanceledException) { return; }
-
-            if (peerConnection?.connectionState != RTCPeerConnectionState.connected)
-                Fail("Couldn't establish a direct connection — this can happen with certain router/NAT setups. A relay fallback isn't available yet.");
-        }, ct);
-    }
-
-    private async Task SendBundleAsync(string path, CancellationToken ct)
-    {
-        try
-        {
-            var bytes = await File.ReadAllBytesAsync(path, ct);
-            SetOnFramework(() => Phase = LiveSharePhase.Transferring);
-
-            dataChannel!.send(new JObject { ["totalBytes"] = bytes.LongLength }.ToString(Formatting.None));
-
-            var sent = 0;
-            while (sent < bytes.Length)
+            var imported = false;
+            plugin.GallerySharing.ImportFromFileAsync(tempPath, foreign =>
             {
-                ct.ThrowIfCancellationRequested();
-                var take = Math.Min(ChunkSize, bytes.Length - sent);
-                var chunk = new byte[take];
-                Array.Copy(bytes, sent, chunk, 0, take);
-                dataChannel.send(chunk);
-                sent += take;
+                imported = true;
+                plugin.ForeignGallery.Show(foreign);
+            });
 
-                var progress = (float)sent / bytes.Length;
-                SetOnFramework(() => Progress = progress);
+            while (await Plugin.Framework.RunOnFrameworkThread(() => plugin.GallerySharing.IsBusy))
+                await Task.Delay(150, ct);
+
+            TryDeleteTemp(tempPath);
+
+            if (!imported)
+            {
+                Fail("Import failed; check the chat log for details.");
+                return;
             }
 
             SetOnFramework(() =>
@@ -321,106 +262,19 @@ public sealed class GalleryLiveShareService : IDisposable
                 Phase = LiveSharePhase.Done;
                 IsBusy = false;
             });
-            TryDeleteTemp(path);
         }
         catch (OperationCanceledException)
         {
-            // Session was cancelled/torn down; Teardown already handled state.
+            // Cancelled/torn down; Teardown already handled state.
         }
         catch (Exception ex)
         {
-            Fail($"Failed to send the bundle: {ex.Message}");
+            Fail($"Failed to receive the gallery: {ex.Message}");
         }
-    }
-
-    private void HandleIncoming(DataChannelPayloadProtocols protocol, byte[] data)
-    {
-        try
-        {
-            if (protocol == DataChannelPayloadProtocols.WebRTC_String)
-            {
-                var header = JObject.Parse(Encoding.UTF8.GetString(data));
-                var totalBytes = header["totalBytes"]?.Value<long>() ?? -1;
-                if (totalBytes < 0 || totalBytes > MaxTransferBytes)
-                {
-                    Fail("The incoming bundle is too large to accept.");
-                    return;
-                }
-
-                receiveTotalBytes = totalBytes;
-                receiveBuffer = new MemoryStream((int)Math.Min(totalBytes, int.MaxValue));
-                SetOnFramework(() => Phase = LiveSharePhase.Transferring);
-                return;
-            }
-
-            if (receiveBuffer == null)
-                return; // chunk arrived before the header somehow; drop it defensively
-
-            receiveBuffer.Write(data, 0, data.Length);
-            var progress = receiveTotalBytes > 0 ? (float)receiveBuffer.Length / receiveTotalBytes : 0f;
-            SetOnFramework(() => Progress = progress);
-
-            if (receiveBuffer.Length >= receiveTotalBytes)
-                FinishReceiving();
-        }
-        catch (Exception ex)
-        {
-            Fail($"Failed to receive the bundle: {ex.Message}");
-        }
-    }
-
-    private void FinishReceiving()
-    {
-        try
-        {
-            Directory.CreateDirectory(TempRoot);
-            var tempPath = Path.Combine(TempRoot, $"{Guid.NewGuid():N}{GallerySharingService.FileExtension}");
-            tempBundlePath = tempPath;
-            File.WriteAllBytes(tempPath, receiveBuffer!.ToArray());
-            receiveBuffer.Dispose();
-            receiveBuffer = null;
-
-            SetOnFramework(() => Phase = LiveSharePhase.Importing);
-            _ = ImportReceivedBundleAsync(tempPath);
-        }
-        catch (Exception ex)
-        {
-            Fail($"Failed to save the received bundle: {ex.Message}");
-        }
-    }
-
-    private async Task ImportReceivedBundleAsync(string tempPath)
-    {
-        var imported = false;
-        plugin.GallerySharing.ImportFromFileAsync(tempPath, foreign =>
-        {
-            imported = true;
-            plugin.ForeignGallery.Show(foreign);
-        });
-
-        while (await Plugin.Framework.RunOnFrameworkThread(() => plugin.GallerySharing.IsBusy))
-            await Task.Delay(150);
-
-        TryDeleteTemp(tempPath);
-
-        if (!imported)
-        {
-            Fail("Import failed; check the chat log for details.");
-            return;
-        }
-
-        SetOnFramework(() =>
-        {
-            Phase = LiveSharePhase.Done;
-            IsBusy = false;
-        });
     }
 
     private void Fail(string message)
     {
-        if (Interlocked.Exchange(ref failGuard, 1) != 0)
-            return;
-
         SetOnFramework(() =>
         {
             Phase = LiveSharePhase.Failed;
@@ -428,12 +282,15 @@ public sealed class GalleryLiveShareService : IDisposable
             IsBusy = false;
         });
         Plugin.Framework.RunOnFrameworkThread(() => Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Live share: {message}"));
-        TeardownConnections();
+        if (tempBundlePath != null)
+            TryDeleteTemp(tempBundlePath);
     }
 
     private void Teardown(LiveSharePhase phase, string? errorMessage)
     {
-        TeardownConnections();
+        operationCts?.Cancel();
+        operationCts?.Dispose();
+        operationCts = null;
         SetOnFramework(() =>
         {
             Phase = phase;
@@ -444,33 +301,17 @@ public sealed class GalleryLiveShareService : IDisposable
             TryDeleteTemp(tempBundlePath);
     }
 
-    // Nulls everything out after disposing it, so a second call (e.g. Cancel() immediately
-    // followed by a fresh HostAsync/JoinAsync) is a safe no-op instead of double-disposing.
-    private void TeardownConnections()
-    {
-        sessionCts?.Cancel();
-        sessionCts?.Dispose();
-        sessionCts = null;
-        try { dataChannel?.close(); } catch { /* already gone */ }
-        try { peerConnection?.close(); } catch { /* already gone */ }
-        peerConnection?.Dispose();
-        peerConnection = null;
-        dataChannel = null;
-        signaling?.Dispose();
-        signaling = null;
-        receiveBuffer?.Dispose();
-        receiveBuffer = null;
-    }
-
     private void ResetState()
     {
-        TeardownConnections();
+        operationCts?.Cancel();
+        operationCts?.Dispose();
+        operationCts = null;
         tempBundlePath = null;
-        receiveTotalBytes = 0;
-        failGuard = 0;
         PairingCode = null;
-        Progress = 0f;
+        ExpiresAt = null;
+        RequestedTtlSeconds = 0;
         ErrorMessage = null;
+        Progress = 0f;
     }
 
     private static void TryDeleteTemp(string path)
@@ -488,13 +329,55 @@ public sealed class GalleryLiveShareService : IDisposable
 
     private static void SetOnFramework(Action action) => Plugin.Framework.RunOnFrameworkThread(action);
 
-    private static string GenerateCode()
+    private string GetOrCreateInstallId()
     {
-        var chars = new char[CodeLength];
-        for (var i = 0; i < CodeLength; i++)
-            chars[i] = CodeAlphabet[RandomNumberGenerator.GetInt32(CodeAlphabet.Length)];
-        return new string(chars);
+        if (string.IsNullOrEmpty(plugin.Configuration.LiveShareInstallId))
+        {
+            plugin.Configuration.LiveShareInstallId = Guid.NewGuid().ToString("N");
+            plugin.Configuration.Save();
+        }
+        return plugin.Configuration.LiveShareInstallId;
     }
 
-    public void Dispose() => TeardownConnections();
+    public void Dispose()
+    {
+        operationCts?.Cancel();
+        operationCts?.Dispose();
+    }
+
+    // Reports upload progress as the body is streamed - HttpClient has no built-in way to observe
+    // this for a plain ByteArrayContent.
+    private sealed class ProgressableByteArrayContent : HttpContent
+    {
+        private const int ChunkSize = 65536;
+        private readonly byte[] data;
+        private readonly Action<double> onProgress;
+
+        public ProgressableByteArrayContent(byte[] data, Action<double> onProgress)
+        {
+            this.data = data;
+            this.onProgress = onProgress;
+        }
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+            => SerializeToStreamAsync(stream, context, CancellationToken.None);
+
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken)
+        {
+            var written = 0;
+            while (written < data.Length)
+            {
+                var count = Math.Min(ChunkSize, data.Length - written);
+                await stream.WriteAsync(data.AsMemory(written, count), cancellationToken);
+                written += count;
+                onProgress((double)written / data.Length);
+            }
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = data.Length;
+            return true;
+        }
+    }
 }

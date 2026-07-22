@@ -333,21 +333,6 @@ public partial class MainWindow : Window, IDisposable
             ImGui.OpenPopup("##openGalleryPopup");
         DrawOpenGalleryPopup();
 
-        // Deferred to here (root scope, outside either dropdown's own popup) - see the comment on
-        // openShareLiveRequested/openReceiveLiveRequested for why these can't be opened inline.
-        if (openShareLiveRequested)
-        {
-            ImGui.OpenPopup("##shareLivePopup");
-            openShareLiveRequested = false;
-        }
-        if (openReceiveLiveRequested)
-        {
-            ImGui.OpenPopup("##receiveLivePopup");
-            openReceiveLiveRequested = false;
-        }
-        DrawShareLivePopup();
-        DrawReceiveLivePopup();
-
         var countText = IsRefreshing && activeRefresh is { } job
             ? $"Loading {job.Index}/{designsCount}..."
             : designsCount == 1 ? "1 design" : $"{designsCount} designs";
@@ -422,38 +407,39 @@ public partial class MainWindow : Window, IDisposable
         if (!popup.Success)
             return;
 
-        if (ImGui.Selectable("All Designs"))
-            OpenExportGalleryDialog();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Export every cached design.");
-
-        // Filtered export is only meaningful while a filter is narrowing the list.
-        var hasFilter = HasAnyFilter;
-        using (ImRaii.Disabled(!hasFilter))
+        if (ImGui.BeginMenu("Create Bundle File"))
         {
-            if (ImGui.Selectable("Filtered Designs"))
-                OpenExportGalleryDialog(CollectVisibleDesignIds());
+            if (ImGui.MenuItem("All Designs"))
+                OpenExportGalleryDialog();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Export every cached design.");
+
+            // Filtered export is only meaningful while a filter is narrowing the list.
+            var hasFilter = HasAnyFilter;
+            using (ImRaii.Disabled(!hasFilter))
+            {
+                if (ImGui.MenuItem("Filtered Designs"))
+                    OpenExportGalleryDialog(CollectVisibleDesignIds());
+            }
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip(hasFilter
+                    ? "Export only the designs currently shown by the active filters."
+                    : "Set a filter first to export only the designs that remain visible.");
+
+            ImGui.EndMenu();
         }
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip(hasFilter
-                ? "Export only the designs currently shown by the active filters."
-                : "Set a filter first to export only the designs that remain visible.");
 
         ImGui.Separator();
 
-        var liveBusy = plugin.LiveShare.IsBusy;
-        var liveConfigured = !string.IsNullOrWhiteSpace(plugin.Configuration.SignalingServerUrl);
-        using (ImRaii.Disabled(liveBusy || !liveConfigured))
-        {
-            if (ImGui.Selectable("Share Live..."))
-                OpenShareLiveDialog();
-        }
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip(liveBusy
-                ? "A live share is already running."
-                : !liveConfigured
-                    ? "Set a signaling server address in Settings first."
-                    : "Share your gallery directly with another online player.");
+        // Not gated on IsBusy: if a share is already running, clicking this just reopens the modal
+        // on its current state (pairing code, progress, etc.) instead of starting a new one - the
+        // only way back in after the popup's been dismissed by clicking away.
+        if (ImGui.Selectable("Share Directly..."))
+            OpenShareLiveDialog();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(plugin.LiveShare.IsBusy
+                ? "Reopen the share in progress."
+                : "Share your gallery directly with another online player.");
     }
 
     private void DrawBottomButtons()
