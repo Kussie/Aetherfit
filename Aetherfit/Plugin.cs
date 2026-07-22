@@ -49,6 +49,8 @@ public sealed class Plugin : IDalamudPlugin
     public ScreenshotSetupWindow ScreenshotSetup { get; init; }
     public ScreenshotCropWindow ScreenshotCrop { get; init; }
     public ForeignGalleryWindow ForeignGallery { get; init; }
+    public ShareLiveWindow ShareLiveWindow { get; init; }
+    public ReceiveLiveWindow ReceiveLiveWindow { get; init; }
 
     private readonly ConfigurationSaver configSaver;
     private bool mainWindowOpenBeforeCapture;
@@ -104,12 +106,16 @@ public sealed class Plugin : IDalamudPlugin
         ScreenshotSetup = new ScreenshotSetupWindow(this);
         ScreenshotCrop = new ScreenshotCropWindow(this);
         ForeignGallery = new ForeignGalleryWindow(this);
+        ShareLiveWindow = new ShareLiveWindow(this);
+        ReceiveLiveWindow = new ReceiveLiveWindow(this);
         WindowSystem.AddWindow(ConfigWindow);
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ImageViewer);
         WindowSystem.AddWindow(ScreenshotSetup);
         WindowSystem.AddWindow(ScreenshotCrop);
         WindowSystem.AddWindow(ForeignGallery);
+        WindowSystem.AddWindow(ShareLiveWindow);
+        WindowSystem.AddWindow(ReceiveLiveWindow);
 
         Restore = new RestoreSequenceService(this);
 
@@ -147,6 +153,8 @@ public sealed class Plugin : IDalamudPlugin
         ScreenshotSetup.Dispose();
         ScreenshotCrop.Dispose();
         ForeignGallery.Dispose();
+        ShareLiveWindow.Dispose();
+        ReceiveLiveWindow.Dispose();
         LiveShare.Dispose();
 
         // Last, so anything the disposals above still saved gets flushed to disk.
