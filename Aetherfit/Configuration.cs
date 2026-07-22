@@ -83,7 +83,7 @@ public class Configuration : IPluginConfiguration
 
     // Address of the standalone signaling server used to pair two players for a live gallery share.
     // It only ever relays a WebRTC handshake - never the bundle itself.
-    public string SignalingServerUrl { get; set; } = string.Empty;
+    public string SignalingServerUrl { get; set; } = "wss://aetherfit-signaling.kussie.deno.net/signal";
 
     // Round-trips config fields this build doesn't know about (e.g. settings written by an
     // experimental branch), so switching builds doesn't silently wipe them on the next save.
