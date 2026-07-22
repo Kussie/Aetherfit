@@ -106,6 +106,18 @@ public class ConfigWindow : Window, IDisposable
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("When on, applying a base design also applies its configured layers top to bottom,\npicking one design at random from any layer that holds several.\nWhen off, the Additional Design Layers panel is hidden and no layers are applied.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        ImGui.TextDisabled("Live Sharing");
+        ImGui.TextWrapped("Address of the signaling server used by \"Share Live\"/\"Receive Live\" to pair two players for a direct gallery transfer. Leave blank to disable live sharing.");
+        var signalingUrl = cfg.SignalingServerUrl;
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.InputText("##signalingServerUrl", ref signalingUrl, 256))
+            cfg.SignalingServerUrl = signalingUrl;
+        if (ImGui.IsItemDeactivatedAfterEdit())
+            cfg.Save();
     }
 
     private static void DrawCommandsSection()

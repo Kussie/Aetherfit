@@ -26,11 +26,65 @@
         "resolved": "5.15.1",
         "contentHash": "3ikk0zIOaLm2n3nZRQpW3xaRQ2cq/TOOEApNUjYXolqbyvCrZVGXhdQulcssNUbo0AMQ81l+cf7OfqRceeRBcg=="
       },
+      "SIPSorcery": {
+        "type": "Direct",
+        "requested": "[8.0.14, )",
+        "resolved": "8.0.14",
+        "contentHash": "oVY6oLQLdKmQHJnN3QyeyIoQauYd0MGOO3D0N0MmAWSqQEQM1fB+QpfkD1hNMdR+b9isuvXmHxEET6dVff1SHQ==",
+        "dependencies": {
+          "Concentus": "2.2.2",
+          "DnsClient": "1.8.0",
+          "Portable.BouncyCastle": "1.9.0",
+          "SIPSorcery.WebSocketSharp": "0.0.1",
+          "SIPSorceryMedia.Abstractions": "8.0.10"
+        }
+      },
       "SixLabors.ImageSharp": {
         "type": "Direct",
         "requested": "[3.1.12, )",
         "resolved": "3.1.12",
         "contentHash": "iAg6zifihXEFS/t7fiHhZBGAdCp3FavsF4i2ZIDp0JfeYeDVzvmlbY1CNhhIKimaIzrzSi5M/NBFcWvZT2rB/A=="
+      },
+      "Concentus": {
+        "type": "Transitive",
+        "resolved": "2.2.2",
+        "contentHash": "2B9YmHPKO+k7YpAAnqmiXwiMJnfjfj1C868RszOll2iZWLnGTAiC1q21L/d7CvTan7T+hyqU8dR0Dcy3cpjVfQ=="
+      },
+      "DnsClient": {
+        "type": "Transitive",
+        "resolved": "1.8.0",
+        "contentHash": "RRwtaCXkXWsx0mmsReGDqCbRLtItfUbkRJlet1FpdciVhyMGKcPd57T1+8Jki9ojHlq9fntVhXQroOOgRak8DQ=="
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "+6f2qv2a3dLwd5w6JanPIPs47CxRbnk+ZocMJUhv9NxP88VlOcJYZs9jY+MYSjxvady08bUZn6qgiNh7DadGgg=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "g0UfujELzlLbHoVG8kPKVBaW470Ewi+jnptGS9KUi6jcb+k2StujtK3m26DFSGGwQ/+bVgZfsWqNzlP6YOejvw==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.0"
+        }
+      },
+      "Portable.BouncyCastle": {
+        "type": "Transitive",
+        "resolved": "1.9.0",
+        "contentHash": "eZZBCABzVOek+id9Xy04HhmgykF0wZg9wpByzrWN7q8qEI0Qen9b7tfd7w8VA3dOeesumMG7C5ZPy0jk7PSRHw=="
+      },
+      "SIPSorcery.WebSocketSharp": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "lBlR9rZmMty2v5kPzCseAyuSv95FSoGuYZJgDy6M/qqZ/xq1ejFnOVEpXMDqBIthiTUOH8rvMcpnva7HXK0ZVw=="
+      },
+      "SIPSorceryMedia.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.10",
+        "contentHash": "fQ+v/VHY9nuhtyTQJRKDYB1Fe26sOo6+4JbaQjm0GLRymRbL6Hz6YFbqG85/WjISGNm/2Y98eS9rJS4smZlNZA==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "9.0.0"
+        }
       }
     },
     "net10.0-windows7.0/win-x64": {}
