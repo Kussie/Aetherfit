@@ -4,6 +4,7 @@ on:
     push:
         branches:
             - master
+            - testing
 
 permissions:
     contents: write
@@ -19,6 +20,18 @@ jobs:
               with:
                   submodules: recursive
                   fetch-depth: 0
+
+            - name: Set build variables
+              id: vars
+              shell: pwsh
+              run: |
+                  if ($env:GITHUB_REF -eq 'refs/heads/testing') {
+                      "zip_name=latest-testing.zip" | Out-File -Append $env:GITHUB_OUTPUT
+                      "is_testing=true" | Out-File -Append $env:GITHUB_OUTPUT
+                  } else {
+                      "zip_name=latest-stable.zip" | Out-File -Append $env:GITHUB_OUTPUT
+                      "is_testing=false" | Out-File -Append $env:GITHUB_OUTPUT
+                  }
 
             - name: Download Dalamud
               shell: pwsh
@@ -45,19 +58,34 @@ jobs:
 
             - name: Package
               shell: pwsh
-              run: Compress-Archive -Path "Aetherfit\bin\Release\win-x64\*" -DestinationPath latest.zip
+              run: Compress-Archive -Path "Aetherfit\bin\Release\win-x64\*" -DestinationPath "${{ steps.vars.outputs.zip_name }}"
 
-            - name: Create release
+            - name: Create stable release
+              if: steps.vars.outputs.is_testing == 'false'
               uses: softprops/action-gh-release@v3
               with:
                   tag_name: v${{ steps.version.outputs.version }}
-                  files: latest.zip
+                  files: ${{ steps.vars.outputs.zip_name }}
                   generate_release_notes: true
                   overwrite_files: true
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Update repo.json
+            - name: Create testing pre-release
+              if: steps.vars.outputs.is_testing == 'true'
+              uses: softprops/action-gh-release@v3
+              with:
+                  tag_name: testing
+                  name: Testing build v${{ steps.version.outputs.version }}
+                  files: ${{ steps.vars.outputs.zip_name }}
+                  generate_release_notes: true
+                  overwrite_files: true
+                  prerelease: true
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Update repo.json (stable)
+              if: steps.vars.outputs.is_testing == 'false'
               shell: pwsh
               run: |
                   $manifest = Get-Content "Aetherfit\bin\Release\win-x64\Aetherfit.json" -Raw | ConvertFrom-Json
@@ -70,6 +98,18 @@ jobs:
                       }
                   }
                   $entry.LastUpdate = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+                  $json = (ConvertTo-Json -InputObject $entry -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
+                  Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
+
+            - name: Update repo.json (testing)
+              if: steps.vars.outputs.is_testing == 'true'
+              shell: pwsh
+              run: |
+                  git fetch origin master
+                  git checkout -B master origin/master
+                  $entry = Get-Content "repo.json" -Raw | ConvertFrom-Json
+                  while ($entry -is [Array]) { $entry = $entry[0] }
+                  $entry.TestingAssemblyVersion = "${{ steps.version.outputs.version }}"
                   $json = (ConvertTo-Json -InputObject $entry -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 
