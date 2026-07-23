@@ -42,8 +42,9 @@ public sealed class Plugin : IDalamudPlugin
     public TagModelStore TagModel { get; init; }
     public TagSuggestionService TagSuggestions { get; init; }
     public GlamourerDesignFileService GlamourerDesignFile { get; init; }
-
+    public GalleryLiveShareService LiveShare { get; init; }
     public RestoreSequenceService Restore { get; init; }
+    public DesignApplyService DesignApply { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
@@ -52,6 +53,8 @@ public sealed class Plugin : IDalamudPlugin
     public ScreenshotSetupWindow ScreenshotSetup { get; init; }
     public ScreenshotCropWindow ScreenshotCrop { get; init; }
     public ForeignGalleryWindow ForeignGallery { get; init; }
+    public ShareLiveWindow ShareLiveWindow { get; init; }
+    public ReceiveLiveWindow ReceiveLiveWindow { get; init; }
 
     private readonly ConfigurationSaver configSaver;
     private bool mainWindowOpenBeforeCapture;
@@ -96,11 +99,14 @@ public sealed class Plugin : IDalamudPlugin
         TagModel = new TagModelStore(Configuration);
         TagSuggestions = new TagSuggestionService(TagModel, Configuration);
         GlamourerDesignFile = new GlamourerDesignFileService(Configuration, OutfitCache);
+        LiveShare = new GalleryLiveShareService(this);
+        DesignApply = new DesignApplyService(this);
 
         // Clean up any imported-gallery images or in-flight captures a previous session left behind
         // (e.g. if we crashed before tidying up).
         ImageStorage.ClearAllForeign();
         ImageStorage.ClearAllTemp();
+        GalleryLiveShareService.ClearAllTemp();
 
         ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
@@ -108,12 +114,16 @@ public sealed class Plugin : IDalamudPlugin
         ScreenshotSetup = new ScreenshotSetupWindow(this);
         ScreenshotCrop = new ScreenshotCropWindow(this);
         ForeignGallery = new ForeignGalleryWindow(this);
+        ShareLiveWindow = new ShareLiveWindow(this);
+        ReceiveLiveWindow = new ReceiveLiveWindow(this);
         WindowSystem.AddWindow(ConfigWindow);
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ImageViewer);
         WindowSystem.AddWindow(ScreenshotSetup);
         WindowSystem.AddWindow(ScreenshotCrop);
         WindowSystem.AddWindow(ForeignGallery);
+        WindowSystem.AddWindow(ShareLiveWindow);
+        WindowSystem.AddWindow(ReceiveLiveWindow);
 
         Restore = new RestoreSequenceService(this);
 
@@ -153,6 +163,9 @@ public sealed class Plugin : IDalamudPlugin
         ScreenshotSetup.Dispose();
         ScreenshotCrop.Dispose();
         ForeignGallery.Dispose();
+        ShareLiveWindow.Dispose();
+        ReceiveLiveWindow.Dispose();
+        LiveShare.Dispose();
 
         // Last, so anything the disposals above still saved gets flushed to disk.
         configSaver.Dispose();
