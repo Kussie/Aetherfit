@@ -14,7 +14,7 @@ jobs:
         runs-on: windows-latest
         outputs:
             version: ${{ steps.version.outputs.version }}
-        
+
         steps:
             - uses: actions/checkout@v7
               with:
@@ -76,7 +76,7 @@ jobs:
               uses: softprops/action-gh-release@v3
               with:
                   tag_name: testing
-                  name: Testing build v${{ steps.version.outputs.version }}
+                  name: v${{ steps.version.outputs.version }}-Testing Build
                   files: ${{ steps.vars.outputs.zip_name }}
                   generate_release_notes: true
                   overwrite_files: true

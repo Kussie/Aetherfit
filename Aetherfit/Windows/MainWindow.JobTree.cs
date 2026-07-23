@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -8,7 +9,24 @@ namespace Aetherfit.Windows;
 
 public partial class MainWindow
 {
-    private void DrawJobTree(bool hasFilter)
+    private readonly record struct JobGroup(JobRole Role, List<(JobInfo Job, List<DesignLeaf> Leaves)> Jobs);
+
+    private List<JobGroup> cachedJobGroups = new();
+    private FolderNode cachedUnassignedJobFolder = new();
+    private int cachedJobTreeGeneration = -1;
+    private int cachedJobTreeJobVersion = -1;
+    private FilterSnapshot cachedJobTreeFilterSnapshot;
+    private Dictionary<string, bool> cachedJobTreeFilterTags = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<uint, bool> cachedJobTreeFilterJobs = new();
+
+    private bool IsJobTreeCacheStale() =>
+        cachedJobTreeGeneration != designListGeneration ||
+        cachedJobTreeJobVersion != jobAssociationVersion ||
+        cachedJobTreeFilterSnapshot != CaptureFilterSnapshot() ||
+        !FiltersEqual(cachedJobTreeFilterTags, filterTags) ||
+        !FiltersEqual(cachedJobTreeFilterJobs, filterJobs);
+
+    private void RebuildJobTreeCache()
     {
         var allLeaves = new List<DesignLeaf>();
         CollectAllLeaves(root, allLeaves);
@@ -42,24 +60,41 @@ public partial class MainWindow
         foreach (var list in byJob.Values)
             list.Sort((a, b) => NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName));
 
-        // GetSelectableJobs is already ordered by role then RowId, so GroupBy preserves the desired display order.
-        foreach (var roleGroup in plugin.GameData.GetSelectableJobs().GroupBy(j => j.Role))
-        {
-            var jobsWithDesigns = roleGroup.Where(j => byJob.ContainsKey(j.RowId)).ToList();
-            if (jobsWithDesigns.Count == 0) continue;
+        cachedJobGroups = plugin.GameData.GetSelectableJobs()
+            .GroupBy(j => j.Role)
+            .Select(roleGroup => new JobGroup(roleGroup.Key,
+                roleGroup.Where(j => byJob.ContainsKey(j.RowId)).Select(j => (j, byJob[j.RowId])).ToList()))
+            .Where(g => g.Jobs.Count > 0)
+            .ToList();
+        cachedUnassignedJobFolder = BuildFolderTree(unassigned);
 
-            if (!DrawJobGroupHeader($"{GameDataService.RoleLabel(roleGroup.Key)}##role{(int)roleGroup.Key}", hasFilter))
+        cachedJobTreeGeneration = designListGeneration;
+        cachedJobTreeJobVersion = jobAssociationVersion;
+        cachedJobTreeFilterSnapshot = CaptureFilterSnapshot();
+        cachedJobTreeFilterTags = new(filterTags, StringComparer.OrdinalIgnoreCase);
+        cachedJobTreeFilterJobs = new(filterJobs);
+    }
+
+    private void DrawJobTree(bool hasFilter)
+    {
+        if (IsJobTreeCacheStale())
+            RebuildJobTreeCache();
+
+        foreach (var group in cachedJobGroups)
+        {
+            if (!DrawJobGroupHeader($"{GameDataService.RoleLabel(group.Role)}##role{(int)group.Role}", hasFilter))
                 continue;
 
-            foreach (var job in jobsWithDesigns)
-                DrawJobNode(job, byJob[job.RowId], hasFilter);
+            foreach (var (job, leaves) in group.Jobs)
+                DrawJobNode(job, leaves, hasFilter);
 
             ImGui.TreePop();
         }
 
-        if (unassigned.Count > 0 && DrawJobGroupHeader("Unassigned##unassignedJobs", hasFilter))
+        if ((cachedUnassignedJobFolder.Designs.Count > 0 || cachedUnassignedJobFolder.Folders.Count > 0)
+            && DrawJobGroupHeader("Unassigned##unassignedJobs", hasFilter))
         {
-            DrawTree(BuildFolderTree(unassigned), hasFilter);
+            DrawTree(cachedUnassignedJobFolder, hasFilter);
             ImGui.TreePop();
         }
     }

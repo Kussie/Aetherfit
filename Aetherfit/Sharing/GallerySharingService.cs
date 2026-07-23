@@ -52,12 +52,14 @@ public sealed class GallerySharingService
     // onlyIds, when given, limits the export to those designs (e.g. the currently filtered list); null exports all.
     // The snapshot (metadata + image paths) is taken on the caller's thread; the slow part — re-encoding
     // every image and writing the zip — runs on a background thread so the game doesn't freeze.
-    public void ExportToFileAsync(string sharerLabel, string path, IReadOnlySet<Guid>? onlyIds = null)
+    // Returns the background Task so callers that need to know when the export finishes (rather than
+    // just fire-and-forget it) can await it instead of polling IsBusy.
+    public System.Threading.Tasks.Task ExportToFileAsync(string sharerLabel, string path, IReadOnlySet<Guid>? onlyIds = null)
     {
         if (IsBusy)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}An export or import is already running.");
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         if (!path.EndsWith(FileExtension, StringComparison.OrdinalIgnoreCase))
@@ -118,7 +120,9 @@ public sealed class GallerySharingService
 
         IsBusy = true;
         var finalPath = path;
-        System.Threading.Tasks.Task.Run(() =>
+        // Async lambda so the returned Task only completes once IsBusy has actually flipped back to
+        // false on the framework thread, not just when the background work itself finishes.
+        return System.Threading.Tasks.Task.Run(async () =>
         {
             try
             {
@@ -158,26 +162,28 @@ public sealed class GallerySharingService
             }
             finally
             {
-                Plugin.Framework.RunOnFrameworkThread(() => IsBusy = false);
+                await Plugin.Framework.RunOnFrameworkThread(() => IsBusy = false);
             }
         });
     }
 
     // Reads and unpacks the bundle on a background thread (it's pure file IO), then hands the result
     // to onLoaded back on the framework thread.
-    public void ImportFromFileAsync(string path, Action<ForeignGallery> onLoaded)
+    public System.Threading.Tasks.Task ImportFromFileAsync(string path, Action<ForeignGallery> onLoaded)
     {
         if (IsBusy)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}An export or import is already running.");
-            return;
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         IsBusy = true;
-        System.Threading.Tasks.Task.Run(() =>
+        // Async lambda so the returned Task only completes once onLoaded has actually run on the
+        // framework thread, not just when the background read/decode finishes.
+        return System.Threading.Tasks.Task.Run(async () =>
         {
             var result = ImportFromFile(path);
-            Plugin.Framework.RunOnFrameworkThread(() =>
+            await Plugin.Framework.RunOnFrameworkThread(() =>
             {
                 IsBusy = false;
                 if (result != null)

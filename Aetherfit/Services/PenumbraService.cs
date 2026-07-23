@@ -32,8 +32,7 @@ public sealed class PenumbraService
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Penumbra is not available — cannot open mod.");
-            Plugin.Log.Warning(ex, "Failed to open Penumbra to mod {Dir} / {Name}", modDirectory, modName);
+            ServiceErrors.Fail(ex, $"{Plugin.ChatPrefix}Penumbra is not available — cannot open mod.", "Failed to open Penumbra to mod {Dir} / {Name}", modDirectory, modName);
         }
     }
 

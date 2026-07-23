@@ -51,6 +51,7 @@ public partial class MainWindow
     private int cachedFavouriteVersion = -1;
     private int hiddenVersion;
     private int cachedHiddenVersion = -1;
+    private int jobAssociationVersion;
 
     private void DrawCoverModePane()
     {
