@@ -263,11 +263,6 @@ public sealed class Plugin : IDalamudPlugin
                 MainWindow.RevertAppearance();
                 break;
 
-            case "anims":
-            case "animations":
-                PrintCurrentAnimations();
-                break;
-
             case "help":
                 PrintUsage();
                 break;
@@ -277,39 +272,6 @@ public sealed class Plugin : IDalamudPlugin
                 PrintUsage();
                 break;
         }
-    }
-
-    private void PrintCurrentAnimations()
-    {
-        var snapshot = AnimationInspectionService.ReadLocalPlayerTimelines();
-        if (snapshot == null)
-        {
-            ChatGui.PrintError($"{ChatPrefix}Log in to a character first.");
-            return;
-        }
-
-        if (snapshot.ActiveSlots.Count == 0)
-        {
-            ChatGui.Print($"{ChatPrefix}No animation timelines are currently playing.");
-            return;
-        }
-
-        ChatGui.Print($"{ChatPrefix}Currently playing animation timelines:");
-        foreach (var (slot, timelineId, speed) in snapshot.ActiveSlots)
-        {
-            var line = $"{ChatPrefix}  {AnimationInspectionService.SlotLabel(slot)}: "
-                     + $"{timelineId} — {GameData.ResolveActionTimelineName(timelineId)}";
-            if (Math.Abs(speed - 1f) > 0.001f)
-                line += $" (speed ×{speed:0.##})";
-            ChatGui.Print(line);
-        }
-
-        if (snapshot.BaseOverride != 0)
-            ChatGui.Print($"{ChatPrefix}  Base override: {snapshot.BaseOverride} — {GameData.ResolveActionTimelineName(snapshot.BaseOverride)}");
-        if (snapshot.LipsOverride != 0)
-            ChatGui.Print($"{ChatPrefix}  Lips override: {snapshot.LipsOverride} — {GameData.ResolveActionTimelineName(snapshot.LipsOverride)}");
-        if (Math.Abs(snapshot.OverallSpeed - 1f) > 0.001f)
-            ChatGui.Print($"{ChatPrefix}  Overall speed: ×{snapshot.OverallSpeed:0.##}");
     }
 
     private void OnLogin() => Restore.BeginLoginRestore();
