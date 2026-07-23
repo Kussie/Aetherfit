@@ -55,6 +55,7 @@ public partial class MainWindow
             var updated = jobs.Where(j => j != remove).ToList();
             plugin.Configuration.SetJobAssociations(id, updated);
             plugin.Configuration.Save();
+            jobAssociationVersion++;
         }
 
         DrawAddJobPopup(id);
@@ -145,6 +146,7 @@ public partial class MainWindow
                 updated.Add(job.RowId);
                 plugin.Configuration.SetJobAssociations(id, updated);
                 plugin.Configuration.Save();
+                jobAssociationVersion++;
                 ImGui.CloseCurrentPopup();
             }
         }
