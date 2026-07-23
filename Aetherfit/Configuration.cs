@@ -107,6 +107,14 @@ public class Configuration : IPluginConfiguration
     public List<string> DistinctSortedTags()
         => Services.TagMatching.WithSegments(CachedOutfits.Values.SelectMany(o => o.Tags));
 
+    // Only mods that at least one cached design references - there's no "list all installed mods" IPC wired up.
+    public List<(string Directory, string DisplayName)> DistinctMods()
+        => CachedOutfits.Values.SelectMany(o => o.Mods)
+            .GroupBy(m => m.Directory, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, Services.DesignAttributionService.ModDisplayName(g.First())))
+            .OrderBy(m => m.Item2, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
     public string ResolveDesignName(Guid id)
         => CachedOutfits.TryGetValue(id, out var outfit) && !string.IsNullOrWhiteSpace(outfit.Name)
             ? outfit.Name
