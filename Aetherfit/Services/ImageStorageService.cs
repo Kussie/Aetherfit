@@ -102,8 +102,7 @@ public sealed class ImageStorageService
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to set image: {ex.Message}");
-            Plugin.Log.Warning(ex, "Failed to set image for {Id} from {Path}", id, sourcePath);
+            ServiceErrors.Fail(ex, $"{Plugin.ChatPrefix}Failed to set image: {ex.Message}", "Failed to set image for {Id} from {Path}", id, sourcePath);
         }
         finally
         {
@@ -173,8 +172,7 @@ public sealed class ImageStorageService
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to update cover image: {ex.Message}");
-            Plugin.Log.Warning(ex, "Failed to promote additional image {Index} to cover for {Id}", index, id);
+            ServiceErrors.Fail(ex, $"{Plugin.ChatPrefix}Failed to update cover image: {ex.Message}", "Failed to promote additional image {Index} to cover for {Id}", index, id);
         }
         finally
         {
@@ -208,8 +206,7 @@ public sealed class ImageStorageService
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to add image: {ex.Message}");
-            Plugin.Log.Warning(ex, "Failed to add additional image for {Id} from {Path}", id, sourcePath);
+            ServiceErrors.Fail(ex, $"{Plugin.ChatPrefix}Failed to add image: {ex.Message}", "Failed to add additional image for {Id} from {Path}", id, sourcePath);
         }
         finally
         {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -82,10 +83,21 @@ public partial class MainWindow
 
         // Only auto-expand on the frame the filter actually changes - that way the user can still collapse
         // folders while a filter just sits there unchanged.
-        var signature = FilterSignature;
-        if (hasFilter && signature != filterSignature)
+        var snapshot = CaptureFilterSnapshot();
+        var filterChanged = snapshot != filterSnapshot
+            || !FiltersEqual(filterTags, filterTagsSnapshot)
+            || !FiltersEqual(filterJobs, filterJobsSnapshot);
+        if (hasFilter && filterChanged)
             expandTreesForFilter = true;
-        filterSignature = signature;
+        if (filterChanged)
+        {
+            filterSnapshot = snapshot;
+            filterTagsSnapshot = new(filterTags, StringComparer.OrdinalIgnoreCase);
+            filterJobsSnapshot = new(filterJobs);
+        }
+
+        // Cleared each frame - see FolderHasMatch.
+        folderMatchCache.Clear();
 
         // Widen the vertical gap between rows so the mouse rarely sits on the seam between two items and reports both as hovered in the same frame.
         var spacing = ImGui.GetStyle().ItemSpacing;
@@ -115,8 +127,6 @@ public partial class MainWindow
 
             ForceOpenIfFiltering(name, hasFilter);
 
-            // Capture the row's logical left edge before drawing; a Selectable's item rect extends half an
-            // ItemSpacing to the left of this, so we can't rely on GetItemRectMin for the tick's anchor.
             var rowX = ImGui.GetCursorScreenPos().X;
             var open = ImGui.TreeNodeEx(name, ImGuiTreeNodeFlags.SpanAvailWidth);
             // Connect this node to its parent's vertical guide with a short horizontal tick.
@@ -124,11 +134,7 @@ public partial class MainWindow
 
             if (open)
             {
-                // Glamourer-style indent guide: a faint vertical line down the left of this folder's
-                // children. We capture the top before drawing them and the bottom after, then draw the
-                // line between - drawing happens after the children so its extent is known.
                 var drawList = ImGui.GetWindowDrawList();
-                // Line the guide up under the tip of this folder's expand arrow.
                 var guideX = rowX + TreeArrowCenterOffset();
                 var guideTop = ImGui.GetCursorScreenPos().Y;
 
@@ -156,13 +162,9 @@ public partial class MainWindow
         }
     }
 
-    // Horizontal distance from a tree node's left edge to the centre of its expand arrow, matching how
-    // ImGui positions the arrow (FramePadding then a font-sized glyph box). The guides line up under it.
     private static float TreeArrowCenterOffset()
         => ImGui.GetStyle().FramePadding.X + (ImGui.GetFontSize() * 0.5f);
 
-    // A short horizontal line from the parent folder's vertical guide to the item, at the item's vertical
-    // centre. Only items nested under a folder (depth > 0) have a parent guide to connect to.
     private static void DrawTreeItemTick(int depth, float rowX)
     {
         if (depth <= 0)
@@ -181,6 +183,23 @@ public partial class MainWindow
             ImGui.ColorConvertFloat4ToU32(TreeGuideColor), ImGuiHelpers.GlobalScale);
     }
 
+    // Keyed by design id; invalidated per-entry when favourite state or the display name changes,
+    // so a frequently-redrawn tree of leaves isn't rebuilding this string every frame.
+    private readonly Dictionary<Guid, (bool IsFavourite, string Name, string Label)> leafLabelCache = new();
+
+    private string GetLeafLabel(DesignLeaf design, bool isFavourite)
+    {
+        if (leafLabelCache.TryGetValue(design.Id, out var cached)
+            && cached.IsFavourite == isFavourite && cached.Name == design.DisplayName)
+            return cached.Label;
+
+        var label = isFavourite
+            ? $"★ {design.DisplayName}##{design.Id}"
+            : $"   {design.DisplayName}##{design.Id}";
+        leafLabelCache[design.Id] = (isFavourite, design.DisplayName, label);
+        return label;
+    }
+
     private void DrawDesignLeaf(DesignLeaf design)
     {
         var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
@@ -189,11 +208,8 @@ public partial class MainWindow
             ImGui.PushStyleColor(ImGuiCol.Text, design.Color);
 
         var selected = selectedDesign == design.Id;
-        // Favourites keep the star glyph; other designs get a hand-drawn dot (after the Selectable) so we
-        // can size it precisely. Either way leave a little room at the start of the label for the marker.
-        var label = isFavourite
-            ? $"★ {design.DisplayName}##{design.Id}"
-            : $"   {design.DisplayName}##{design.Id}";
+
+        var label = GetLeafLabel(design, isFavourite);
         if (ImGui.Selectable(label, selected))
             selectedDesign = design.Id;
 
@@ -755,27 +771,7 @@ public partial class MainWindow
         ImGui.Dummy(new Vector2(avail, rectH));
         draw.AddRectFilled(rectMin, rectMax, ImGui.GetColorU32(ImGuiCol.Header), style.FrameRounding);
 
-        var textY = rectMin.Y + (rectH - lineH) * 0.5f;
-        draw.AddText(new Vector2(rectMin.X + style.FramePadding.X, textY),
-            ImGui.GetColorU32(SectionHeader), label);
-
-        if (helpText == null)
-            return;
-
-        const string marker = "(?)";
-        var markerSize = ImGui.CalcTextSize(marker);
-        var markerPos = new Vector2(rectMax.X - markerSize.X - style.FramePadding.X, textY);
-        draw.AddText(markerPos, ImGui.GetColorU32(ImGuiCol.TextDisabled), marker);
-
-        var hoverMax = new Vector2(markerPos.X + markerSize.X, markerPos.Y + markerSize.Y);
-        if (!ImGui.IsMouseHoveringRect(markerPos, hoverMax))
-            return;
-
-        ImGui.BeginTooltip();
-        ImGui.PushTextWrapPos(ImGui.GetFontSize() * 30f);
-        ImGui.TextUnformatted(helpText);
-        ImGui.PopTextWrapPos();
-        ImGui.EndTooltip();
+        DrawSubheaderChrome(rectMin, rectMax, label, helpText);
     }
 
     private static bool DrawImageScaled(string absolutePath, float maxSide, bool clickable = false, string? title = null)

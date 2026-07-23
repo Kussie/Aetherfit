@@ -48,15 +48,20 @@ public partial class MainWindow
                                    + (filterVanillaOnly ? 1 : 0)
                                    + (filterModdedOnly ? 1 : 0);
 
-    // A cheap stamp that changes whenever any filter input does. The design-view tree uses it to re-expand
-    // matches only when the filter actually changes, instead of forcing everything open every frame.
-    private string FilterSignature => string.Join('|',
-        filterName,
-        searchDesignName, searchModName, searchEquipmentName,
-        (int)filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly,
-        string.Join(',', filterTags.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(kv => $"{kv.Key}:{kv.Value}")),
-        string.Join(',', filterJobs.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}")));
+
+    private readonly record struct FilterSnapshot(
+        string Name,
+        bool SearchDesignName,
+        bool SearchModName,
+        bool SearchEquipmentName,
+        ImageFilterMode Image,
+        bool Favourites,
+        bool VanillaOnly,
+        bool ModdedOnly);
+
+    private FilterSnapshot CaptureFilterSnapshot() => new(
+        filterName, searchDesignName, searchModName, searchEquipmentName,
+        filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly);
 
     private void DrawFilterUi(bool defaultOpen = false, bool wide = false)
     {
@@ -309,61 +314,14 @@ public partial class MainWindow
             .ToList();
         var matchingJobs = allJobs
             .Where(j => tagSearchText.Length == 0 || j.Name.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase))
+            .Select(j => (j.RowId, j.Name, (JobRole?)j.Role))
             .ToList();
 
-        if (matchingTags.Count == 0 && matchingJobs.Count == 0)
-        {
-            ImGui.TextDisabled(availableTagsForFilter.Count == 0 && allJobs.Count == 0
-                ? "No tags or jobs to filter by yet."
-                : "No matching tags or jobs.");
-        }
-        else
-        {
-            var rowHeight = ImGui.GetTextLineHeightWithSpacing();
-            // Account for the "Tags"/"Jobs" headings and the role headings interleaved with the job rows.
-            var jobRoleHeadings = matchingJobs.Select(j => j.Role).Distinct().Count();
-            var totalRows = (matchingTags.Count > 0 ? matchingTags.Count + 1 : 0)
-                          + (matchingJobs.Count > 0 ? matchingJobs.Count + jobRoleHeadings + 1 : 0);
-            var listHeight = Math.Min(totalRows, 12) * rowHeight;
-
-            using var scroll = ImRaii.Child("TagJobList", new Vector2(260 * scale, listHeight), false);
-            if (scroll.Success)
-            {
-                if (matchingTags.Count > 0)
-                {
-                    ImGui.TextColored(UiTheme.SectionHeader, "Tags");
-                    foreach (var tag in matchingTags)
-                        if (Pills.DrawFilterCheckbox(tag, filterTags.GetFilterState(tag), $"filterTagCb{tag}"))
-                            filterTags.CycleFilterState(tag);
-                }
-
-                if (matchingJobs.Count > 0)
-                {
-                    if (matchingTags.Count > 0)
-                        ImGui.Spacing();
-                    ImGui.TextColored(UiTheme.SectionHeader, "Jobs");
-
-                    var lineH = ImGui.GetTextLineHeight();
-                    JobRole? lastRole = null;
-                    foreach (var job in matchingJobs)
-                    {
-                        if (lastRole != job.Role)
-                        {
-                            ImGui.TextDisabled(GameDataService.RoleLabel(job.Role));
-                            lastRole = job.Role;
-                        }
-
-                        var icon = plugin.GameData.GetJobIcon(job.RowId);
-                        if (Pills.DrawJobFilterCheckbox(job.Name, filterJobs.GetFilterState(job.RowId), icon, lineH, $"filterJobCb{job.RowId}"))
-                            filterJobs.CycleFilterState(job.RowId);
-                    }
-                }
-            }
-        }
-
-        ImGui.Separator();
-        if (ImGui.Button("Done", new Vector2(-1, 0)))
-            ImGui.CloseCurrentPopup();
+        var emptyMessage = availableTagsForFilter.Count == 0 && allJobs.Count == 0
+            ? "No tags or jobs to filter by yet."
+            : "No matching tags or jobs.";
+        Pills.DrawTagJobFilterList(matchingTags, matchingJobs, filterTags, filterJobs,
+            plugin.GameData.GetJobIcon, "filter", 260 * scale, emptyMessage);
     }
 
     private bool NameFilterMatches(DesignLeaf design, CachedOutfit? cached)
@@ -427,16 +385,27 @@ public partial class MainWindow
         return true;
     }
 
+    // Memoized per frame (cleared in DrawLeftPane) so a folder's subtree is scanned once regardless
+    // of how many ancestor folders ask "does this have a match" on the way down.
+    private readonly Dictionary<FolderNode, bool> folderMatchCache = new();
+
     private bool FolderHasMatch(FolderNode node)
     {
+        if (folderMatchCache.TryGetValue(node, out var cached))
+            return cached;
+
+        var match = false;
         foreach (var d in node.Designs)
         {
             plugin.Configuration.CachedOutfits.TryGetValue(d.Id, out var c);
-            if (DesignMatchesFilters(d, c)) return true;
+            if (DesignMatchesFilters(d, c)) { match = true; break; }
         }
-        foreach (var f in node.Folders.Values)
-            if (FolderHasMatch(f)) return true;
-        return false;
+        if (!match)
+            foreach (var f in node.Folders.Values)
+                if (FolderHasMatch(f)) { match = true; break; }
+
+        folderMatchCache[node] = match;
+        return match;
     }
 
     private void CollectVisibleDesigns(FolderNode node, List<DesignLeaf> result)

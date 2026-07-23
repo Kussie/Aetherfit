@@ -7,42 +7,31 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility.Raii;
-using Dalamud.Interface.Windowing;
 
 namespace Aetherfit.Windows;
 
 // A real window rather than an ImGui popup - a popup closes the instant you click anywhere else (e.g.
 // to paste the code into a chat tell), which made it look like the share had died. This only closes
 // via its own close button/X.
-public sealed class ShareLiveWindow : Window, IDisposable
+public sealed class ShareLiveWindow : LiveShareWindowBase
 {
     private static readonly int[] TtlPresets = { 15, 30, 60 };
 
-    private readonly Plugin plugin;
     private bool filterAvailable;
     private HashSet<Guid> filteredIds = new();
     private int ttlMinutes = 30;
 
-    public ShareLiveWindow(Plugin plugin)
-        : base("Share Directly##AetherfitShareLive", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoResize)
+    public ShareLiveWindow(Plugin plugin) : base(plugin, "Share Live##AetherfitShareLive")
     {
-        this.plugin = plugin;
-        Size = new Vector2(340, 240);
-        SizeCondition = ImGuiCond.Always;
     }
-
-    public void Dispose() { }
 
     public void Show(bool hasFilter, HashSet<Guid> filtered)
     {
         filterAvailable = hasFilter;
         filteredIds = filtered;
         ttlMinutes = plugin.Configuration.LiveShareDefaultTtlMinutes;
-        this.PositionNearMouse();
-        IsOpen = true;
+        ShowNearMouse();
     }
-
-    public override void OnClose() => plugin.LiveShare.Cancel();
 
     public override void Draw()
     {
@@ -105,18 +94,11 @@ public sealed class ShareLiveWindow : Window, IDisposable
                 DrawExpiryCountdown(live);
                 break;
             case LiveSharePhase.Failed:
-                ImGui.PushTextWrapPos(0);
-                ImGui.TextColored(UiTheme.ErrorText, live.ErrorMessage ?? "Something went wrong.");
-                ImGui.PopTextWrapPos();
+                DrawFailedPhase(live);
                 break;
         }
 
-        ImGui.Spacing();
-        // OnClose (native X) already resets state via live.Cancel() - the button just needs to close
-        // the window and let that handle it, so both paths behave identically.
-        var finished = live.Phase is LiveSharePhase.Ready or LiveSharePhase.Failed;
-        if (ImGui.Button(finished ? "Close" : "Cancel"))
-            IsOpen = false;
+        DrawFinishedButtons(live.Phase is LiveSharePhase.Ready or LiveSharePhase.Failed);
     }
 
     private void Start(IReadOnlySet<Guid>? onlyIds)

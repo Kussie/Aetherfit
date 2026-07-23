@@ -107,6 +107,11 @@ public class Configuration : IPluginConfiguration
     public List<string> DistinctSortedTags()
         => Services.TagMatching.WithSegments(CachedOutfits.Values.SelectMany(o => o.Tags));
 
+    public string ResolveDesignName(Guid id)
+        => CachedOutfits.TryGetValue(id, out var outfit) && !string.IsNullOrWhiteSpace(outfit.Name)
+            ? outfit.Name
+            : "(unknown design)";
+
     public List<uint> GetJobAssociations(Guid id)
         => DesignJobAssociations.TryGetValue(id, out var jobs) ? jobs : new();
 

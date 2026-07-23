@@ -140,8 +140,7 @@ public sealed class GlamourerService : IDisposable
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Apply failed: {ex.Message}");
-            Plugin.Log.Warning(ex, "Failed to apply Glamourer design {Id}", id);
+            ServiceErrors.Fail(ex, $"{Plugin.ChatPrefix}Apply failed: {ex.Message}", "Failed to apply Glamourer design {Id}", id);
             return false;
         }
     }
@@ -164,8 +163,7 @@ public sealed class GlamourerService : IDisposable
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Layer apply failed: {ex.Message}");
-            Plugin.Log.Warning(ex, "Failed to apply Glamourer layer design {Id}", id);
+            ServiceErrors.Fail(ex, $"{Plugin.ChatPrefix}Layer apply failed: {ex.Message}", "Failed to apply Glamourer layer design {Id}", id);
         }
     }
 
@@ -178,8 +176,7 @@ public sealed class GlamourerService : IDisposable
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Open in Glamourer failed: {ex.Message}");
-            Plugin.Log.Warning(ex, "Failed to open Glamourer design {Id}", id);
+            ServiceErrors.Fail(ex, $"{Plugin.ChatPrefix}Open in Glamourer failed: {ex.Message}", "Failed to open Glamourer design {Id}", id);
         }
     }
 
@@ -194,8 +191,7 @@ public sealed class GlamourerService : IDisposable
         }
         catch (Exception ex)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Revert failed: {ex.Message}");
-            Plugin.Log.Warning(ex, "Failed to revert appearance");
+            ServiceErrors.Fail(ex, $"{Plugin.ChatPrefix}Revert failed: {ex.Message}", "Failed to revert appearance");
         }
     }
 

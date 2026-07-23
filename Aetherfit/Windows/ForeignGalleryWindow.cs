@@ -201,57 +201,14 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         var availableJobs = gallery.Designs
             .SelectMany(d => d.Jobs)
             .Distinct()
-            .Select(j => (RowId: j, Name: plugin.GameData.ResolveJobName(j)))
+            .Select(j => (RowId: j, Name: plugin.GameData.ResolveJobName(j), Role: (JobRole?)null))
             .Where(j => filterSearchText.Length == 0 || j.Name.Contains(filterSearchText, StringComparison.OrdinalIgnoreCase))
             .OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (availableTags.Count == 0 && availableJobs.Count == 0)
-        {
-            ImGui.TextDisabled(filterSearchText.Length > 0 ? "No matching tags or jobs." : "Nothing to filter by.");
-            ImGui.Separator();
-            if (ImGui.Button("Done", new Vector2(-1, 0)))
-                ImGui.CloseCurrentPopup();
-            return;
-        }
-
-        var rowHeight = ImGui.GetTextLineHeightWithSpacing();
-        var totalRows = (availableTags.Count > 0 ? availableTags.Count + 1 : 0)
-                      + (availableJobs.Count > 0 ? availableJobs.Count + 1 : 0);
-        var listHeight = Math.Min(totalRows, 12) * rowHeight;
-
-        using (var scroll = ImRaii.Child("ForeignTagJobList", new Vector2(260 * ImGuiHelpers.GlobalScale, listHeight), false))
-        {
-            if (scroll.Success)
-            {
-                if (availableTags.Count > 0)
-                {
-                    ImGui.TextColored(UiTheme.SectionHeader, "Tags");
-                    foreach (var tag in availableTags)
-                        if (Pills.DrawFilterCheckbox(tag, filterTags.GetFilterState(tag), $"foreignTagCb{tag}"))
-                            filterTags.CycleFilterState(tag);
-                }
-
-                if (availableJobs.Count > 0)
-                {
-                    if (availableTags.Count > 0)
-                        ImGui.Spacing();
-                    ImGui.TextColored(UiTheme.SectionHeader, "Jobs");
-
-                    var lineH = ImGui.GetTextLineHeight();
-                    foreach (var job in availableJobs)
-                    {
-                        var icon = plugin.GameData.GetJobIcon(job.RowId);
-                        if (Pills.DrawJobFilterCheckbox(job.Name, filterJobs.GetFilterState(job.RowId), icon, lineH, $"foreignJobCb{job.RowId}"))
-                            filterJobs.CycleFilterState(job.RowId);
-                    }
-                }
-            }
-        }
-
-        ImGui.Separator();
-        if (ImGui.Button("Done", new Vector2(-1, 0)))
-            ImGui.CloseCurrentPopup();
+        var emptyMessage = filterSearchText.Length > 0 ? "No matching tags or jobs." : "Nothing to filter by.";
+        Pills.DrawTagJobFilterList(availableTags, availableJobs, filterTags, filterJobs,
+            plugin.GameData.GetJobIcon, "foreign", 260 * ImGuiHelpers.GlobalScale, emptyMessage);
     }
 
     private void DrawGrid(List<ForeignDesign> visible)

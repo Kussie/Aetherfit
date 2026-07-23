@@ -124,10 +124,9 @@ public sealed class GalleryLiveShareService : IDisposable
             Directory.CreateDirectory(TempRoot);
             var tempPath = Path.Combine(TempRoot, $"{Guid.NewGuid():N}{GallerySharingService.FileExtension}");
             tempBundlePath = tempPath;
-            plugin.GallerySharing.ExportToFileAsync(sharerLabel, tempPath, onlyIds);
-
-            while (await Plugin.Framework.RunOnFrameworkThread(() => plugin.GallerySharing.IsBusy))
-                await Task.Delay(150, ct);
+            // WaitAsync throws on cancellation without cancelling the export itself - it just finishes
+            // orphaned in the background, same as the old poll loop breaking early on a cancelled ct.
+            await plugin.GallerySharing.ExportToFileAsync(sharerLabel, tempPath, onlyIds).WaitAsync(ct);
 
             if (!File.Exists(tempPath))
             {
@@ -240,14 +239,11 @@ public sealed class GalleryLiveShareService : IDisposable
             });
 
             var imported = false;
-            plugin.GallerySharing.ImportFromFileAsync(tempPath, foreign =>
+            await plugin.GallerySharing.ImportFromFileAsync(tempPath, foreign =>
             {
                 imported = true;
                 plugin.ForeignGallery.Show(foreign);
-            });
-
-            while (await Plugin.Framework.RunOnFrameworkThread(() => plugin.GallerySharing.IsBusy))
-                await Task.Delay(150, ct);
+            }).WaitAsync(ct);
 
             TryDeleteTemp(tempPath);
 
