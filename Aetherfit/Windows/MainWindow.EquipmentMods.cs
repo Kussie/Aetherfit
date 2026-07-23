@@ -153,35 +153,48 @@ public partial class MainWindow
                : ImGuiCol.Header;
         draw.AddRectFilled(rectMin, rectMax, ImGui.GetColorU32(bg), style.FrameRounding);
 
-        var textY = rectMin.Y + (rectH - lineH) * 0.5f;
-        draw.AddText(new Vector2(rectMin.X + style.FramePadding.X, textY),
-            ImGui.GetColorU32(SectionHeader), label);
-
         var chevron = open ? "▼" : "▶";
         var chevSize = ImGui.CalcTextSize(chevron);
+        var textY = rectMin.Y + (rectH - lineH) * 0.5f;
         draw.AddText(new Vector2(rectMax.X - chevSize.X - style.FramePadding.X, textY),
             ImGui.GetColorU32(SectionHeader), chevron);
 
-        if (helpText != null)
-        {
-            const string marker = "(?)";
-            var markerSize = ImGui.CalcTextSize(marker);
-            // Sit the help marker just left of the chevron.
-            var markerPos = new Vector2(rectMax.X - chevSize.X - markerSize.X - (style.FramePadding.X * 2f), textY);
-            draw.AddText(markerPos, ImGui.GetColorU32(ImGuiCol.TextDisabled), marker);
-
-            var hoverMax = new Vector2(markerPos.X + markerSize.X, markerPos.Y + markerSize.Y);
-            if (ImGui.IsMouseHoveringRect(markerPos, hoverMax))
-            {
-                ImGui.BeginTooltip();
-                ImGui.PushTextWrapPos(ImGui.GetFontSize() * 30f);
-                ImGui.TextUnformatted(helpText);
-                ImGui.PopTextWrapPos();
-                ImGui.EndTooltip();
-            }
-        }
+        // Sit the help marker just left of the chevron.
+        DrawSubheaderChrome(rectMin, rectMax, label, helpText, chevSize.X + style.FramePadding.X);
 
         return open;
+    }
+
+    // Shared chrome for both subheader variants: background is drawn by the caller (interactive vs.
+    // static), this just places the label and an optional right-aligned "(?)" help marker + tooltip.
+    // rightReserve leaves room for a caller-drawn glyph (the collapsible variant's chevron).
+    private static void DrawSubheaderChrome(Vector2 rectMin, Vector2 rectMax, string label, string? helpText, float rightReserve = 0f)
+    {
+        var style = ImGui.GetStyle();
+        var draw = ImGui.GetWindowDrawList();
+        var lineH = ImGui.GetTextLineHeight();
+        var textY = rectMin.Y + (rectMax.Y - rectMin.Y - lineH) * 0.5f;
+
+        draw.AddText(new Vector2(rectMin.X + style.FramePadding.X, textY),
+            ImGui.GetColorU32(SectionHeader), label);
+
+        if (helpText == null)
+            return;
+
+        const string marker = "(?)";
+        var markerSize = ImGui.CalcTextSize(marker);
+        var markerPos = new Vector2(rectMax.X - rightReserve - markerSize.X - style.FramePadding.X, textY);
+        draw.AddText(markerPos, ImGui.GetColorU32(ImGuiCol.TextDisabled), marker);
+
+        var hoverMax = new Vector2(markerPos.X + markerSize.X, markerPos.Y + markerSize.Y);
+        if (!ImGui.IsMouseHoveringRect(markerPos, hoverMax))
+            return;
+
+        ImGui.BeginTooltip();
+        ImGui.PushTextWrapPos(ImGui.GetFontSize() * 30f);
+        ImGui.TextUnformatted(helpText);
+        ImGui.PopTextWrapPos();
+        ImGui.EndTooltip();
     }
 
     // The label column width, shared by the Equipment and Customizations panels so their values line up.
@@ -389,12 +402,7 @@ public partial class MainWindow
         }
     }
 
-    private string ResolveLinkedDesignName(Guid id)
-    {
-        if (plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit) && !string.IsNullOrWhiteSpace(outfit.Name))
-            return outfit.Name;
-        return "(unknown design)";
-    }
+    private string ResolveLinkedDesignName(Guid id) => plugin.Configuration.ResolveDesignName(id);
 
     // A link's job/gearset gate, mirroring Glamourer's precedence: a set gearset wins, else a job category,
     // else no restriction (applies to everything, so we show nothing).

@@ -1,16 +1,85 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Textures.TextureWraps;
+using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherfit.Ui;
 
 // The little tag/job chips shared across the windows.
 internal static class Pills
 {
+    // Shared body of a tri-state tag/job filter popup: a scrolling list of tag and job checkboxes
+    // (jobs get role headings interleaved when Role is non-null), sized to fit up to ~12 rows, plus
+    // the trailing Done button. Callers own opening the popup and drawing the search box above it -
+    // this just renders whatever the caller has already filtered down to.
+    public static void DrawTagJobFilterList(
+        IReadOnlyList<string> availableTags,
+        IReadOnlyList<(uint RowId, string Name, JobRole? Role)> availableJobs,
+        Dictionary<string, bool> filterTags,
+        Dictionary<uint, bool> filterJobs,
+        Func<uint, IDalamudTextureWrap?> getJobIcon,
+        string idPrefix,
+        float scrollWidth,
+        string emptyMessage)
+    {
+        if (availableTags.Count == 0 && availableJobs.Count == 0)
+        {
+            ImGui.TextDisabled(emptyMessage);
+        }
+        else
+        {
+            var rowHeight = ImGui.GetTextLineHeightWithSpacing();
+            // Account for the "Tags"/"Jobs" headings and any role headings interleaved with the job rows.
+            var jobRoleHeadings = availableJobs.Select(j => j.Role).Distinct().Count(r => r != null);
+            var totalRows = (availableTags.Count > 0 ? availableTags.Count + 1 : 0)
+                          + (availableJobs.Count > 0 ? availableJobs.Count + jobRoleHeadings + 1 : 0);
+            var listHeight = Math.Min(totalRows, 12) * rowHeight;
+
+            using var scroll = ImRaii.Child($"{idPrefix}List", new Vector2(scrollWidth, listHeight), false);
+            if (scroll.Success)
+            {
+                if (availableTags.Count > 0)
+                {
+                    ImGui.TextColored(UiTheme.SectionHeader, "Tags");
+                    foreach (var tag in availableTags)
+                        if (DrawFilterCheckbox(tag, filterTags.GetFilterState(tag), $"{idPrefix}TagCb{tag}"))
+                            filterTags.CycleFilterState(tag);
+                }
+
+                if (availableJobs.Count > 0)
+                {
+                    if (availableTags.Count > 0)
+                        ImGui.Spacing();
+                    ImGui.TextColored(UiTheme.SectionHeader, "Jobs");
+
+                    var lineH = ImGui.GetTextLineHeight();
+                    JobRole? lastRole = null;
+                    foreach (var job in availableJobs)
+                    {
+                        if (job.Role != null && lastRole != job.Role)
+                        {
+                            ImGui.TextDisabled(GameDataService.RoleLabel(job.Role.Value));
+                            lastRole = job.Role;
+                        }
+
+                        var icon = getJobIcon(job.RowId);
+                        if (DrawJobFilterCheckbox(job.Name, filterJobs.GetFilterState(job.RowId), icon, lineH, $"{idPrefix}JobCb{job.RowId}"))
+                            filterJobs.CycleFilterState(job.RowId);
+                    }
+                }
+            }
+        }
+
+        ImGui.Separator();
+        if (ImGui.Button("Done", new Vector2(-1, 0)))
+            ImGui.CloseCurrentPopup();
+    }
+
     // Draws a wrapping row of removable "label ×" chips. Each chip shows a "Remove" tooltip on hover and,
     // when clicked, fires onRemove for that item (deferred until after the loop so the source isn't mutated
     // mid-iteration). Callers pass the items already in their desired order.
