@@ -113,6 +113,20 @@ jobs:
                   $json = (ConvertTo-Json -InputObject $entry -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 
+            - name: Update download count
+              shell: pwsh
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'User-Agent' = 'Aetherfit-release-workflow' }
+                  $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/Kussie/Aetherfit/releases?per_page=100" -Headers $headers
+                  $downloadCount = ($releases | ForEach-Object { $_.assets } | Measure-Object -Property download_count -Sum).Sum
+                  $entry = Get-Content "repo.json" -Raw | ConvertFrom-Json
+                  while ($entry -is [Array]) { $entry = $entry[0] }
+                  $entry.DownloadCount = [int64]$downloadCount
+                  $json = (ConvertTo-Json -InputObject $entry -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
+                  Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
+
             - name: Commit repo.json
               shell: pwsh
               run: |
