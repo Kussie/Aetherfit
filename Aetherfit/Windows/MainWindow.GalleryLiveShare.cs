@@ -33,7 +33,7 @@ public partial class MainWindow
 
         // Not gated on IsBusy: if a receive is already running, clicking this just brings the existing
         // window back to the front instead of starting a new one.
-        if (ImGui.Selectable("Directly Shared..."))
+        if (ImGui.Selectable("From Live Share..."))
             OpenReceiveLiveDialog();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(plugin.LiveShare.IsBusy

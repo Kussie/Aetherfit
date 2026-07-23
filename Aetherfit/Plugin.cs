@@ -41,6 +41,7 @@ public sealed class Plugin : IDalamudPlugin
     public GallerySharingService GallerySharing { get; init; }
     public GalleryLiveShareService LiveShare { get; init; }
     public RestoreSequenceService Restore { get; init; }
+    public DesignApplyService DesignApply { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
@@ -93,6 +94,7 @@ public sealed class Plugin : IDalamudPlugin
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
         LiveShare = new GalleryLiveShareService(this);
+        DesignApply = new DesignApplyService(this);
 
         // Clean up any imported-gallery images or in-flight captures a previous session left behind
         // (e.g. if we crashed before tidying up).

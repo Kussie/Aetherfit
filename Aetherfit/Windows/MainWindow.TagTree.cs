@@ -14,7 +14,20 @@ public partial class MainWindow
         public List<DesignLeaf> Designs { get; } = new();
     }
 
-    private void DrawTagTree(bool hasFilter)
+    private TagNode cachedTagRoot = new();
+    private FolderNode cachedUntaggedFolder = new();
+    private int cachedTagTreeGeneration = -1;
+    private FilterSnapshot cachedTagTreeFilterSnapshot;
+    private Dictionary<string, bool> cachedTagTreeFilterTags = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<uint, bool> cachedTagTreeFilterJobs = new();
+
+    private bool IsTagTreeCacheStale() =>
+        cachedTagTreeGeneration != designListGeneration ||
+        cachedTagTreeFilterSnapshot != CaptureFilterSnapshot() ||
+        !FiltersEqual(cachedTagTreeFilterTags, filterTags) ||
+        !FiltersEqual(cachedTagTreeFilterJobs, filterJobs);
+
+    private void RebuildTagTreeCache()
     {
         var allLeaves = new List<DesignLeaf>();
         CollectAllLeaves(root, allLeaves);
@@ -59,12 +72,27 @@ public partial class MainWindow
 
         SortTagNodeDesigns(tagRoot);
 
-        foreach (var (name, child) in tagRoot.Children)
+        cachedTagRoot = tagRoot;
+        cachedUntaggedFolder = BuildFolderTree(untagged);
+
+        cachedTagTreeGeneration = designListGeneration;
+        cachedTagTreeFilterSnapshot = CaptureFilterSnapshot();
+        cachedTagTreeFilterTags = new(filterTags, StringComparer.OrdinalIgnoreCase);
+        cachedTagTreeFilterJobs = new(filterJobs);
+    }
+
+    private void DrawTagTree(bool hasFilter)
+    {
+        if (IsTagTreeCacheStale())
+            RebuildTagTreeCache();
+
+        foreach (var (name, child) in cachedTagRoot.Children)
             DrawTagNode(name, name, child, hasFilter);
 
-        if (untagged.Count > 0 && DrawJobGroupHeader("Untagged##untaggedDesigns", hasFilter))
+        if ((cachedUntaggedFolder.Designs.Count > 0 || cachedUntaggedFolder.Folders.Count > 0)
+            && DrawJobGroupHeader("Untagged##untaggedDesigns", hasFilter))
         {
-            DrawTree(BuildFolderTree(untagged), hasFilter);
+            DrawTree(cachedUntaggedFolder, hasFilter);
             ImGui.TreePop();
         }
     }

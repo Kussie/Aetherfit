@@ -3,34 +3,23 @@ using Aetherfit.Sharing;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility.Raii;
-using Dalamud.Interface.Windowing;
 
 namespace Aetherfit.Windows;
 
 // A real window rather than an ImGui popup - see ShareLiveWindow for why (doesn't close on click-away).
-public sealed class ReceiveLiveWindow : Window, System.IDisposable
+public sealed class ReceiveLiveWindow : LiveShareWindowBase
 {
-    private readonly Plugin plugin;
     private string codeInput = string.Empty;
 
-    public ReceiveLiveWindow(Plugin plugin)
-        : base("Directly Shared##AetherfitReceiveLive", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoResize)
+    public ReceiveLiveWindow(Plugin plugin) : base(plugin, "Receive Live##AetherfitReceiveLive")
     {
-        this.plugin = plugin;
-        Size = new Vector2(340, 240);
-        SizeCondition = ImGuiCond.Always;
     }
-
-    public void Dispose() { }
 
     public void Show()
     {
         codeInput = string.Empty;
-        this.PositionNearMouse();
-        IsOpen = true;
+        ShowNearMouse();
     }
-
-    public override void OnClose() => plugin.LiveShare.Cancel();
 
     public override void Draw()
     {
@@ -67,17 +56,10 @@ public sealed class ReceiveLiveWindow : Window, System.IDisposable
                 ImGui.TextColored(UiTheme.GoldAccent, "Received! Check the viewer window that opened.");
                 break;
             case LiveSharePhase.Failed:
-                ImGui.PushTextWrapPos(0);
-                ImGui.TextColored(UiTheme.ErrorText, live.ErrorMessage ?? "Something went wrong.");
-                ImGui.PopTextWrapPos();
+                DrawFailedPhase(live);
                 break;
         }
 
-        ImGui.Spacing();
-        // OnClose (native X) already resets state via live.Cancel() - the button just needs to close
-        // the window and let that handle it, so both paths behave identically.
-        var finished = live.Phase is LiveSharePhase.Done or LiveSharePhase.Failed;
-        if (ImGui.Button(finished ? "Close" : "Cancel"))
-            IsOpen = false;
+        DrawFinishedButtons(live.Phase is LiveSharePhase.Done or LiveSharePhase.Failed);
     }
 }

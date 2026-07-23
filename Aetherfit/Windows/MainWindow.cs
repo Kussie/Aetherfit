@@ -35,7 +35,9 @@ public partial class MainWindow : Window, IDisposable
     // Set for the single frame after the filter changes. Pops matching nodes open to show results, but
     // otherwise stays out of the way so folders can still be collapsed.
     private bool expandTreesForFilter;
-    private string filterSignature = string.Empty;
+    private FilterSnapshot filterSnapshot;
+    private Dictionary<string, bool> filterTagsSnapshot = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<uint, bool> filterJobsSnapshot = new();
 
     private readonly FileDialogManager fileDialog = new();
     private const string ImageFilters = "Image{.png,.jpg,.jpeg,.webp}";
@@ -434,7 +436,7 @@ public partial class MainWindow : Window, IDisposable
         // Not gated on IsBusy: if a share is already running, clicking this just reopens the modal
         // on its current state (pairing code, progress, etc.) instead of starting a new one - the
         // only way back in after the popup's been dismissed by clicking away.
-        if (ImGui.Selectable("Share Directly..."))
+        if (ImGui.Selectable("Share Live..."))
             OpenShareLiveDialog();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(plugin.LiveShare.IsBusy
@@ -478,8 +480,7 @@ public partial class MainWindow : Window, IDisposable
         }
         ImGui.SameLine();
 
-        var anyHasTags = plugin.Configuration.CachedOutfits.Values.Any(o => o.Tags.Count > 0);
-        using (ImRaii.Disabled(!anyHasTags))
+        using (ImRaii.Disabled(!AnyDesignHasTags()))
         {
             if (IconTextButton(FontAwesomeIcon.Tags, byTagLabel))
             {
@@ -487,6 +488,19 @@ public partial class MainWindow : Window, IDisposable
                 ImGui.OpenPopup(ApplyByTagPopupId);
             }
         }
+    }
+
+    private bool cachedAnyHasTags;
+    private int cachedAnyHasTagsGeneration = -1;
+
+    private bool AnyDesignHasTags()
+    {
+        if (cachedAnyHasTagsGeneration != designListGeneration)
+        {
+            cachedAnyHasTags = plugin.Configuration.CachedOutfits.Values.Any(o => o.Tags.Count > 0);
+            cachedAnyHasTagsGeneration = designListGeneration;
+        }
+        return cachedAnyHasTags;
     }
 
     private void RebuildAvailableTags()
@@ -550,280 +564,43 @@ public partial class MainWindow : Window, IDisposable
             ImGui.CloseCurrentPopup();
     }
 
-    public void RevertAppearance()
-    {
-        plugin.Glamourer.Revert();
+    public void RevertAppearance() => plugin.DesignApply.RevertAppearance();
 
-        // A deliberate revert means "I want my real gear" — forget the last-worn record so
-        // LoginAction.ReapplyLast doesn't re-dress the character on the next login.
-        if (Plugin.PlayerState.IsLoaded
-            && plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
-            && settings.LastWornDesign != null)
-        {
-            settings.LastWornDesign = null;
-            settings.LastWornLayers.Clear();
-            plugin.Configuration.Save();
-        }
-    }
-
-    private bool applyingLayer;
-
-    private void ApplyDesignById(Guid id)
-        => ApplyDesignCore(id, applyingLayer ? new List<Guid>() : PickLayers(id));
-
-    private void ApplyDesignCore(Guid id, List<Guid> layerIds, bool quiet = false)
-    {
-        var name = plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.Name : id.ToString();
-        if (!plugin.Glamourer.Apply(id, name, layerIds.Select(ResolveLinkedDesignName).ToList(), quiet))
-            return;
-
-        if (layerIds.Count > 0)
-        {
-            applyingLayer = true;
-            try
-            {
-                foreach (var layerId in layerIds)
-                    plugin.Glamourer.ApplyLayer(layerId);
-            }
-            finally { applyingLayer = false; }
-        }
-
-        RecordLastWorn(id, layerIds);
-    }
-
-    // Always records, regardless of the login-action setting, so enabling ReapplyLast later
-    // works immediately. Recording at apply time also keeps the persisted record current at
-    // logout without needing a logout hook.
-    private void RecordLastWorn(Guid baseId, List<Guid> layerIds)
-    {
-        if (!Plugin.PlayerState.IsLoaded)
-            return;
-
-        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-        settings.LastWornDesign = baseId;
-        settings.LastWornLayers = new List<Guid>(layerIds);
-
-        settings.RecentDesignHistory.Remove(baseId);
-        settings.RecentDesignHistory.Insert(0, baseId);
-        if (settings.RecentDesignHistory.Count > RecentHistoryCap)
-            settings.RecentDesignHistory.RemoveRange(RecentHistoryCap, settings.RecentDesignHistory.Count - RecentHistoryCap);
-
-        plugin.Configuration.Save();
-    }
-
-    private const int RecentHistoryCap = 10;
-
-    // Weighted pick that avoids recently worn designs: the most recent is excluded outright
-    // (when there's any alternative), and the rest of the history is down-weighted by recency.
-    // Falls back to a uniform pick when no character is loaded.
-    private Guid PickRandomDesign(IReadOnlyList<Guid> candidates)
-    {
-        if (candidates.Count == 1)
-            return candidates[0];
-
-        var history = Plugin.PlayerState.IsLoaded
-            && plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
-            ? settings.RecentDesignHistory
-            : new List<Guid>();
-
-        // With a small pool a long history would suppress everything equally, so only let it
-        // reach back far enough to leave at least one full-weight candidate.
-        var depth = Math.Min(history.Count, candidates.Count - 1);
-
-        var pool = candidates;
-        if (depth > 0)
-        {
-            var last = history[0];
-            var filtered = candidates.Where(id => id != last).ToList();
-            if (filtered.Count > 0)
-                pool = filtered;
-        }
-
-        var weights = new double[pool.Count];
-        double total = 0;
-        for (var i = 0; i < pool.Count; i++)
-        {
-            var pos = history.IndexOf(pool[i]);
-            weights[i] = pos < 0 || pos >= depth ? 1.0 : (pos + 1.0) / (depth + 1.0);
-            total += weights[i];
-        }
-
-        var roll = Random.Shared.NextDouble() * total;
-        for (var i = 0; i < pool.Count; i++)
-        {
-            roll -= weights[i];
-            if (roll < 0)
-                return pool[i];
-        }
-
-        return pool[^1];
-    }
+    private void ApplyDesignById(Guid id) => plugin.DesignApply.ApplyDesignById(id);
 
     public string? ReapplyLastWorn(bool quiet = false)
     {
-        if (!Plugin.PlayerState.IsLoaded)
-            return "Log in to a character first.";
-
-        if (!plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
-            || settings.LastWornDesign is not { } baseId)
-            return "No previously worn design recorded for this character yet.";
-
-        if (!plugin.Configuration.CachedOutfits.ContainsKey(baseId))
-            return "Your previously worn design no longer exists in Glamourer — nothing reapplied.";
-
-        var layers = plugin.Configuration.EnableRandomLayers
-            ? settings.LastWornLayers.Where(l => plugin.Configuration.CachedOutfits.ContainsKey(l)).ToList()
-            : new List<Guid>();
-        if (layers.Count < settings.LastWornLayers.Count && plugin.Configuration.EnableRandomLayers)
-            Plugin.Log.Info($"Skipped {settings.LastWornLayers.Count - layers.Count} previously worn layer(s) that no longer exist in Glamourer.");
-
-        selectedDesign = baseId;
-        ApplyDesignCore(baseId, layers, quiet);
-        return null;
-    }
-
-    // Walks the base design's layer slots top-down, picking one job-matching design per slot (at random when
-    // the slot holds several). Returns the layers to apply, in application order.
-    private List<Guid> PickLayers(Guid baseId)
-    {
-        var picks = new List<Guid>();
-        if (!plugin.Configuration.EnableRandomLayers || !Plugin.PlayerState.IsLoaded)
-            return picks;
-
-        var jobId = Plugin.PlayerState.ClassJob.RowId;
-        foreach (var slot in plugin.Configuration.GetLayerSlots(baseId))
-        {
-            var candidates = slot.Designs
-                .Where(l => (l.AllJobs || l.Jobs.Contains(jobId))
-                            && plugin.Configuration.CachedOutfits.ContainsKey(l.DesignId))
-                .ToList();
-
-            if (candidates.Count > 0)
-                picks.Add(candidates[Random.Shared.Next(candidates.Count)].DesignId);
-        }
-
-        return picks;
+        var result = plugin.DesignApply.ReapplyLastWorn(quiet);
+        if (result.DesignId is { } id) selectedDesign = id;
+        return result.Error;
     }
 
     public string? ApplyRandomDesign()
     {
-        var ids = plugin.Configuration.CachedOutfits.Keys
-            .Where(id => !plugin.Configuration.HiddenDesigns.Contains(id))
-            .ToList();
-        if (ids.Count == 0)
-        {
-            var msg = "No cached designs — open Aetherfit and click Refresh first.";
-            Plugin.Log.Info(msg);
-            return msg;
-        }
-
-        var pick = PickRandomDesign(ids);
-        selectedDesign = pick;
-        ApplyDesignById(pick);
-        return null;
+        var result = plugin.DesignApply.ApplyRandomDesign();
+        if (result.DesignId is { } id) selectedDesign = id;
+        return result.Error;
     }
 
     public string? ApplyRandomByTags(IReadOnlyCollection<string> tags, bool favouritesOnly = false)
     {
-        if (tags.Count == 0)
-        {
-            var msg = "No tags provided.";
-            Plugin.Log.Info(msg);
-            return msg;
-        }
-
-        var matching = plugin.Configuration.CachedOutfits
-            .Where(kv => !plugin.Configuration.HiddenDesigns.Contains(kv.Key)
-                         && (!favouritesOnly || plugin.Configuration.FavouriteDesigns.Contains(kv.Key))
-                         && tags.All(t => TagMatching.AnyMatch(kv.Value.Tags, t)))
-            .Select(kv => kv.Key)
-            .ToList();
-
-        if (matching.Count == 0)
-        {
-            var msg = $"No {(favouritesOnly ? "favourite designs" : "designs")} match tags: {string.Join(", ", tags)}";
-            Plugin.Log.Info(msg);
-            return msg;
-        }
-
-        var pick = PickRandomDesign(matching);
-        selectedDesign = pick;
-        ApplyDesignById(pick);
-        return null;
+        var result = plugin.DesignApply.ApplyRandomByTags(tags, favouritesOnly);
+        if (result.DesignId is { } id) selectedDesign = id;
+        return result.Error;
     }
 
     public string? ApplyRandomFavourite(bool matchCurrentJob)
     {
-        var favourites = plugin.Configuration.FavouriteDesigns
-            .Where(id => plugin.Configuration.CachedOutfits.ContainsKey(id)
-                         && !plugin.Configuration.HiddenDesigns.Contains(id))
-            .ToList();
-
-        if (favourites.Count == 0)
-        {
-            var msg = "No favourite designs yet — click the ☆ star on a design first.";
-            Plugin.Log.Info(msg);
-            return msg;
-        }
-
-        if (matchCurrentJob)
-        {
-            if (!Plugin.PlayerState.IsLoaded)
-            {
-                var msg = "Log in to a character first.";
-                Plugin.Log.Info(msg);
-                return msg;
-            }
-
-            var jobId = Plugin.PlayerState.ClassJob.RowId;
-            favourites = favourites
-                .Where(id => plugin.Configuration.DesignJobAssociations.TryGetValue(id, out var jobs) && jobs.Contains(jobId))
-                .ToList();
-
-            if (favourites.Count == 0)
-            {
-                var jobName = plugin.GameData.ResolveJobName(jobId);
-                var msg = $"No favourite designs associated with your current job ({jobName}).";
-                Plugin.Log.Info(msg);
-                return msg;
-            }
-        }
-
-        var pick = PickRandomDesign(favourites);
-        selectedDesign = pick;
-        ApplyDesignById(pick);
-        return null;
+        var result = plugin.DesignApply.ApplyRandomFavourite(matchCurrentJob);
+        if (result.DesignId is { } id) selectedDesign = id;
+        return result.Error;
     }
 
     public string? ApplyRandomByCurrentJob()
     {
-        if (!Plugin.PlayerState.IsLoaded)
-        {
-            var msg = "Log in to a character first.";
-            Plugin.Log.Info(msg);
-            return msg;
-        }
-
-        var jobId = Plugin.PlayerState.ClassJob.RowId;
-        var matching = plugin.Configuration.DesignJobAssociations
-            .Where(kv => kv.Value.Contains(jobId)
-                         && plugin.Configuration.CachedOutfits.ContainsKey(kv.Key)
-                         && !plugin.Configuration.HiddenDesigns.Contains(kv.Key))
-            .Select(kv => kv.Key)
-            .ToList();
-
-        if (matching.Count == 0)
-        {
-            var jobName = plugin.GameData.ResolveJobName(jobId);
-            var msg = $"No designs associated with your current job ({jobName}).";
-            Plugin.Log.Info(msg);
-            return msg;
-        }
-
-        var pick = PickRandomDesign(matching);
-        selectedDesign = pick;
-        ApplyDesignById(pick);
-        return null;
+        var result = plugin.DesignApply.ApplyRandomByCurrentJob();
+        if (result.DesignId is { } id) selectedDesign = id;
+        return result.Error;
     }
 
     private sealed class FolderNode
