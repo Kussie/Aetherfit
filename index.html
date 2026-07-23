@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aetherfit — a simple frontend for Glamourer</title>
+<meta name="description" content="Aetherfit is a lightweight, user-friendly frontend for browsing and applying Glamourer designs in FFXIV.">
+<link rel="icon" type="image/png" href="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Data/icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hero">
+  <img class="hero-icon" src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Data/icon.png" alt="Aetherfit icon">
+  <h1>Aetherfit</h1>
+  <p class="punchline">An alternative simple frontend for Glamourer, because glamour is the real endgame.</p>
+  <div class="hero-links">
+    <a class="button" href="#installation">Install</a>
+    <a class="button button-ghost" href="https://github.com/Kussie/Aetherfit">View on GitHub</a>
+  </div>
+</header>
+
+<main>
+
+  <section id="about">
+    <h2>About</h2>
+    <p class="requires">
+      <strong>Requires:</strong>
+      <a href="https://github.com/xivdev/Penumbra">Penumbra</a> and
+      <a href="https://github.com/Ottermandias/Glamourer">Glamourer</a>
+    </p>
+    <p>
+      Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV.
+      Aetherfit aims to provide a more intuitive and user-friendly interface for selecting and applying designs,
+      while still relying on Glamourer for the actual design data and application process and keeping it as the
+      source of truth for all your designs.
+    </p>
+    <p>
+      Aetherfit is designed to be a lightweight and easy-to-use alternative to the default Glamourer interface,
+      allowing you to quickly and easily find and apply designs to your character — making it much easier to
+      find the perfect design to suit any occasion.
+    </p>
+    <p>
+      It provides a quick and easy way to preview your designs with screenshots and images that can be added
+      to your designs. Screenshots can either be loaded from disk or taken directly in game.
+    </p>
+    <p class="note">
+      <strong>Note:</strong> this has only been tested on the FFXIV client on Windows. Whilst the bulk of the
+      plugin should work no matter what, the direct screenshot capture might not work on other clients/operating systems.
+    </p>
+  </section>
+
+  <section id="features">
+    <h2>Features</h2>
+    <ul class="feature-list">
+      <li>Browse designs by tags</li>
+      <li>Add screenshots to designs</li>
+      <li>Apply a random design to your character, or a random design based on a selection of tags</li>
+      <li>Apply a random design (or random design based on tags) to a character automatically when logging in</li>
+      <li>Share your design gallery with friends</li>
+      <li>Associate designs with specific jobs</li>
+      <li>Apply multiple layered designs, including randomly selecting a design from a pool — useful for a random weapon appearance, for example</li>
+    </ul>
+  </section>
+
+  <section id="screenshots">
+    <h2>Screenshots</h2>
+    <div class="gallery">
+      <figure>
+        <img src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Screenshots/Main-Interface-1.png" alt="Main interface" loading="lazy">
+        <figcaption>Main interface</figcaption>
+      </figure>
+      <figure>
+        <img src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Screenshots/Main-Interface-2.png" alt="Main interface" loading="lazy">
+        <figcaption>Main interface</figcaption>
+      </figure>
+      <figure>
+        <img src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Screenshots/Snap-Options.png" alt="Snap options" loading="lazy">
+        <figcaption>"Snap" options</figcaption>
+      </figure>
+      <figure>
+        <img src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Screenshots/Cropping.png" alt="Cropping and selecting an area" loading="lazy">
+        <figcaption>Cropping/selecting area to use</figcaption>
+      </figure>
+      <figure>
+        <img src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Screenshots/Shared-Gallery-2.png" alt="Shared gallery" loading="lazy">
+        <figcaption>Shared gallery</figcaption>
+      </figure>
+      <figure>
+        <img src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Screenshots/Shared-Gallery-1.png" alt="Shared gallery" loading="lazy">
+        <figcaption>Shared gallery</figcaption>
+      </figure>
+      <figure>
+        <img src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Screenshots/Additional-Layers.png" alt="Additional layers" loading="lazy">
+        <figcaption>Additional layers — this setup picks a random MCH or GNB weapon when the design is applied</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="installation">
+    <h2>Installation</h2>
+    <ol>
+      <li>
+        Add this repo to your experimental tab under <code>/xlplugins</code>:
+        <pre><code>https://raw.githubusercontent.com/Kussie/Aetherfit/master/repo.json</code></pre>
+      </li>
+      <li>Save, then find Aetherfit in the main <code>/xlplugins</code> window.</li>
+      <li>Access the plugin by typing <code>/aetherfit</code> in chat.</li>
+    </ol>
+  </section>
+
+  <section id="commands">
+    <h2>Command usage</h2>
+    <dl class="commands">
+      <dt><code>/aetherfit</code></dt>
+      <dd>Opens the main interface.</dd>
+
+      <dt><code>/aetherfit random</code></dt>
+      <dd>Apply a random design from your entire collection of designs.</dd>
+
+      <dt><code>/aetherfit tag &lt;tag1,tag2,...&gt;</code></dt>
+      <dd>Apply a random design that has all of the listed tags. Separate multiple tags with commas.</dd>
+
+      <dt><code>/aetherfit tag favourite &lt;tag1,tag2,...&gt;</code></dt>
+      <dd>Same, but only picks from your favourites.</dd>
+
+      <dt><code>/aetherfit job</code></dt>
+      <dd>Apply a random design associated with your current job. Job associations are set per-design in the design details pane.</dd>
+
+      <dt><code>/aetherfit favourite [job]</code></dt>
+      <dd>Apply a random favourite design. Add <code>job</code> to only pick favourites associated with your current job.</dd>
+
+      <dt><code>/aetherfit last</code></dt>
+      <dd>Reapply the last design you had worn.</dd>
+
+      <dt><code>/aetherfit revert</code></dt>
+      <dd>Revert your character to the game's state.</dd>
+
+      <dt><code>/aetherfit help</code></dt>
+      <dd>List these commands in chat.</dd>
+    </dl>
+  </section>
+
+</main>
+
+<footer>
+  <p>
+    Licensed under
+    <a href="https://github.com/Kussie/Aetherfit/blob/master/LICENSE.md">AGPL-3.0</a>
+    &middot;
+    <a href="https://github.com/Kussie/Aetherfit">Source on GitHub</a>
+    &middot;
+    <a href="https://github.com/Kussie/Aetherfit/releases">Releases</a>
+  </p>
+</footer>
+
+</body>
+</html>
