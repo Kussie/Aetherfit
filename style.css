@@ -62,8 +62,8 @@ pre code {
 }
 
 .hero-icon {
-  width: 96px;
-  height: 96px;
+  width: 140px;
+  height: 140px;
   border-radius: 20%;
   box-shadow: 0 0 0 1px var(--border);
 }
