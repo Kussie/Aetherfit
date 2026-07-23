@@ -62,9 +62,10 @@ pre code {
 }
 
 .hero-icon {
-  width: 140px;
-  height: 140px;
-  border-radius: 20%;
+  /* Source image is 720x480 (3:2) - constrain width only so it isn't stretched to a square. */
+  width: 220px;
+  height: auto;
+  border-radius: 16px;
   box-shadow: 0 0 0 1px var(--border);
 }
 
