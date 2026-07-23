@@ -20,24 +20,27 @@ internal static class Pills
     public static void DrawTagJobFilterList(
         IReadOnlyList<string> availableTags,
         IReadOnlyList<(uint RowId, string Name, JobRole? Role)> availableJobs,
+        IReadOnlyList<(string Directory, string DisplayName)> availableMods,
         Dictionary<string, bool> filterTags,
         Dictionary<uint, bool> filterJobs,
+        Dictionary<string, bool> filterMods,
         Func<uint, IDalamudTextureWrap?> getJobIcon,
         string idPrefix,
         float scrollWidth,
         string emptyMessage)
     {
-        if (availableTags.Count == 0 && availableJobs.Count == 0)
+        if (availableTags.Count == 0 && availableJobs.Count == 0 && availableMods.Count == 0)
         {
             ImGui.TextDisabled(emptyMessage);
         }
         else
         {
             var rowHeight = ImGui.GetTextLineHeightWithSpacing();
-            // Account for the "Tags"/"Jobs" headings and any role headings interleaved with the job rows.
+            // Account for the "Tags"/"Jobs"/"Mods" headings and any role headings interleaved with the job rows.
             var jobRoleHeadings = availableJobs.Select(j => j.Role).Distinct().Count(r => r != null);
             var totalRows = (availableTags.Count > 0 ? availableTags.Count + 1 : 0)
-                          + (availableJobs.Count > 0 ? availableJobs.Count + jobRoleHeadings + 1 : 0);
+                          + (availableJobs.Count > 0 ? availableJobs.Count + jobRoleHeadings + 1 : 0)
+                          + (availableMods.Count > 0 ? availableMods.Count + 1 : 0);
             var listHeight = Math.Min(totalRows, 12) * rowHeight;
 
             using var scroll = ImRaii.Child($"{idPrefix}List", new Vector2(scrollWidth, listHeight), false);
@@ -71,6 +74,16 @@ internal static class Pills
                         if (DrawJobFilterCheckbox(job.Name, filterJobs.GetFilterState(job.RowId), icon, lineH, $"{idPrefix}JobCb{job.RowId}"))
                             filterJobs.CycleFilterState(job.RowId);
                     }
+                }
+
+                if (availableMods.Count > 0)
+                {
+                    if (availableTags.Count > 0 || availableJobs.Count > 0)
+                        ImGui.Spacing();
+                    ImGui.TextColored(UiTheme.SectionHeader, "Mods");
+                    foreach (var mod in availableMods)
+                        if (DrawFilterCheckbox(mod.DisplayName, filterMods.GetFilterState(mod.Directory), $"{idPrefix}ModCb{mod.Directory}"))
+                            filterMods.CycleFilterState(mod.Directory);
                 }
             }
         }

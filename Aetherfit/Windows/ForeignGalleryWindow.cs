@@ -207,9 +207,12 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
             .ToList();
 
         var emptyMessage = filterSearchText.Length > 0 ? "No matching tags or jobs." : "Nothing to filter by.";
-        Pills.DrawTagJobFilterList(availableTags, availableJobs, filterTags, filterJobs,
+        // Imported galleries carry no mod attribution, so there's nothing to filter by mod here.
+        Pills.DrawTagJobFilterList(availableTags, availableJobs, Array.Empty<(string, string)>(), filterTags, filterJobs, NoModFilter,
             plugin.GameData.GetJobIcon, "foreign", 260 * ImGuiHelpers.GlobalScale, emptyMessage);
     }
+
+    private static readonly Dictionary<string, bool> NoModFilter = new();
 
     private void DrawGrid(List<ForeignDesign> visible)
     {

@@ -23,18 +23,21 @@ public partial class MainWindow
     // true = must have the tag/job, false = must not have it; a key absent from the map is left alone.
     private readonly Dictionary<string, bool> filterTags = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<uint, bool> filterJobs = new();
+    private readonly Dictionary<string, bool> filterMods = new(StringComparer.OrdinalIgnoreCase);
     private ImageFilterMode filterImage = ImageFilterMode.All;
     private bool filterFavourites;
     // Vanilla = no mods attached, Modded = has mods. Only one can be on at a time (see DrawVanillaToggle/DrawModdedToggle).
     private bool filterVanillaOnly;
     private bool filterModdedOnly;
     private List<string> availableTagsForFilter = new();
+    private List<(string Directory, string DisplayName)> availableModsForFilter = new();
     private int cachedAvailableTagsGeneration = -1;
     private string tagSearchText = string.Empty;
 
     private bool HasAnyFilter => filterName.Length > 0
                               || filterTags.Count > 0
                               || filterJobs.Count > 0
+                              || filterMods.Count > 0
                               || filterImage != ImageFilterMode.All
                               || filterFavourites
                               || filterVanillaOnly
@@ -43,6 +46,7 @@ public partial class MainWindow
     private int ActiveFilterCount => (filterName.Length > 0 ? 1 : 0)
                                    + filterTags.Count
                                    + filterJobs.Count
+                                   + filterMods.Count
                                    + (filterImage != ImageFilterMode.All ? 1 : 0)
                                    + (filterFavourites ? 1 : 0)
                                    + (filterVanillaOnly ? 1 : 0)
@@ -116,6 +120,7 @@ public partial class MainWindow
         searchEquipmentName = false;
         filterTags.Clear();
         filterJobs.Clear();
+        filterMods.Clear();
         filterImage = ImageFilterMode.All;
         filterFavourites = false;
         filterVanillaOnly = false;
@@ -259,6 +264,7 @@ public partial class MainWindow
         if (cachedAvailableTagsGeneration == designListGeneration)
             return;
         availableTagsForFilter = plugin.Configuration.DistinctSortedTags();
+        availableModsForFilter = plugin.Configuration.DistinctMods();
         cachedAvailableTagsGeneration = designListGeneration;
     }
 
@@ -266,8 +272,8 @@ public partial class MainWindow
     // as an input instead of a stray centered label. Returns true when clicked.
     private bool DrawTagJobPickerButton(float width)
     {
-        var count = filterTags.Count + filterJobs.Count;
-        var label = count == 0 ? "Filter by tag(s) or job..." : count == 1 ? "1 tag/job filter active" : $"{count} tag/job filters active";
+        var count = filterTags.Count + filterJobs.Count + filterMods.Count;
+        var label = count == 0 ? "Filter by tag(s), job or mod..." : count == 1 ? "1 tag/job/mod filter active" : $"{count} tag/job/mod filters active";
 
         ImGui.PushStyleVar(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f));
         ImGui.PushStyleColor(ImGuiCol.Button, ImGui.GetColorU32(ImGuiCol.FrameBg));
@@ -306,7 +312,7 @@ public partial class MainWindow
         var allJobs = plugin.GameData.GetSelectableJobs();
 
         ImGui.SetNextItemWidth(260 * scale);
-        ImGui.InputTextWithHint("##tagJobSearch", "Search tags or jobs...", ref tagSearchText, 64);
+        ImGui.InputTextWithHint("##tagJobSearch", "Search tags, jobs or mods...", ref tagSearchText, 64);
         ImGui.Separator();
 
         var matchingTags = availableTagsForFilter
@@ -316,11 +322,14 @@ public partial class MainWindow
             .Where(j => tagSearchText.Length == 0 || j.Name.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase))
             .Select(j => (j.RowId, j.Name, (JobRole?)j.Role))
             .ToList();
+        var matchingMods = availableModsForFilter
+            .Where(m => tagSearchText.Length == 0 || m.DisplayName.Contains(tagSearchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
-        var emptyMessage = availableTagsForFilter.Count == 0 && allJobs.Count == 0
-            ? "No tags or jobs to filter by yet."
-            : "No matching tags or jobs.";
-        Pills.DrawTagJobFilterList(matchingTags, matchingJobs, filterTags, filterJobs,
+        var emptyMessage = availableTagsForFilter.Count == 0 && allJobs.Count == 0 && availableModsForFilter.Count == 0
+            ? "No tags, jobs or mods to filter by yet."
+            : "No matching tags, jobs or mods.";
+        Pills.DrawTagJobFilterList(matchingTags, matchingJobs, matchingMods, filterTags, filterJobs, filterMods,
             plugin.GameData.GetJobIcon, "filter", 260 * scale, emptyMessage);
     }
 
@@ -364,6 +373,15 @@ public partial class MainWindow
 
         if (!filterJobs.MatchesFilter(plugin.Configuration.GetJobAssociations(design.Id)))
             return false;
+
+        if (filterMods.Count > 0)
+        {
+            // Explicit <string> forces the plain-equality overload; without it, overload resolution
+            // would pick the tag-segment-matching one since filterMods is also string-keyed.
+            var modDirectories = cached?.Mods.Select(m => m.Directory).ToList() ?? new List<string>();
+            if (!filterMods.MatchesFilter<string>(modDirectories))
+                return false;
+        }
 
         if (filterImage != ImageFilterMode.All)
         {

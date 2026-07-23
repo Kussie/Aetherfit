@@ -41,6 +41,7 @@ public partial class MainWindow
     private ImageFilterMode cachedFilterImage;
     private Dictionary<string, bool> cachedFilterTags = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<uint, bool> cachedFilterJobs = new();
+    private Dictionary<string, bool> cachedFilterMods = new(StringComparer.OrdinalIgnoreCase);
     private GallerySortField cachedSortField;
     private bool cachedSortAscending = true;
     private bool cachedFilterFavourites;
@@ -214,6 +215,7 @@ public partial class MainWindow
         cachedSearchEquipmentName != searchEquipmentName ||
         !FiltersEqual(cachedFilterTags, filterTags) ||
         !FiltersEqual(cachedFilterJobs, filterJobs) ||
+        !FiltersEqual(cachedFilterMods, filterMods) ||
         cachedFilterFavourites != filterFavourites ||
         cachedFilterVanillaOnly != filterVanillaOnly ||
         cachedFilterModdedOnly != filterModdedOnly ||
@@ -237,6 +239,7 @@ public partial class MainWindow
         cachedSearchEquipmentName = searchEquipmentName;
         cachedFilterTags = new Dictionary<string, bool>(filterTags, StringComparer.OrdinalIgnoreCase);
         cachedFilterJobs = new Dictionary<uint, bool>(filterJobs);
+        cachedFilterMods = new Dictionary<string, bool>(filterMods, StringComparer.OrdinalIgnoreCase);
         cachedFilterFavourites = filterFavourites;
         cachedFilterVanillaOnly = filterVanillaOnly;
         cachedFilterModdedOnly = filterModdedOnly;
