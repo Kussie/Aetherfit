@@ -31,13 +31,20 @@ public partial class MainWindow
 
         ImGui.Separator();
 
+        var liveSharingEnabled = plugin.FeatureFlags.EnableLiveSharing;
+
         // Not gated on IsBusy: if a receive is already running, clicking this just brings the existing
         // window back to the front instead of starting a new one.
-        if (ImGui.Selectable("From Live Share..."))
-            OpenReceiveLiveDialog();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(plugin.LiveShare.IsBusy
-                ? "Reopen the receive in progress."
-                : "Receive a gallery directly from another online player.");
+        using (ImRaii.Disabled(!liveSharingEnabled))
+        {
+            if (ImGui.Selectable("From Live Share..."))
+                OpenReceiveLiveDialog();
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(!liveSharingEnabled
+                ? "Live sharing is temporarily disabled."
+                : plugin.LiveShare.IsBusy
+                    ? "Reopen the receive in progress."
+                    : "Receive a gallery directly from another online player.");
     }
 }

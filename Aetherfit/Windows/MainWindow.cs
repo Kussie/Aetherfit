@@ -446,15 +446,22 @@ public partial class MainWindow : Window, IDisposable
 
         ImGui.Separator();
 
+        var liveSharingEnabled = plugin.FeatureFlags.EnableLiveSharing;
+
         // Not gated on IsBusy: if a share is already running, clicking this just reopens the modal
         // on its current state (pairing code, progress, etc.) instead of starting a new one - the
         // only way back in after the popup's been dismissed by clicking away.
-        if (ImGui.Selectable("Share Live..."))
-            OpenShareLiveDialog();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(plugin.LiveShare.IsBusy
-                ? "Reopen the share in progress."
-                : "Share your gallery directly with another online player.");
+        using (ImRaii.Disabled(!liveSharingEnabled))
+        {
+            if (ImGui.Selectable("Share Live..."))
+                OpenShareLiveDialog();
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(!liveSharingEnabled
+                ? "Live sharing is temporarily disabled."
+                : plugin.LiveShare.IsBusy
+                    ? "Reopen the share in progress."
+                    : "Share your gallery directly with another online player.");
     }
 
     private void DrawBottomButtons()
