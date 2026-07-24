@@ -5,7 +5,7 @@
 
 Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit builds on top of it with a more intuitive, gallery-style frontend for browsing and applying those designs, while still relying on Glamourer for the actual design data and application process and keeping it as the source of truth for all your designs.
 
-Aetherfit is meant to be a lightweight, easy-to-use alternative to the default Glamourer interface — making it much easier to quickly find and apply the perfect design for any occasion.
+Aetherfit is meant to be a lightweight, easy-to-use alternative to the default Glamourer interface — making it much easier to quickly find and apply the perfect design for any occasion. You'll still use Glamourer itself to create, edit, and manage your actual designs; Aetherfit is focused purely on making it quick and easy to choose which one to switch to.
 
 It also provides a quick and easy way to preview your designs with screenshots and images that can be added to them. Screenshots can either be loaded from disk or taken directly in game.
 
