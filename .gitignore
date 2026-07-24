@@ -1,0 +1,15 @@
+.vs/
+.idea/
+.vscode/
+*.user
+.DS_Store
+Thumbs.db
+
+# Leftovers from switching to master/testing in this same working directory.
+Aetherfit/
+Aetherfit.sln
+Aetherfit.code-workspace
+Data/
+repo.json
+obj/
+bin/
