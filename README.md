@@ -3,11 +3,13 @@
 
 **Requires:** [Penumbra](https://github.com/xivdev/Penumbra), [Glamourer](https://github.com/Ottermandias/Glamourer)
 
-Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit aims to provide a more intuitive and user-friendly interface for selecting and applying designs, while still relying on Glamourer for the actual design data and application process and keeping it as the source of truth for all your designs.
+Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit builds on top of it with a more intuitive, gallery-style frontend for browsing and applying those designs, while still relying on Glamourer for the actual design data and application process and keeping it as the source of truth for all your designs.
 
-Aetherfit is designed to be a lightweight and easy-to-use alternative to the default Glamourer interface, allowing you to quickly and easily find and apply designs to your character. Making it much easier to find the perfect design to suit any occasion.
+Aetherfit is meant to be a lightweight, easy-to-use alternative to the default Glamourer interface — making it much easier to quickly find and apply the perfect design for any occasion.
 
-It provides a quick and easy way to preview your designs with screenshots and images that can be added to your designs. Screenshots can either be loaded from disk or taken directly in game.
+It also provides a quick and easy way to preview your designs with screenshots and images that can be added to them. Screenshots can either be loaded from disk or taken directly in game.
+
+> **Tip:** this isn't required, but if your designs rely on mods through Penumbra, the ideal setup is to use mod associations with temporary settings on your Glamourer designs, rather than enabling everything all the time. That way the relevant mods are automatically turned on and off as you switch between designs. See [this guide](https://docs.google.com/document/d/1WxaNWRRTlm5o6KShM_so54yoD5RDPIpFg2UqSid71ek/edit?tab=t.nb010xi108ph#heading=h.o8utyg3da3rc) for a brief explanation of mod associations and temporary settings.
 
 It adds the following functionality:
 - Browse designs by tags
@@ -27,10 +29,17 @@ It adds the following functionality:
 
 ### Installation
 
-Add this repo to your experimental tab under /xlplugins `https://raw.githubusercontent.com/Kussie/Aetherfit/master/repo.json`
-Save, then find Aetherfit in the main /xlplugins window.
+Open the Dalamud Settings menu in game and follow the steps below. This can be done through the button at the bottom of the plugin installer or by typing `/xlsettings` in the chat.
 
-You can then access the plugin by typing `/aetherfit` in chat.
+1. Go to the **"Experimental"** tab.
+2. Under Custom Plugin Repositories, enter the repository URL into the empty box at the bottom:
+   ```
+   https://raw.githubusercontent.com/Kussie/Aetherfit/master/repo.json
+   ```
+3. Click the **"+"** button.
+4. Click the **"Save and Close"** button.
+
+Once added, find Aetherfit in the main `/xlplugins` window and install it. You can then access the plugin by typing `/aetherfit` in chat.
 
 ### Command Usage
 `/aetherfit` - Opens the main interface.
@@ -45,7 +54,7 @@ You can then access the plugin by typing `/aetherfit` in chat.
 
 `/aetherfit favourite [job]` - Apply a random favourite design. Add `job` to only pick favourites associated with your current job.
 
-`/aetherfit last` - Reapply the last design you had wo
+`/aetherfit last` - Reapply the last design you had worn.
 
 `/aetherfit revert` - Revert your character to the game's state.
 
