@@ -1,5 +1,5 @@
 using System.Numerics;
-using Aetherfit.Sharing;
+using Aetherfit.Services.Sharing;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility.Raii;

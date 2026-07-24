@@ -8,7 +8,7 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PackageProjectUrl>https://github.com/Kussie/Aetherfit</PackageProjectUrl>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
-    <IconUrl>https://raw.githubusercontent.com/Kussie/Aetherfit/master/Data/icon.png</IconUrl>
+    <IconUrl>https://raw.githubusercontent.com/Kussie/Aetherfit/master/Data/icon-square.png</IconUrl>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 

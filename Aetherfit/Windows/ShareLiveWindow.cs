@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using Aetherfit.Sharing;
+using Aetherfit.Services.Sharing;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -10,9 +10,6 @@ using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherfit.Windows;
 
-// A real window rather than an ImGui popup - a popup closes the instant you click anywhere else (e.g.
-// to paste the code into a chat tell), which made it look like the share had died. This only closes
-// via its own close button/X.
 public sealed class ShareLiveWindow : LiveShareWindowBase
 {
     private static readonly int[] TtlPresets = { 15, 30, 60 };

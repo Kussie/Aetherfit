@@ -6,7 +6,9 @@ using Dalamud.Plugin;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using Aetherfit.Services;
-using Aetherfit.Sharing;
+using Aetherfit.Services.Integrations;
+using Aetherfit.Services.Screenshots;
+using Aetherfit.Services.Sharing;
 using Aetherfit.Windows;
 using Glamourer.Api.Enums;
 
@@ -28,11 +30,14 @@ public sealed class Plugin : IDalamudPlugin
     // Prefix on every chat message we print, so players can tell our output apart.
     public const string ChatPrefix = "[Aetherfit] ";
 
+    public static readonly string Version = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "unknown";
+
     private const string CommandName = "/aetherfit";
 
     public Configuration Configuration { get; init; }
     public OutfitCacheStore OutfitCache { get; init; }
     public GlamourerService Glamourer { get; init; }
+    public GlamourerDesignFileService GlamourerDesignFile { get; init; }
     public PenumbraService Penumbra { get; init; }
     public GameDataService GameData { get; init; }
     public DesignAttributionService Attribution { get; init; }
@@ -41,7 +46,6 @@ public sealed class Plugin : IDalamudPlugin
     public GallerySharingService GallerySharing { get; init; }
     public TagModelStore TagModel { get; init; }
     public TagSuggestionService TagSuggestions { get; init; }
-    public GlamourerDesignFileService GlamourerDesignFile { get; init; }
     public GalleryLiveShareService LiveShare { get; init; }
     public RestoreSequenceService Restore { get; init; }
     public DesignApplyService DesignApply { get; init; }
@@ -89,7 +93,24 @@ public sealed class Plugin : IDalamudPlugin
         OutfitCache = new OutfitCacheStore(Configuration);
         OutfitCache.Load();
 
+        // First time DesignMeta ships: freeze each design's current (Glamourer-sourced, at the time) Tags/
+        // Description as the new locally-owned baseline, so nobody's tags/description silently disappear
+        // on upgrade. Must run after OutfitCache.Load() above - CachedOutfits is empty before that.
+        if (Configuration.DesignMeta.Count == 0 && Configuration.CachedOutfits.Count > 0)
+        {
+            foreach (var (id, outfit) in Configuration.CachedOutfits)
+            {
+                Configuration.DesignMeta[id] = new LocalDesignMeta
+                {
+                    Description = outfit.Description,
+                    Tags = new List<string>(outfit.Tags),
+                };
+            }
+            Configuration.Save();
+        }
+
         Glamourer = new GlamourerService();
+        GlamourerDesignFile = new GlamourerDesignFileService();
         Penumbra = new PenumbraService();
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);
@@ -98,7 +119,6 @@ public sealed class Plugin : IDalamudPlugin
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
         TagModel = new TagModelStore(Configuration);
         TagSuggestions = new TagSuggestionService(TagModel, Configuration);
-        GlamourerDesignFile = new GlamourerDesignFileService(Configuration, OutfitCache);
         LiveShare = new GalleryLiveShareService(this);
         DesignApply = new DesignApplyService(this);
 
@@ -271,11 +291,6 @@ public sealed class Plugin : IDalamudPlugin
                 MainWindow.RevertAppearance();
                 break;
 
-            case "anims":
-            case "animations":
-                PrintCurrentAnimations();
-                break;
-
             case "help":
                 PrintUsage();
                 break;
@@ -285,39 +300,6 @@ public sealed class Plugin : IDalamudPlugin
                 PrintUsage();
                 break;
         }
-    }
-
-    private void PrintCurrentAnimations()
-    {
-        var snapshot = AnimationInspectionService.ReadLocalPlayerTimelines();
-        if (snapshot == null)
-        {
-            ChatGui.PrintError($"{ChatPrefix}Log in to a character first.");
-            return;
-        }
-
-        if (snapshot.ActiveSlots.Count == 0)
-        {
-            ChatGui.Print($"{ChatPrefix}No animation timelines are currently playing.");
-            return;
-        }
-
-        ChatGui.Print($"{ChatPrefix}Currently playing animation timelines:");
-        foreach (var (slot, timelineId, speed) in snapshot.ActiveSlots)
-        {
-            var line = $"{ChatPrefix}  {AnimationInspectionService.SlotLabel(slot)}: "
-                     + $"{timelineId} — {GameData.ResolveActionTimelineName(timelineId)}";
-            if (Math.Abs(speed - 1f) > 0.001f)
-                line += $" (speed ×{speed:0.##})";
-            ChatGui.Print(line);
-        }
-
-        if (snapshot.BaseOverride != 0)
-            ChatGui.Print($"{ChatPrefix}  Base override: {snapshot.BaseOverride} — {GameData.ResolveActionTimelineName(snapshot.BaseOverride)}");
-        if (snapshot.LipsOverride != 0)
-            ChatGui.Print($"{ChatPrefix}  Lips override: {snapshot.LipsOverride} — {GameData.ResolveActionTimelineName(snapshot.LipsOverride)}");
-        if (Math.Abs(snapshot.OverallSpeed - 1f) > 0.001f)
-            ChatGui.Print($"{ChatPrefix}  Overall speed: ×{snapshot.OverallSpeed:0.##}");
     }
 
     private void OnLogin() => Restore.BeginLoginRestore();

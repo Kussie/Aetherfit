@@ -4,7 +4,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Screenshots;
 
 internal static class ScreenshotCaptureService
 {

@@ -3,13 +3,10 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 
-namespace Aetherfit.Windows;
+namespace Aetherfit.Utils;
 
 internal static class WindowExtensions
 {
-    // Real windows don't auto-position at the cursor the way a popup does, which reads as
-    // "opens in the top-left corner" - this makes them appear where you actually clicked instead,
-    // clamped so a fixed-size window never opens partly off-screen.
     public static void PositionNearMouse(this Window window)
     {
         var viewport = ImGui.GetMainViewport();
