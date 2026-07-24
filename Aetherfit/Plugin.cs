@@ -35,6 +35,7 @@ public sealed class Plugin : IDalamudPlugin
     private const string CommandName = "/aetherfit";
 
     public Configuration Configuration { get; init; }
+    public FeatureFlagsService FeatureFlags { get; init; }
     public OutfitCacheStore OutfitCache { get; init; }
     public GlamourerService Glamourer { get; init; }
     public GlamourerDesignFileService GlamourerDesignFile { get; init; }
@@ -87,6 +88,9 @@ public sealed class Plugin : IDalamudPlugin
         // Attached after the migrations above so those still write directly.
         configSaver = new ConfigurationSaver(Configuration);
         Configuration.AttachSaver(configSaver);
+
+        FeatureFlags = new FeatureFlagsService();
+        FeatureFlags.Load();
 
         OutfitCache = new OutfitCacheStore(Configuration);
         OutfitCache.Load();
@@ -156,6 +160,8 @@ public sealed class Plugin : IDalamudPlugin
         ClientState.TerritoryChanged += OnTerritoryChanged;
         Glamourer.OnExternalStateFinalized += OnGlamourerStateFinalized;
         Glamourer.OnAnyStateFinalized += OnGlamourerAnyStateFinalized;
+
+        _ = FeatureFlags.RefreshAsync();
     }
 
     public void Dispose()

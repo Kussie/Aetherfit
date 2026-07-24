@@ -75,6 +75,12 @@ public sealed class GalleryLiveShareService : IDisposable
 
     public void HostAsync(string sharerLabel, IReadOnlySet<Guid>? onlyIds, int ttlMinutes)
     {
+        if (!plugin.FeatureFlags.EnableLiveSharing)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Live sharing is temporarily disabled.");
+            return;
+        }
+
         if (IsBusy)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}A live share is already running.");
@@ -94,6 +100,12 @@ public sealed class GalleryLiveShareService : IDisposable
 
     public void JoinAsync(string code)
     {
+        if (!plugin.FeatureFlags.EnableLiveSharing)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Live sharing is temporarily disabled.");
+            return;
+        }
+
         if (IsBusy)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}A live share is already running.");
