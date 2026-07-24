@@ -8,7 +8,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Tagging;
 
 // A loaded WD-v3 tagger model. Not thread-safe - TagSuggestionService serializes access.
 internal sealed class WdTagger : IDisposable

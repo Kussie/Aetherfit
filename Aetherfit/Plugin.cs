@@ -9,6 +9,7 @@ using Aetherfit.Services;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Screenshots;
 using Aetherfit.Services.Sharing;
+using Aetherfit.Services.Tagging;
 using Aetherfit.Windows;
 using Glamourer.Api.Enums;
 
