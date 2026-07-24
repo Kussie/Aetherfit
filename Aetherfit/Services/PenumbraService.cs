@@ -24,6 +24,33 @@ public sealed class PenumbraService
         getChangedItems = new GetChangedItems(Plugin.PluginInterface);
     }
 
+    // Penumbra's own reported ApiVersion (BreakingVersion/FeatureVersion in its PenumbraApi.cs) - confirmed
+    // against Penumbra's stable branch source. This happens to match the Penumbra.Api package version below
+    // it today, but the two are versioned independently by Penumbra's own author; don't assume that holds
+    // after bumping the package reference - re-check the actual value in Penumbra's source.
+    public static readonly (int Major, int Minor) MinApiVersion = (5, 15);
+
+    public PluginIntegrationInfo CheckIntegration()
+    {
+        var exposed = Plugin.PluginInterface.InstalledPlugins.FirstOrDefault(p => p.InternalName == "Penumbra");
+        if (exposed == null)
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotInstalled, null, null);
+        if (!exposed.IsLoaded)
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+
+        try
+        {
+            var (breaking, features) = new ApiVersion(Plugin.PluginInterface).Invoke();
+            var ok = breaking == MinApiVersion.Major && features >= MinApiVersion.Minor;
+            return new PluginIntegrationInfo(ok ? PluginIntegrationStatus.Ok : PluginIntegrationStatus.VersionTooLow, exposed.Version, (breaking, features));
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query Penumbra API version");
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+        }
+    }
+
     public void OpenMod(string modDirectory, string modName)
     {
         try
