@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Aetherfit.Windows;
+namespace Aetherfit.Utils;
 
 // Orders strings so embedded numbers sort by value rather than lexically ("Outfit 2" before "Outfit 10").
 // Case-insensitive (ordinal upper-invariant). Shared by the folder tree, the local gallery, and the shared gallery.

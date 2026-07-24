@@ -1,6 +1,6 @@
 using System;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Utils;
 
 public enum PluginIntegrationStatus
 {

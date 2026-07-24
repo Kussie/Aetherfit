@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Utils;
 using Glamourer.Api.Enums;
 using Glamourer.Api.Helpers;
 using Glamourer.Api.IpcSubscribers;
 using Newtonsoft.Json.Linq;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Integrations;
 
 public sealed class GlamourerService : IDisposable
 {

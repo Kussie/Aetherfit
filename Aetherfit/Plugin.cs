@@ -6,7 +6,9 @@ using Dalamud.Plugin;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using Aetherfit.Services;
-using Aetherfit.Sharing;
+using Aetherfit.Services.Integrations;
+using Aetherfit.Services.Screenshots;
+using Aetherfit.Services.Sharing;
 using Aetherfit.Windows;
 using Glamourer.Api.Enums;
 

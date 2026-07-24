@@ -1,6 +1,6 @@
 using System;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Utils;
 
 internal static class ServiceErrors
 {

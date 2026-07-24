@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Services.Integrations;
 
 namespace Aetherfit.Services;
 

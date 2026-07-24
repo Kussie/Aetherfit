@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Aetherfit.Sharing;
+namespace Aetherfit.Models;
 
 // What goes inside a ".afgallery" bundle. Separate from Configuration/CachedOutfit on purpose, so we can change the
 // file format without touching the live config. Only carries the basic info (name, description, tags, jobs) and
@@ -67,8 +67,6 @@ public sealed class SharedMod
     public ModState State { get; set; }
 }
 
-// One image in a bundle. Zip bundles point at a zip entry (Entry); the old inline bundles stuffed the bytes
-// straight into Data as base64. We still read both. Ext is just the original extension so the bytes decode right.
 [Serializable]
 public sealed class SharedImage
 {
@@ -77,8 +75,6 @@ public sealed class SharedImage
     public string? Data { get; set; }   // base64 of the raw image bytes (legacy inline bundles)
 }
 
-// The unpacked version the viewer actually draws. Images have already been written out to a cache folder (named
-// by OriginKey) so we can hand their paths to TextureProvider.GetFromFile like any other image.
 public sealed class ForeignGallery
 {
     public string OriginKey { get; init; } = string.Empty;
