@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Aetherfit.Services;
@@ -30,10 +32,21 @@ public partial class MainWindow
     private const string CoverDragType = "AF_COVER";
     private int draggedImageIndex = -1;
 
+    private const string PullDescriptionPopupId = "Pull Description from Glamourer?##pullDescConfirm";
+    private const string ForceSyncPopupId = "Force Sync to Glamourer?##forceSyncConfirm";
+    private const string AddTagPopupId = "AddDesignTagPopup";
+    private string addTagSearchText = string.Empty;
+
+    // Reset whenever the selected design changes so edit mode always starts fresh for the new selection.
+    private Guid? descriptionEditId;
+    private bool descriptionEditing;
+    private string descriptionEditBuffer = string.Empty;
+    private string? descriptionOriginalValue;
+
     private void DrawLeftPane()
     {
         ImGui.SetWindowFontScale(UiTheme.HeaderFontScale);
-        ImGui.TextColored(UiTheme.GoldAccent, "Glamourer Designs");
+        ImGui.TextColored(UiTheme.GoldAccent, "Your Designs");
         ImGui.SetWindowFontScale(1.0f);
         ImGui.Separator();
 
@@ -50,7 +63,7 @@ public partial class MainWindow
 
         if (designsCount == 0)
         {
-            ImGui.Text("No Glamourer designs found.");
+            ImGui.Text("No designs found.");
             return;
         }
 
@@ -330,7 +343,7 @@ public partial class MainWindow
 
                 // Measure the action cluster first so the title can be ellipsized to the space that remains.
                 var frameH = ImGui.GetFrameHeight();
-                float starW, eyeW, linkW;
+                float starW, eyeW, linkW, syncW;
                 using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
                 {
                     starW = ImGui.CalcTextSize(FontAwesomeIcon.Star.ToIconString()).X
@@ -339,8 +352,10 @@ public partial class MainWindow
                          + (style.FramePadding.X * 2);
                     linkW = ImGui.CalcTextSize(FontAwesomeIcon.ExternalLinkAlt.ToIconString()).X
                           + (style.FramePadding.X * 2);
+                    syncW = ImGui.CalcTextSize(FontAwesomeIcon.CloudUploadAlt.ToIconString()).X
+                          + (style.FramePadding.X * 2);
                 }
-                var actionsW = starW + eyeW + linkW + (inner * 3);
+                var actionsW = starW + eyeW + linkW + syncW + (inner * 4);
 
                 var rowTopY = ImGui.GetCursorPosY();
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (6f * ImGuiHelpers.GlobalScale));
@@ -396,6 +411,27 @@ public partial class MainWindow
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Open in Glamourer");
 
+                ImGui.SameLine(0, inner);
+                ImGui.SetCursorPosY(actionY);
+                if (HeaderIconButton("forceSync", FontAwesomeIcon.CloudUploadAlt, null, new Vector2(syncW, frameH)))
+                    ConfirmDialog.Open(ForceSyncPopupId);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Force sync Tags and Description to the Glamourer design file");
+
+                if (ConfirmDialog.Draw(ForceSyncPopupId,
+                        $"This will overwrite the Description and Tags stored in the Glamourer design file for \"{details.Name}\" "
+                        + "with what's shown here in Aetherfit, without touching anything else in the file.\n\n"
+                        + "If this design is currently open in Glamourer's own editor, Glamourer may discard this change "
+                        + "the moment you touch it there or on its next autosave. Close the design in Glamourer first.",
+                        "Force Sync"))
+                {
+                    var result = plugin.GlamourerDesignFile.PushMetadataToGlamourer(id, details.Description, details.Tags);
+                    if (result.Success)
+                        Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Pushed Tags and Description to Glamourer for \"{details.Name}\"");
+                    else
+                        Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
+                }
+
                 ImGui.Spacing();
 
                 DrawJobAssociations(id);
@@ -403,28 +439,9 @@ public partial class MainWindow
                 if (DrawCollapsibleSubheader("Tags", ref tagsPanelOpen))
                 {
                     ImGui.Indent();
-                    if (details.Tags.Count > 0)
-                    {
-                        for (var i = 0; i < details.Tags.Count; i++)
-                        {
-                            if (i > 0) ImGui.SameLine();
-                            var tag = details.Tags[i];
-                            DesignDetailView.TextColoredUnformatted(UiTheme.ModLink, tag);
-                            if (ImGui.IsItemHovered())
-                            {
-                                ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-                                ImGui.SetTooltip($"Show all designs tagged \"{tag}\"");
-                                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                                    filterTags[tag] = true;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        DrawSetInGlamourerNotice(
-                            "This design has no tags yet — tags are added to the design in Glamourer.",
-                            id, details.Name);
-                    }
+                    DrawTagsRow(id, details);
+                    if (details.Tags.Count == 0)
+                        ImGui.TextDisabled("This design has no tags set.");
                     ImGui.Unindent();
                     ImGui.Spacing();
                 }
@@ -432,12 +449,7 @@ public partial class MainWindow
                 if (DrawCollapsibleSubheader("Description", ref descriptionPanelOpen))
                 {
                     ImGui.Indent();
-                    if (!string.IsNullOrWhiteSpace(details.Description))
-                        ImGui.TextWrapped(details.Description);
-                    else
-                        DrawSetInGlamourerNotice(
-                            "This design has no description yet — the description is edited on the design in Glamourer.",
-                            id, details.Name);
+                    DrawDescriptionEditor(id, details);
                     ImGui.Unindent();
                     ImGui.Spacing();
                 }
@@ -740,18 +752,189 @@ public partial class MainWindow
     private static string FormatFullDate(DateTimeOffset dt) =>
         dt.LocalDateTime.ToString("dddd, MMMM d, yyyy 'at' h:mm tt");
 
-    // Empty-state line for fields that live on the Glamourer design (tags, description): explains
-    // where they are edited and links straight to the design in Glamourer.
-    private void DrawSetInGlamourerNotice(string message, Guid id, string designName)
+    private void DrawTagsRow(Guid id, CachedOutfit details)
     {
-        ImGui.TextDisabled(message);
-        DesignDetailView.TextColoredUnformatted(UiTheme.ModLink, "Open this design in Glamourer");
-        if (ImGui.IsItemHovered())
+        var style = ImGui.GetStyle();
+        var spacing = style.ItemSpacing.X;
+        var availRight = ImGui.GetWindowPos().X + ImGui.GetContentRegionMax().X;
+        var cursorStart = ImGui.GetCursorScreenPos().X;
+        var lineRight = cursorStart;
+        var first = true;
+
+        string? tagToRemove = null;
+        foreach (var tag in details.Tags)
         {
-            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-            ImGui.SetTooltip($"Open \"{designName}\" in Glamourer");
-            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                plugin.Glamourer.OpenInGlamourer(id, designName);
+            var width = ImGui.CalcTextSize(tag).X;
+            Pills.PlaceItem(width, ref first, ref lineRight, cursorStart, spacing, availRight);
+
+            DesignDetailView.TextColoredUnformatted(UiTheme.ModLink, tag);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                ImGui.SetTooltip($"Show all designs tagged \"{tag}\"\nShift + right-click to remove");
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    filterTags[tag] = true;
+                else if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
+                    tagToRemove = tag;
+            }
+        }
+
+        var addWidth = ImGui.GetFrameHeight();
+        Pills.PlaceItem(addWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
+        if (ImGuiComponents.IconButton("addTag", FontAwesomeIcon.Plus))
+        {
+            addTagSearchText = string.Empty;
+            ImGui.OpenPopup(AddTagPopupId);
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Add tag");
+
+        var newTagCount = details.GlamourerTags.Count(t => !details.Tags.Contains(t, StringComparer.OrdinalIgnoreCase));
+        var refreshWidth = ImGui.GetFrameHeight();
+        Pills.PlaceItem(refreshWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
+        if (ImGuiComponents.IconButton("mergeTags", FontAwesomeIcon.Sync) && newTagCount > 0)
+        {
+            var added = plugin.Configuration.MergeTagsFromGlamourer(id, details);
+            if (added > 0)
+                Plugin.ChatGui.Print($"{Plugin.ChatPrefix}+{added} tag{(added == 1 ? "" : "s")} added from Glamourer");
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(newTagCount > 0
+                ? $"Merge {newTagCount} tag{(newTagCount == 1 ? "" : "s")} in from Glamourer"
+                : "No new tags to merge from Glamourer");
+
+        DrawAddTagPopup(id, details);
+
+        if (tagToRemove != null)
+            plugin.Configuration.RemoveTag(id, details, tagToRemove);
+    }
+
+    private void DrawAddTagPopup(Guid id, CachedOutfit details)
+    {
+        using var popup = ImRaii.Popup(AddTagPopupId);
+        if (!popup.Success)
+            return;
+
+        if (ImGui.IsWindowAppearing())
+            ImGui.SetKeyboardFocusHere();
+
+        ImGui.SetNextItemWidth(220 * ImGuiHelpers.GlobalScale);
+        var submitted = ImGui.InputTextWithHint("##addTagSearch", "Type or search a tag...", ref addTagSearchText, 64,
+            ImGuiInputTextFlags.EnterReturnsTrue);
+
+        var trimmed = addTagSearchText.Trim();
+        var existingTags = plugin.Configuration.DistinctSortedTags()
+            .Where(t => !details.Tags.Contains(t, StringComparer.OrdinalIgnoreCase))
+            .Where(t => trimmed.Length == 0 || t.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var isNewTag = trimmed.Length > 0
+            && !details.Tags.Contains(trimmed, StringComparer.OrdinalIgnoreCase)
+            && !existingTags.Contains(trimmed, StringComparer.OrdinalIgnoreCase);
+
+        if (submitted && trimmed.Length > 0)
+        {
+            plugin.Configuration.AddTag(id, details, trimmed);
+            addTagSearchText = string.Empty;
+        }
+
+        ImGui.Separator();
+
+        if (isNewTag && ImGui.Selectable($"Add new tag \"{trimmed}\""))
+        {
+            plugin.Configuration.AddTag(id, details, trimmed);
+            addTagSearchText = string.Empty;
+        }
+
+        if (existingTags.Count == 0)
+        {
+            if (!isNewTag)
+                ImGui.TextDisabled(trimmed.Length > 0 ? "No matching tags." : "All tags are already applied.");
+            return;
+        }
+
+        if (isNewTag)
+            ImGui.Separator();
+
+        var rowHeight = ImGui.GetTextLineHeightWithSpacing();
+        var listHeight = Math.Min(existingTags.Count, 8) * rowHeight;
+        using var scroll = ImRaii.Child("AddTagList", new Vector2(220 * ImGuiHelpers.GlobalScale, listHeight), false);
+        if (!scroll.Success)
+            return;
+
+        foreach (var tag in existingTags)
+        {
+            if (ImGui.Selectable(tag))
+            {
+                plugin.Configuration.AddTag(id, details, tag);
+                addTagSearchText = string.Empty;
+            }
+        }
+    }
+
+    private void DrawDescriptionEditor(Guid id, CachedOutfit details)
+    {
+        if (descriptionEditId != id)
+        {
+            descriptionEditId = id;
+            descriptionEditing = false;
+        }
+
+        if (descriptionEditing)
+        {
+            ImGui.SetNextItemWidth(-1);
+            var boxHeight = 4 * ImGui.GetTextLineHeightWithSpacing();
+            if (ImGui.InputTextMultiline("##description", ref descriptionEditBuffer, 2000, new Vector2(-1, boxHeight)))
+            {
+                var trimmed = descriptionEditBuffer.Trim();
+                plugin.Configuration.SetDescription(id, details, trimmed.Length == 0 ? null : trimmed);
+            }
+
+            if (ImGuiComponents.IconButton("descDone", FontAwesomeIcon.Check))
+                descriptionEditing = false;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Done");
+
+            ImGui.SameLine();
+            if (ImGuiComponents.IconButton("descCancel", FontAwesomeIcon.Times))
+            {
+                plugin.Configuration.SetDescription(id, details, descriptionOriginalValue);
+                descriptionEditing = false;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Cancel — restore the previous value");
+
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(details.Description))
+            ImGui.TextWrapped(details.Description);
+        else
+            ImGui.TextDisabled("This design has no description set.");
+
+        if (ImGuiComponents.IconButton("descEdit", FontAwesomeIcon.Pen))
+        {
+            descriptionOriginalValue = details.Description;
+            descriptionEditBuffer = details.Description ?? string.Empty;
+            descriptionEditing = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Edit description");
+
+        ImGui.SameLine();
+        var hasGlamourerDescription = !string.IsNullOrWhiteSpace(details.GlamourerDescription);
+        if (ImGuiComponents.IconButton("pullDescription", FontAwesomeIcon.Sync) && hasGlamourerDescription)
+            ConfirmDialog.Open(PullDescriptionPopupId);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(hasGlamourerDescription
+                ? "Replace the description above with the one currently set in Glamourer"
+                : "Glamourer has no description set for this design");
+
+        if (ConfirmDialog.Draw(PullDescriptionPopupId,
+                $"This will replace your saved description for \"{details.Name}\" with the one currently "
+                + "set on the design in Glamourer. This can't be undone.",
+                "Pull Description"))
+        {
+            plugin.Configuration.PullDescriptionFromGlamourer(id, details);
         }
     }
 

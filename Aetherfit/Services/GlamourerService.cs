@@ -20,14 +20,8 @@ public sealed class GlamourerService : IDisposable
     private bool invokingOwnChange;
     private DateTime lastOwnChangeUtc = DateTime.MinValue;
 
-    // Raised when Glamourer finalizes a state change we did not cause ourselves, e.g. the user
-    // applying a design directly in Glamourer's UI, automation, or another plugin's IPC.
     public event Action<nint, StateFinalizationType>? OnExternalStateFinalized;
 
-    // Raised for every finalization except the synchronous echo of our own IPC call - including
-    // events inside the own-change window that OnExternalStateFinalized suppresses. On a cold game
-    // start Glamourer's late work lands within seconds of our apply and overwrites it; this event
-    // is the only way to notice that.
     public event Action<nint, StateFinalizationType>? OnAnyStateFinalized;
 
     public GlamourerService()
@@ -42,10 +36,6 @@ public sealed class GlamourerService : IDisposable
 
     public void Dispose() => stateFinalized.Dispose();
 
-    // Glamourer's own reported ApiVersion (CurrentApiVersionMajor/Minor in its GlamourerApi.cs) - NOT the
-    // same number as the Glamourer.Api NuGet package version below it. The two are versioned independently
-    // by Glamourer's own author; confirm the current value against Glamourer's stable branch source when
-    // bumping this rather than assuming it tracks the package reference.
     public static readonly (int Major, int Minor) MinApiVersion = (1, 8);
 
     public PluginIntegrationInfo CheckIntegration()
@@ -241,8 +231,10 @@ public sealed class GlamourerService : IDisposable
         return new CachedOutfit
         {
             Name = name,
-            Description = description,
-            Tags = tags,
+            // Description/Tags are locally-owned (see Configuration.DesignMeta) - left at their defaults
+            // here and overlaid by the caller. Glamourer's current value rides along for the sync actions.
+            GlamourerDescription = description,
+            GlamourerTags = tags,
             CreatedAt = ReadDateTimeOffset(j["CreationDate"]),
             LastEdit = ReadDateTimeOffset(j["LastEdit"]),
             Equipment = ParseEquipment(equipment),

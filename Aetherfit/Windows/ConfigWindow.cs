@@ -102,7 +102,7 @@ public class ConfigWindow : Window, IDisposable
         ImGui.PopItemWidth();
 
         var enableLayers = cfg.EnableRandomLayers;
-        if (ImGui.Checkbox("Enable Additional Design Layers feature", ref enableLayers))
+        if (ImGui.Checkbox("Enable Additional Design Layers feature (Glamourer Designs only)", ref enableLayers))
         {
             cfg.EnableRandomLayers = enableLayers;
             cfg.Save();

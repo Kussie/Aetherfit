@@ -57,7 +57,7 @@ public partial class MainWindow
     private void DrawCoverModePane()
     {
         ImGui.SetWindowFontScale(UiTheme.HeaderFontScale);
-        ImGui.TextColored(UiTheme.GoldAccent, "Glamourer Designs");
+        ImGui.TextColored(UiTheme.GoldAccent, "Designs");
         ImGui.SetWindowFontScale(1.0f);
         ImGui.Separator();
 
