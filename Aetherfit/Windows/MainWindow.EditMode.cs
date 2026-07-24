@@ -475,10 +475,11 @@ public partial class MainWindow
         if (details.CreatedAt is not null || details.LastEdit is not null)
         {
             ImGui.Indent();
+            const string sourceText = "Source: Glamourer";
             if (details.CreatedAt is { } created)
-                DrawDateLine("Created", created);
+                DrawDateLine("Created", created, details.LastEdit is null ? sourceText : null);
             if (details.LastEdit is { } edited)
-                DrawDateLine("Last edited", edited);
+                DrawDateLine("Last edited", edited, sourceText);
             ImGui.Unindent();
         }
     }
@@ -723,11 +724,20 @@ public partial class MainWindow
             1);
     }
 
-    private static void DrawDateLine(string label, DateTimeOffset dt)
+    private static void DrawDateLine(string label, DateTimeOffset dt, string? rightText = null)
     {
         ImGui.TextDisabled($"{label}: {FormatFriendlyRelative(dt)}");
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(FormatFullDate(dt));
+
+        if (rightText == null)
+            return;
+
+        var style = ImGui.GetStyle();
+        var rightW = ImGui.CalcTextSize(rightText).X;
+        ImGui.SameLine(Math.Max(ImGui.GetCursorPosX() + style.ItemSpacing.X,
+            ImGui.GetContentRegionMax().X - rightW));
+        ImGui.TextDisabled(rightText);
     }
 
     private static string FormatFriendlyRelative(DateTimeOffset dt)

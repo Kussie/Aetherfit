@@ -53,11 +53,13 @@ public partial class MainWindow
     private int hiddenVersion;
     private int cachedHiddenVersion = -1;
     private int jobAssociationVersion;
+    private bool favouritesSectionOpen = true;
+    private bool otherDesignsSectionOpen = true;
 
     private void DrawCoverModePane()
     {
         ImGui.SetWindowFontScale(UiTheme.HeaderFontScale);
-        ImGui.TextColored(UiTheme.GoldAccent, "Designs");
+        ImGui.TextColored(UiTheme.GoldAccent, "Your Designs");
         ImGui.SetWindowFontScale(1.0f);
         ImGui.Separator();
 
@@ -269,9 +271,45 @@ public partial class MainWindow
         var thumbWidth = Math.Max(CoverMinThumbSize, (avail - (columns - 1) * spacing) / columns);
         var thumbHeight = thumbWidth * CoverAspectRatio;
 
-        for (var i = 0; i < visible.Count; i++)
+        // Favourites are only contiguous at the front of `visible` when pinning is on (see SortGalleryDesigns).
+        if (cachedPinFavourites)
         {
-            if (i % columns != 0)
+            var favourites = plugin.Configuration.FavouriteDesigns;
+            var splitIdx = visible.FindIndex(d => !favourites.Contains(d.Id));
+            if (splitIdx == -1)
+                splitIdx = visible.Count;
+
+            if (splitIdx > 0)
+            {
+                ImGui.Separator();
+                if (DrawCollapsibleSubheader($"Favourites ({splitIdx})", ref favouritesSectionOpen))
+                {
+                    ImGui.Spacing();
+                    DrawCoverGridRange(visible, 0, splitIdx, columns, thumbWidth, thumbHeight);
+                    ImGui.Spacing();
+                }
+
+                if (splitIdx < visible.Count)
+                {
+                    ImGui.Separator();
+                    if (DrawCollapsibleSubheader($"All Designs ({visible.Count - splitIdx})", ref otherDesignsSectionOpen))
+                    {
+                        ImGui.Spacing();
+                        DrawCoverGridRange(visible, splitIdx, visible.Count, columns, thumbWidth, thumbHeight);
+                    }
+                }
+                return;
+            }
+        }
+
+        DrawCoverGridRange(visible, 0, visible.Count, columns, thumbWidth, thumbHeight);
+    }
+
+    private void DrawCoverGridRange(List<DesignLeaf> visible, int start, int end, int columns, float thumbWidth, float thumbHeight)
+    {
+        for (var i = start; i < end; i++)
+        {
+            if ((i - start) % columns != 0)
                 ImGui.SameLine();
             DrawCoverCell(visible[i], thumbWidth, thumbHeight);
         }
