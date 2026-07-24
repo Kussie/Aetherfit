@@ -378,7 +378,7 @@ public partial class MainWindow : Window, IDisposable
 
     // Icon + label button, with a caret when it opens a menu. Drawn by hand because a single
     // ImGui button can't mix the icon font with the text font.
-    private static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false)
+    internal static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false)
     {
         var style = ImGui.GetStyle();
         var iconStr = icon.ToIconString();

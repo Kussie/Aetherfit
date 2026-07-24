@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Tagging;
 
 // Runs the WD tagger over a design's screenshots on a background thread; the UI polls the per-design
 // run state each frame. The session is kept loaded once used - re-reading 400 MB of weights per run

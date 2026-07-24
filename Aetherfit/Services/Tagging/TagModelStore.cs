@@ -11,7 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Tagging;
 
 // Downloads the tagger model + native ONNX Runtime into {ConfigDirectory}/models on first use,
 // so none of it has to ship in the plugin zip.
@@ -32,6 +32,12 @@ public sealed class TagModelStore : IDisposable
         new ModelInfo("wd-swinv2-tagger-v3", "SwinV2 v3",
             "627aef95638667ddcaa3ac8ae625e88ea5b02f51",
             "Slightly better fine detail than ViT at similar speed.", 467_460_978),
+        new ModelInfo("wd-convnext-tagger-v3", "ConvNext v3",
+            "d39e46de298d27340111b64965e20b8185c407e6",
+            "A convolutional alternative to ViT/SwinV2 v3, similar size and speed.", 394_990_732),
+        new ModelInfo("wd-vit-large-tagger-v3", "ViT-Large v3",
+            "ae469aa2e4706a3af08d3673cf73a11d1add314c",
+            "Noticeably better accuracy than the standard v3 taggers, though not quite EVA02-Large's quality.", 1_260_645_673),
         new ModelInfo("wd-eva02-large-tagger-v3", "EVA02-Large v3",
             "b25b82a03f7282e41aa2f257a52c7583b710bd1c",
             "Best quality, but a much larger download and slower on CPU.", 1_260_435_999),

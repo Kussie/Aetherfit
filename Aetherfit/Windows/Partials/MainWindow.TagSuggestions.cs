@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
+using Aetherfit.Services.Tagging;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherfit.Windows;
@@ -13,6 +15,9 @@ public partial class MainWindow
 {
     private void DrawTagSuggestionsBlock(Guid id, CachedOutfit details)
     {
+        if (!plugin.Configuration.TagSuggestionEnabled)
+            return;
+
         var cover = plugin.ImageStorage.GetCoverPath(id);
         var additional = plugin.ImageStorage.GetAdditionalPaths(id);
         if (cover == null && additional.Count == 0)
@@ -58,14 +63,14 @@ public partial class MainWindow
                 break;
 
             case TagModelStore.State.Ready:
-                if (ImGui.SmallButton("Suggest tags##suggest"))
+                if (IconTextButton(FontAwesomeIcon.Magic, "Suggest tags"))
                     StartTagSuggestion(id, details, cover, additional);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Analyzes this design's screenshots locally and suggests tags.");
                 break;
 
             default:
-                if (ImGui.SmallButton("Suggest tags##suggest"))
+                if (IconTextButton(FontAwesomeIcon.Magic, "Suggest tags"))
                     plugin.ToggleConfigUi();
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Requires a one-time model download — opens Settings.");

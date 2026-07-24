@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
 using Aetherfit.Services.Integrations;
+using Aetherfit.Services.Tagging;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
@@ -124,79 +125,92 @@ public class ConfigWindow : Window, IDisposable
         var cfg = plugin.Configuration;
         var store = plugin.TagModel;
 
-        ImGui.TextDisabled("Suggests tags for a design from its screenshots. Everything runs locally on your CPU;\nno images ever leave your machine.");
-        ImGui.Spacing();
-
-        DrawTagModelPicker(store);
-        ImGui.Spacing();
-
-        switch (store.CurrentState)
+        var enabled = cfg.TagSuggestionEnabled;
+        if (ImGui.Checkbox("Enable Tag Suggestion Feature", ref enabled))
         {
-            case TagModelStore.State.NotDownloaded:
-                ImGui.TextWrapped($"Requires a one-time download of ~{FormatMb(store.RemainingDownloadBytes)}.");
-                if (ImGui.Button("Download model"))
-                    store.StartDownload();
-                break;
-
-            case TagModelStore.State.Downloading:
-                var label = store.CurrentFile ?? "Preparing...";
-                ImGui.ProgressBar(store.Progress, new Vector2(-80 * ImGuiHelpers.GlobalScale, 0), label);
-                ImGui.SameLine();
-                if (ImGui.Button("Cancel"))
-                    store.CancelDownload();
-                break;
-
-            case TagModelStore.State.Ready:
-                ImGui.TextDisabled($"Model ready — {FormatMb(store.TotalBytesOnDisk)} on disk in total.");
-
-                var threshold = cfg.TagSuggestionThreshold;
-                ImGui.PushItemWidth(200 * ImGuiHelpers.GlobalScale);
-                if (ImGui.SliderFloat("Suggestion confidence", ref threshold, 0.15f, 0.60f, "%.2f"))
-                {
-                    cfg.TagSuggestionThreshold = threshold;
-                    cfg.Save();
-                }
-                ImGui.PopItemWidth();
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Lower values produce more (but noisier) suggestions.");
-
-                var composites = cfg.TagSuggestionComposites;
-                if (ImGui.Checkbox("Suggest composite tags", ref composites))
-                {
-                    cfg.TagSuggestionComposites = composites;
-                    cfg.Save();
-                }
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Also suggests grouped \"category/type\" tags such as swimsuit/bikini\n"
-                                   + "or japanese clothes/kimono, plus colour/... tags for coloured\n"
-                                   + "garments (e.g. blue bikini also suggests colour/blue).");
-                break;
-
-            case TagModelStore.State.Failed:
-                ImGui.PushTextWrapPos(0);
-                ImGui.TextColored(UiTheme.ErrorText, store.LastError ?? "The download failed.");
-                ImGui.PopTextWrapPos();
-                if (ImGui.Button("Retry download"))
-                    store.StartDownload();
-                break;
+            cfg.TagSuggestionEnabled = enabled;
+            cfg.Save();
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("When off, the Suggest Tags button is hidden on designs and the options below are collapsed.");
+        ImGui.Spacing();
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+        if (enabled)
+        {
+            ImGui.TextDisabled("Suggests tags for a design from its screenshots. Everything runs locally on your CPU;\nno images ever leave your machine.");
+            ImGui.Spacing();
 
-        DrawTagBlacklistEditor();
+            DrawTagModelPicker(store);
+            ImGui.Spacing();
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+            switch (store.CurrentState)
+            {
+                case TagModelStore.State.NotDownloaded:
+                    ImGui.TextWrapped($"Requires a one-time download of ~{FormatMb(store.RemainingDownloadBytes)}.");
+                    if (ImGui.Button("Download model"))
+                        store.StartDownload();
+                    break;
+
+                case TagModelStore.State.Downloading:
+                    var label = store.CurrentFile ?? "Preparing...";
+                    ImGui.ProgressBar(store.Progress, new Vector2(-80 * ImGuiHelpers.GlobalScale, 0), label);
+                    ImGui.SameLine();
+                    if (ImGui.Button("Cancel"))
+                        store.CancelDownload();
+                    break;
+
+                case TagModelStore.State.Ready:
+                    ImGui.TextDisabled($"Model ready — {FormatMb(store.TotalBytesOnDisk)} on disk in total.");
+
+                    var threshold = cfg.TagSuggestionThreshold;
+                    ImGui.PushItemWidth(200 * ImGuiHelpers.GlobalScale);
+                    if (ImGui.SliderFloat("Suggestion confidence", ref threshold, 0.15f, 0.60f, "%.2f"))
+                    {
+                        cfg.TagSuggestionThreshold = threshold;
+                        cfg.Save();
+                    }
+                    ImGui.PopItemWidth();
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Lower values produce more (but noisier) suggestions.");
+
+                    var composites = cfg.TagSuggestionComposites;
+                    if (ImGui.Checkbox("Suggest composite tags", ref composites))
+                    {
+                        cfg.TagSuggestionComposites = composites;
+                        cfg.Save();
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Also suggests grouped \"category/type\" tags such as swimsuit/bikini\n"
+                                       + "or japanese clothes/kimono, plus colour/... tags for coloured\n"
+                                       + "garments (e.g. blue bikini also suggests colour/blue).");
+                    break;
+
+                case TagModelStore.State.Failed:
+                    ImGui.PushTextWrapPos(0);
+                    ImGui.TextColored(UiTheme.ErrorText, store.LastError ?? "The download failed.");
+                    ImGui.PopTextWrapPos();
+                    if (ImGui.Button("Retry download"))
+                        store.StartDownload();
+                    break;
+            }
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+
+            DrawTagBlacklistEditor();
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+        }
 
         if (store.CurrentState == TagModelStore.State.Ready)
         {
             var busy = plugin.TagSuggestions.IsBusy;
             using (ImRaii.Disabled(busy))
             {
-                if (ImGui.SmallButton("Delete model files") && ImGui.GetIO().KeyShift)
+                if (MainWindow.IconTextButton(FontAwesomeIcon.Trash, "Delete model files") && ImGui.GetIO().KeyShift)
                     store.DeleteAll();
             }
             if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
@@ -206,7 +220,8 @@ public class ConfigWindow : Window, IDisposable
             ImGui.SameLine();
         }
 
-        ImGui.TextDisabled("Models by SmilingWolf.");
+        if (enabled)
+            ImGui.TextDisabled("Models by SmilingWolf.");
     }
 
     private string blacklistAddText = string.Empty;
