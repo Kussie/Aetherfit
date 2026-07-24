@@ -11,9 +11,6 @@ namespace Aetherfit.Windows;
 
 public partial class MainWindow
 {
-    private string? tagWriteError;
-    private Guid tagWriteErrorDesign;
-
     private void DrawTagSuggestionsBlock(Guid id, CachedOutfit details)
     {
         var cover = plugin.ImageStorage.GetCoverPath(id);
@@ -83,9 +80,6 @@ public partial class MainWindow
             paths.Add(cover);
         paths.AddRange(additional);
         plugin.TagSuggestions.StartSuggestion(id, paths, details.Tags);
-
-        if (tagWriteErrorDesign == id)
-            tagWriteError = null;
     }
 
     private void DrawSuggestionResults(Guid id, CachedOutfit details, TagSuggestionService.DesignRun run,
@@ -136,24 +130,17 @@ public partial class MainWindow
         if (run.SkippedImages > 0)
             ImGui.TextDisabled($"{run.SkippedImages} image(s) could not be read and were skipped.");
 
-        if (tagWriteError != null && tagWriteErrorDesign == id)
-        {
-            ImGui.PushTextWrapPos(0);
-            ImGui.TextColored(UiTheme.ErrorText, tagWriteError);
-            ImGui.PopTextWrapPos();
-        }
-
         if (run.Results.Count > 0)
         {
             using (ImRaii.Disabled(run.Selected.Count == 0))
             {
                 if (ImGui.SmallButton($"Add {run.Selected.Count} selected to design##suggest"))
-                    WriteSelectedTags(id, run);
+                    WriteSelectedTags(id, details, run);
             }
             if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
                 ImGui.SetTooltip(run.Selected.Count == 0
                     ? "Select one or more suggested tags first."
-                    : "Writes the selected tags into this design's file in Glamourer's config.\nGlamourer picks them up after it reloads (e.g. a game restart).");
+                    : "Adds the selected tags to this design in Aetherfit.");
 
             ImGui.SameLine();
             if (ImGui.SmallButton("Copy all##suggest"))
@@ -184,18 +171,11 @@ public partial class MainWindow
         run.Selected.Remove(tag);
     }
 
-    private void WriteSelectedTags(Guid id, TagSuggestionService.DesignRun run)
+    private void WriteSelectedTags(Guid id, CachedOutfit details, TagSuggestionService.DesignRun run)
     {
-        var selected = run.Selected.ToList();
-        var error = plugin.GlamourerDesignFile.WriteTags(id, selected);
-        if (error != null)
-        {
-            tagWriteError = error;
-            tagWriteErrorDesign = id;
-            return;
-        }
+        foreach (var tag in run.Selected)
+            plugin.Configuration.AddTag(id, details, tag);
 
-        tagWriteError = null;
         run.Results.RemoveAll(s => run.Selected.Contains(s.Tag));
         run.Selected.Clear();
     }

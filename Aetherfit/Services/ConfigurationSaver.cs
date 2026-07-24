@@ -3,10 +3,6 @@ using Dalamud.Plugin.Services;
 
 namespace Aetherfit.Services;
 
-// Coalesces Configuration.Save() bursts into one disk write. Saves land after a short quiet period
-// (bounded by a max latency so steady activity can't postpone them forever) and always on dispose,
-// so at most the last few seconds of changes are at risk in a crash. Runs entirely on the framework
-// thread — the same thread that mutates the config — so serialization never races a mutation.
 public sealed class ConfigurationSaver : IDisposable
 {
     private static readonly TimeSpan QuietPeriod = TimeSpan.FromSeconds(2);

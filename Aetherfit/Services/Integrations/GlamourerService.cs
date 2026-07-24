@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Utils;
 using Glamourer.Api.Enums;
 using Glamourer.Api.Helpers;
 using Glamourer.Api.IpcSubscribers;
 using Newtonsoft.Json.Linq;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Integrations;
 
 public sealed class GlamourerService : IDisposable
 {
@@ -20,14 +21,8 @@ public sealed class GlamourerService : IDisposable
     private bool invokingOwnChange;
     private DateTime lastOwnChangeUtc = DateTime.MinValue;
 
-    // Raised when Glamourer finalizes a state change we did not cause ourselves, e.g. the user
-    // applying a design directly in Glamourer's UI, automation, or another plugin's IPC.
     public event Action<nint, StateFinalizationType>? OnExternalStateFinalized;
 
-    // Raised for every finalization except the synchronous echo of our own IPC call - including
-    // events inside the own-change window that OnExternalStateFinalized suppresses. On a cold game
-    // start Glamourer's late work lands within seconds of our apply and overwrites it; this event
-    // is the only way to notice that.
     public event Action<nint, StateFinalizationType>? OnAnyStateFinalized;
 
     public GlamourerService()
@@ -41,6 +36,29 @@ public sealed class GlamourerService : IDisposable
     }
 
     public void Dispose() => stateFinalized.Dispose();
+
+    public static readonly (int Major, int Minor) MinApiVersion = (1, 8);
+
+    public PluginIntegrationInfo CheckIntegration()
+    {
+        var exposed = Plugin.PluginInterface.InstalledPlugins.FirstOrDefault(p => p.InternalName == "Glamourer");
+        if (exposed == null)
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotInstalled, null, null);
+        if (!exposed.IsLoaded)
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+
+        try
+        {
+            var version = new ApiVersion(Plugin.PluginInterface).Invoke();
+            var ok = version.Major == MinApiVersion.Major && version.Minor >= MinApiVersion.Minor;
+            return new PluginIntegrationInfo(ok ? PluginIntegrationStatus.Ok : PluginIntegrationStatus.VersionTooLow, exposed.Version, version);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query Glamourer API version");
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+        }
+    }
 
     private void OnStateFinalized(nint actor, StateFinalizationType type)
     {
@@ -214,8 +232,10 @@ public sealed class GlamourerService : IDisposable
         return new CachedOutfit
         {
             Name = name,
-            Description = description,
-            Tags = tags,
+            // Description/Tags are locally-owned (see Configuration.DesignMeta) - left at their defaults
+            // here and overlaid by the caller. Glamourer's current value rides along for the sync actions.
+            GlamourerDescription = description,
+            GlamourerTags = tags,
             CreatedAt = ReadDateTimeOffset(j["CreationDate"]),
             LastEdit = ReadDateTimeOffset(j["LastEdit"]),
             Equipment = ParseEquipment(equipment),

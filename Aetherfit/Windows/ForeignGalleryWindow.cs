@@ -2,9 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Models;
 using Aetherfit.Services;
-using Aetherfit.Sharing;
 using Aetherfit.Ui;
+using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
@@ -207,9 +208,12 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
             .ToList();
 
         var emptyMessage = filterSearchText.Length > 0 ? "No matching tags or jobs." : "Nothing to filter by.";
-        Pills.DrawTagJobFilterList(availableTags, availableJobs, filterTags, filterJobs,
+        // Imported galleries carry no mod attribution, so there's nothing to filter by mod here.
+        Pills.DrawTagJobFilterList(availableTags, availableJobs, Array.Empty<(string, string)>(), filterTags, filterJobs, NoModFilter,
             plugin.GameData.GetJobIcon, "foreign", 260 * ImGuiHelpers.GlobalScale, emptyMessage);
     }
+
+    private static readonly Dictionary<string, bool> NoModFilter = new();
 
     private void DrawGrid(List<ForeignDesign> visible)
     {

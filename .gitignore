@@ -8,3 +8,4 @@ repo.json
 
 # Local fetch cache for tools/generate_composite_tags.py; recreated on demand.
 tools/danbooru_cache.json
+Aetherfit.code-workspace
