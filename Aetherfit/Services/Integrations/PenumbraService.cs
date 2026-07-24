@@ -2,10 +2,11 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Utils;
 using Penumbra.Api.Enums;
 using Penumbra.Api.IpcSubscribers;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Integrations;
 
 public sealed class PenumbraService
 {

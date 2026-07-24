@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
+using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Textures.TextureWraps;
@@ -13,10 +14,6 @@ namespace Aetherfit.Ui;
 // The little tag/job chips shared across the windows.
 internal static class Pills
 {
-    // Shared body of a tri-state tag/job filter popup: a scrolling list of tag and job checkboxes
-    // (jobs get role headings interleaved when Role is non-null), sized to fit up to ~12 rows, plus
-    // the trailing Done button. Callers own opening the popup and drawing the search box above it -
-    // this just renders whatever the caller has already filtered down to.
     public static void DrawTagJobFilterList(
         IReadOnlyList<string> availableTags,
         IReadOnlyList<(uint RowId, string Name, JobRole? Role)> availableJobs,

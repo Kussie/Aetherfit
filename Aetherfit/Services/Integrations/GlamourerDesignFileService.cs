@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Integrations;
 
 // Glamourer has no IPC to write a design's Description/Tags, so this edits Glamourer's own design file
 // directly - reading it as a JObject, touching only the two keys we own, and writing it back. There's no

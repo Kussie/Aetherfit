@@ -102,7 +102,7 @@ public class Configuration : IPluginConfiguration
     // Every tag used across cached outfits (plus the segments of composite tags, so "bikini" is
     // offered when only "swimsuit/bikini" exists), de-duplicated case-insensitively and sorted.
     public List<string> DistinctSortedTags()
-        => Services.TagMatching.WithSegments(CachedOutfits.Values.SelectMany(o => o.Tags));
+        => Utils.TagMatching.WithSegments(CachedOutfits.Values.SelectMany(o => o.Tags));
 
     // Only mods that at least one cached design references - there's no "list all installed mods" IPC wired up.
     public List<(string Directory, string DisplayName)> DistinctMods()
