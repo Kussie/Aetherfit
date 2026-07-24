@@ -231,7 +231,12 @@ public partial class MainWindow : Window, IDisposable
         {
             var design = job.Designs[job.Index++];
             if (plugin.Glamourer.FetchDesignMetadata(design.Id) is { } outfit)
+            {
+                var meta = plugin.Configuration.GetOrSeedDesignMeta(design.Id, outfit.GlamourerDescription, outfit.GlamourerTags);
+                outfit.Description = meta.Description;
+                outfit.Tags = new List<string>(meta.Tags);
                 job.Metadata[design.Id] = outfit;
+            }
         }
 
         if (job.Index >= job.Designs.Count)
@@ -258,6 +263,12 @@ public partial class MainWindow : Window, IDisposable
             .ToList();
         foreach (var stale in staleJobAssociations)
             plugin.Configuration.DesignJobAssociations.Remove(stale);
+
+        var staleMeta = plugin.Configuration.DesignMeta.Keys
+            .Where(k => !validIds.Contains(k))
+            .ToList();
+        foreach (var stale in staleMeta)
+            plugin.Configuration.DesignMeta.Remove(stale);
 
         plugin.Configuration.FavouriteDesigns.RemoveWhere(id => !validIds.Contains(id));
         plugin.Configuration.HiddenDesigns.RemoveWhere(id => !validIds.Contains(id));
