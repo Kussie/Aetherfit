@@ -42,6 +42,33 @@ public sealed class GlamourerService : IDisposable
 
     public void Dispose() => stateFinalized.Dispose();
 
+    // Glamourer's own reported ApiVersion (CurrentApiVersionMajor/Minor in its GlamourerApi.cs) - NOT the
+    // same number as the Glamourer.Api NuGet package version below it. The two are versioned independently
+    // by Glamourer's own author; confirm the current value against Glamourer's stable branch source when
+    // bumping this rather than assuming it tracks the package reference.
+    public static readonly (int Major, int Minor) MinApiVersion = (1, 8);
+
+    public PluginIntegrationInfo CheckIntegration()
+    {
+        var exposed = Plugin.PluginInterface.InstalledPlugins.FirstOrDefault(p => p.InternalName == "Glamourer");
+        if (exposed == null)
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotInstalled, null, null);
+        if (!exposed.IsLoaded)
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+
+        try
+        {
+            var version = new ApiVersion(Plugin.PluginInterface).Invoke();
+            var ok = version.Major == MinApiVersion.Major && version.Minor >= MinApiVersion.Minor;
+            return new PluginIntegrationInfo(ok ? PluginIntegrationStatus.Ok : PluginIntegrationStatus.VersionTooLow, exposed.Version, version);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query Glamourer API version");
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+        }
+    }
+
     private void OnStateFinalized(nint actor, StateFinalizationType type)
     {
         // Glamourer raises this for our own IPC calls too: the flag catches synchronous delivery,
