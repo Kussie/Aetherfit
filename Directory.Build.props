@@ -5,11 +5,17 @@
         <DalamudLibPath>$(DALAMUD_HOME)\</DalamudLibPath>
     </PropertyGroup>
 
+    <!-- Bump these by hand for real milestones - the last two version parts are date/commit-derived below. -->
+    <PropertyGroup>
+        <AetherfitVersionMajor>1</AetherfitVersionMajor>
+        <AetherfitVersionMinor>0</AetherfitVersionMinor>
+    </PropertyGroup>
+
     <Target Name="ComputeAetherfitVersion" BeforeTargets="GetAssemblyVersion;GenerateNuspec;Build" Condition="'$(AetherfitVersion)' == ''">
         <Exec Command="git rev-list --count HEAD" ConsoleToMsBuild="true" StandardOutputImportance="low">
             <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitCount" />
         </Exec>
-        <CreateProperty Value="$([System.DateTime]::UtcNow.ToString('yyMM')).$(GitCommitCount)">
+        <CreateProperty Value="$(AetherfitVersionMajor).$(AetherfitVersionMinor).$([System.DateTime]::UtcNow.ToString('yyMM')).$(GitCommitCount)">
             <Output TaskParameter="Value" PropertyName="AetherfitVersion" />
         </CreateProperty>
         <CreateProperty Value="$(AetherfitVersion)">

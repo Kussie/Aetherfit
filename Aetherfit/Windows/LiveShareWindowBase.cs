@@ -1,15 +1,13 @@
 using System;
 using System.Numerics;
-using Aetherfit.Sharing;
+using Aetherfit.Services.Sharing;
 using Aetherfit.Ui;
+using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 
 namespace Aetherfit.Windows;
 
-// Common scaffolding shared by ShareLiveWindow (host) and ReceiveLiveWindow (guest) - both are fixed-size
-// windows wrapping the same GalleryLiveShareService state machine and differ only in their phase-specific
-// middle content, which each subclass draws itself.
 public abstract class LiveShareWindowBase : Window, IDisposable
 {
     protected readonly Plugin plugin;
@@ -40,8 +38,6 @@ public abstract class LiveShareWindowBase : Window, IDisposable
         ImGui.PopTextWrapPos();
     }
 
-    // OnClose (native X) already resets state via live.Cancel() - the button just needs to close
-    // the window and let that handle it, so both paths behave identically.
     protected void DrawFinishedButtons(bool finished)
     {
         ImGui.Spacing();

@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.IO.Compression;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Utils;
 
 // Minimal dependency-free PNG writer (RGB, 8-bit, no interlacing) built on the BCL's own
 // zlib support, so image capture doesn't need System.Drawing/GDI+ at all.

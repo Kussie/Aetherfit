@@ -64,7 +64,7 @@ Once added, find Aetherfit in the main `/xlplugins` window and install it. You c
 
 ## TODO/Wishlist
 Small bugs, QOL and big dream items that have popped into my head.  When and if they are implemented remains to be seen.
- - Edit description and tags directly in the interface
+ - Integrate with Simple Glamour Switcher
 
 
 

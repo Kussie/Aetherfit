@@ -6,7 +6,9 @@ using Dalamud.Plugin;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using Aetherfit.Services;
-using Aetherfit.Sharing;
+using Aetherfit.Services.Integrations;
+using Aetherfit.Services.Screenshots;
+using Aetherfit.Services.Sharing;
 using Aetherfit.Windows;
 using Glamourer.Api.Enums;
 
@@ -28,11 +30,14 @@ public sealed class Plugin : IDalamudPlugin
     // Prefix on every chat message we print, so players can tell our output apart.
     public const string ChatPrefix = "[Aetherfit] ";
 
+    public static readonly string Version = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "unknown";
+
     private const string CommandName = "/aetherfit";
 
     public Configuration Configuration { get; init; }
     public OutfitCacheStore OutfitCache { get; init; }
     public GlamourerService Glamourer { get; init; }
+    public GlamourerDesignFileService GlamourerDesignFile { get; init; }
     public PenumbraService Penumbra { get; init; }
     public GameDataService GameData { get; init; }
     public DesignAttributionService Attribution { get; init; }
@@ -86,7 +91,24 @@ public sealed class Plugin : IDalamudPlugin
         OutfitCache = new OutfitCacheStore(Configuration);
         OutfitCache.Load();
 
+        // First time DesignMeta ships: freeze each design's current (Glamourer-sourced, at the time) Tags/
+        // Description as the new locally-owned baseline, so nobody's tags/description silently disappear
+        // on upgrade. Must run after OutfitCache.Load() above - CachedOutfits is empty before that.
+        if (Configuration.DesignMeta.Count == 0 && Configuration.CachedOutfits.Count > 0)
+        {
+            foreach (var (id, outfit) in Configuration.CachedOutfits)
+            {
+                Configuration.DesignMeta[id] = new LocalDesignMeta
+                {
+                    Description = outfit.Description,
+                    Tags = new List<string>(outfit.Tags),
+                };
+            }
+            Configuration.Save();
+        }
+
         Glamourer = new GlamourerService();
+        GlamourerDesignFile = new GlamourerDesignFileService();
         Penumbra = new PenumbraService();
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);

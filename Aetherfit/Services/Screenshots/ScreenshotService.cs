@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Screenshots;
 
 public sealed class ScreenshotService
 {

@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
-namespace Aetherfit.Sharing;
+namespace Aetherfit.Services.Sharing;
 
 public enum LiveSharePhase
 {
@@ -55,10 +55,6 @@ public sealed class GalleryLiveShareService : IDisposable
     public int RequestedTtlSeconds { get; private set; }
     public string? ErrorMessage { get; private set; }
 
-    // A single continuous 0-1 value spanning both steps of each side (export+upload on the host,
-    // download+import on the guest) - deliberately doesn't reset between them. Export/import don't
-    // report granular progress (GallerySharingService just has an IsBusy flag), so those steps get a
-    // small fixed head-start/tail rather than true byte-level tracking; upload/download are real.
     public float Progress { get; private set; }
 
     private static string TempRoot =>

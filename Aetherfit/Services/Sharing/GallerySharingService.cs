@@ -4,10 +4,12 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using Aetherfit.Models;
 using Aetherfit.Services;
+using Aetherfit.Services.Screenshots;
 using Newtonsoft.Json;
 
-namespace Aetherfit.Sharing;
+namespace Aetherfit.Services.Sharing;
 
 // Writes and reads ".afgallery" bundles. A bundle is just a zip: a "gallery.json" manifest plus the image bytes as
 // separate entries. We keep the images raw (they're already png/jpg, base64 would have padded them ~33% bigger).
