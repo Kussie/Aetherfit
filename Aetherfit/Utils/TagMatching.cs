@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Utils;
 
 // Composite "category/type" tags count as carrying each of their segments, so a design tagged
 // "swimsuit/bikini" matches filters for "swimsuit", "bikini" or the full composite.

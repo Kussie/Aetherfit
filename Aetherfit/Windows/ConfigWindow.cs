@@ -2,8 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Services;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
+using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
@@ -43,6 +47,7 @@ public class ConfigWindow : Window, IDisposable
         DrawTab("General", DrawGeneralTab);
         DrawTab("Login & Zoning", DrawLoginSection);
         DrawTab("Commands", DrawCommandsSection);
+        DrawTab("Integrations", DrawIntegrationsTab);
     }
 
     private static void DrawTab(string label, Action drawContent)
@@ -99,13 +104,18 @@ public class ConfigWindow : Window, IDisposable
         ImGui.PopItemWidth();
 
         var enableLayers = cfg.EnableRandomLayers;
-        if (ImGui.Checkbox("Enable Additional Design Layers feature", ref enableLayers))
+        if (ImGui.Checkbox("Enable Additional Design Layers feature (Glamourer Designs only)", ref enableLayers))
         {
             cfg.EnableRandomLayers = enableLayers;
             cfg.Save();
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("When on, applying a base design also applies its configured layers top to bottom,\npicking one design at random from any layer that holds several.\nWhen off, the Additional Design Layers panel is hidden and no layers are applied.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        ImGui.TextDisabled($"Aetherfit v{Plugin.Version}");
     }
 
     private static void DrawCommandsSection()
@@ -135,6 +145,52 @@ public class ConfigWindow : Window, IDisposable
         ImGui.PopStyleColor();
         ImGui.Unindent();
         ImGui.Spacing();
+    }
+
+    private void DrawIntegrationsTab()
+    {
+        ImGui.TextDisabled("Status of the plugins Aetherfit integrates with.");
+        ImGui.Spacing();
+
+        DrawIntegrationRow("Penumbra", plugin.Penumbra.CheckIntegration(), PenumbraService.MinApiVersion);
+        ImGui.Spacing();
+        DrawIntegrationRow("Glamourer", plugin.Glamourer.CheckIntegration(), GlamourerService.MinApiVersion);
+        ImGui.Spacing();
+        DrawHardcodedIntegrationRow("Simple Glamour Switcher", "Integration coming soon");
+    }
+
+    private static void DrawIntegrationRow(string label, PluginIntegrationInfo info, (int Major, int Minor) required)
+    {
+        var ok = info.Status == PluginIntegrationStatus.Ok;
+        DesignDetailView.DrawFontAwesome(ok ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, ok ? UiTheme.StateOn : UiTheme.StateOff);
+        ImGui.SameLine();
+        ImGui.TextUnformatted(label);
+
+        var status = info.Status switch
+        {
+            PluginIntegrationStatus.NotInstalled  => $"{label} is not installed.",
+            PluginIntegrationStatus.NotLoaded     => $"{label} is installed but not enabled.",
+            PluginIntegrationStatus.VersionTooLow => $"{label} API v{info.ApiVersion?.Major}.{info.ApiVersion?.Minor} found — v{required.Major}.{required.Minor}+ required.",
+            _                                      => $"{label} v{info.PluginVersion} — OK.",
+        };
+        DrawIndentedDisabledText(status);
+    }
+
+    private static void DrawHardcodedIntegrationRow(string label, string status)
+    {
+        DesignDetailView.DrawFontAwesome(FontAwesomeIcon.Times, UiTheme.StateOff);
+        ImGui.SameLine();
+        ImGui.TextUnformatted(label);
+        DrawIndentedDisabledText(status);
+    }
+
+    private static void DrawIndentedDisabledText(string text)
+    {
+        ImGui.Indent();
+        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(ImGuiCol.TextDisabled));
+        ImGui.TextWrapped(text);
+        ImGui.PopStyleColor();
+        ImGui.Unindent();
     }
 
     private void DrawLoginSection()

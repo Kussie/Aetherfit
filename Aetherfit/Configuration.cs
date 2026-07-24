@@ -39,13 +39,11 @@ public class Configuration : IPluginConfiguration
 
     public bool ShowThumbnailOnHover { get; set; } = true;
 
-    // While the image viewer is open, selecting a different design switches it to that design's cover image.
     public bool ImageViewerFollowsSelection { get; set; } = false;
     public bool DefaultToCoverMode { get; set; } = false;
     public GalleryFitMode GalleryFitMode { get; set; } = GalleryFitMode.Crop;
 
     public bool GalleryPinFavouritesFirst { get; set; } = true;
-    // Unscaled; the gallery derives its column count from this.
     public float GalleryThumbTargetWidth { get; set; } = 220f;
 
     // When disabled, the Additional Design Layers panel is hidden and applying a base design never applies layers.
@@ -65,6 +63,8 @@ public class Configuration : IPluginConfiguration
     // because CachedOutfits is wholly replaced from Glamourer metadata on every Refresh.
     public Dictionary<Guid, List<uint>> DesignJobAssociations { get; set; } = new();
 
+    public Dictionary<Guid, LocalDesignMeta> DesignMeta { get; set; } = new();
+
     public Dictionary<Guid, List<DesignLayerSlot>> DesignLayerSlots { get; set; } = new();
 
     // Legacy: replaced by DesignLayerSlots. Migrated on first plugin load into a single slot per base design.
@@ -76,11 +76,8 @@ public class Configuration : IPluginConfiguration
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
-    // Remembers the sender's last-picked expiry preset (minutes) across sessions.
     public int LiveShareDefaultTtlMinutes { get; set; } = 30;
 
-    // A random, locally-generated token (not derived from the character/account) sent with live-share uploads so the backend can replace this install's previous share instead of accumulating one per upload.
-    // Deliberately not tied to any player-identifying data - see GalleryLiveShareService.
     public string LiveShareInstallId { get; set; } = string.Empty;
 
     // Round-trips config fields this build doesn't know about (e.g. settings written by an
@@ -105,7 +102,7 @@ public class Configuration : IPluginConfiguration
     // Every tag used across cached outfits (plus the segments of composite tags, so "bikini" is
     // offered when only "swimsuit/bikini" exists), de-duplicated case-insensitively and sorted.
     public List<string> DistinctSortedTags()
-        => Services.TagMatching.WithSegments(CachedOutfits.Values.SelectMany(o => o.Tags));
+        => Utils.TagMatching.WithSegments(CachedOutfits.Values.SelectMany(o => o.Tags));
 
     // Only mods that at least one cached design references - there's no "list all installed mods" IPC wired up.
     public List<(string Directory, string DisplayName)> DistinctMods()
@@ -129,6 +126,91 @@ public class Configuration : IPluginConfiguration
             DesignJobAssociations.Remove(id);
         else
             DesignJobAssociations[id] = jobs;
+    }
+
+    // Returns the design's locally-owned Tags/Description, seeding it from Glamourer's current value the
+    // first time this design is seen. Once seeded, Glamourer's value is only pulled in again via an
+    // explicit sync action - this never silently overwrites an existing local entry.
+    public LocalDesignMeta GetOrSeedDesignMeta(Guid id, string? glamDescription, IReadOnlyList<string> glamTags)
+    {
+        if (DesignMeta.TryGetValue(id, out var existing))
+            return existing;
+
+        var seeded = new LocalDesignMeta
+        {
+            Description = glamDescription,
+            Tags = new List<string>(glamTags),
+        };
+        DesignMeta[id] = seeded;
+        return seeded;
+    }
+
+    // Additive only: adds any tag present on the Glamourer design that isn't already in the local list.
+    // Returns how many were actually added, so the caller can show "+N tags added".
+    public int MergeTagsFromGlamourer(Guid id, CachedOutfit outfit)
+    {
+        var meta = GetOrSeedDesignMeta(id, outfit.GlamourerDescription, outfit.GlamourerTags);
+        var added = 0;
+        foreach (var tag in outfit.GlamourerTags)
+        {
+            if (meta.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+                continue;
+            meta.Tags.Add(tag);
+            added++;
+        }
+
+        if (added > 0)
+        {
+            outfit.Tags = new List<string>(meta.Tags);
+            Save();
+        }
+        return added;
+    }
+
+    // Full overwrite: replaces the local description with Glamourer's current one. Callers must confirm
+    // with the user first - this is destructive to any local edit.
+    public void PullDescriptionFromGlamourer(Guid id, CachedOutfit outfit)
+    {
+        var meta = GetOrSeedDesignMeta(id, outfit.GlamourerDescription, outfit.GlamourerTags);
+        meta.Description = outfit.GlamourerDescription;
+        outfit.Description = meta.Description;
+        Save();
+    }
+
+    // Direct edits made in Aetherfit itself, now that Tags/Description are locally owned.
+    public void SetDescription(Guid id, CachedOutfit outfit, string? description)
+    {
+        var meta = GetOrSeedDesignMeta(id, outfit.GlamourerDescription, outfit.GlamourerTags);
+        meta.Description = description;
+        outfit.Description = description;
+        Save();
+    }
+
+    public bool AddTag(Guid id, CachedOutfit outfit, string tag)
+    {
+        tag = tag.Trim();
+        if (string.IsNullOrEmpty(tag))
+            return false;
+
+        var meta = GetOrSeedDesignMeta(id, outfit.GlamourerDescription, outfit.GlamourerTags);
+        if (meta.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+            return false;
+
+        meta.Tags.Add(tag);
+        outfit.Tags = new List<string>(meta.Tags);
+        Save();
+        return true;
+    }
+
+    public void RemoveTag(Guid id, CachedOutfit outfit, string tag)
+    {
+        if (!DesignMeta.TryGetValue(id, out var meta))
+            return;
+        if (meta.Tags.RemoveAll(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase)) == 0)
+            return;
+
+        outfit.Tags = new List<string>(meta.Tags);
+        Save();
     }
 
     public List<DesignLayerSlot> GetLayerSlots(Guid id)
@@ -177,11 +259,26 @@ public class CharacterLoginSettings
 }
 
 [Serializable]
+public class LocalDesignMeta
+{
+    public string? Description { get; set; }
+    public List<string> Tags { get; set; } = new();
+}
+
+[Serializable]
 public class CachedOutfit
 {
     public string Name { get; set; } = string.Empty;
+
+    // Aetherfit's own locally-owned values (see Configuration.DesignMeta) - what's actually shown/used.
     public string? Description { get; set; }
     public List<string> Tags { get; set; } = new();
+
+    // Glamourer's current value as of the last refresh - read-only reference data for the Sync-from-Glamourer
+    // actions. Not what's displayed; Description/Tags above are the locally-owned display value.
+    public string? GlamourerDescription { get; set; }
+    public List<string> GlamourerTags { get; set; } = new();
+
     public DateTimeOffset? CreatedAt { get; set; }
     public DateTimeOffset? LastEdit { get; set; }
 
