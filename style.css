@@ -226,6 +226,57 @@ section h2 {
   color: var(--text);
 }
 
+.repo-url {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6em 0.6em 0.6em 1em;
+}
+
+.repo-url code {
+  background: none;
+  border: none;
+  padding: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.copy-button {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.4em 0.7em;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.copy-button svg {
+  width: 0.9em;
+  height: 0.9em;
+  fill: currentColor;
+}
+
+.copy-button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.copy-button.copied {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .commands dt {
   margin-top: 1rem;
 }
@@ -249,5 +300,10 @@ footer {
 
   .hero h1 {
     font-size: 2rem;
+  }
+
+  .repo-url {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

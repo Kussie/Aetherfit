@@ -129,14 +129,29 @@
 
   <section id="installation">
     <h2>Installation</h2>
+    <p>
+      Open the Dalamud Settings menu in game and follow the steps below. This can be done through the
+      button at the bottom of the plugin installer or by typing <code>/xlsettings</code> in the chat.
+    </p>
     <ol>
+      <li>Go to the <strong>"Experimental"</strong> tab.</li>
       <li>
-        Add this repo to your experimental tab under <code>/xlplugins</code>:
-        <pre><code>https://raw.githubusercontent.com/Kussie/Aetherfit/master/repo.json</code></pre>
+        Under Custom Plugin Repositories, enter the repository URL into the empty box at the bottom:
+        <div class="repo-url">
+          <code>https://raw.githubusercontent.com/Kussie/Aetherfit/master/repo.json</code>
+          <button class="copy-button" type="button" data-copy="https://raw.githubusercontent.com/Kussie/Aetherfit/master/repo.json">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5A1.5 1.5 0 0 1 5.5 0h5A1.5 1.5 0 0 1 12 1.5v8A1.5 1.5 0 0 1 10.5 11h-5A1.5 1.5 0 0 1 4 9.5v-8ZM5.5 1a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h5a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-5Z"/><path d="M2 4.5A1.5 1.5 0 0 0 .5 6v8A1.5 1.5 0 0 0 2 15.5h5A1.5 1.5 0 0 0 8.5 14v-.5H8v.5a.5.5 0 0 1-.5.5H2a.5.5 0 0 1-.5-.5V6a.5.5 0 0 1 .5-.5h.5V4.5H2Z"/></svg>
+            <span class="copy-label">Copy</span>
+          </button>
+        </div>
       </li>
-      <li>Save, then find Aetherfit in the main <code>/xlplugins</code> window.</li>
-      <li>Access the plugin by typing <code>/aetherfit</code> in chat.</li>
+      <li>Click the <strong>"+"</strong> button.</li>
+      <li>Click the <strong>"Save and Close"</strong> button.</li>
     </ol>
+    <p>
+      Once added, find Aetherfit in the main <code>/xlplugins</code> window and install it. Access the
+      plugin by typing <code>/aetherfit</code> in chat.
+    </p>
   </section>
 
   <section id="commands">
@@ -183,6 +198,23 @@
     <a href="https://github.com/Kussie/Aetherfit/releases">Releases</a>
   </p>
 </footer>
+
+<script>
+  document.querySelectorAll('.copy-button').forEach((btn) => {
+    const label = btn.querySelector('.copy-label') || btn;
+    const original = label.textContent;
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+        label.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          label.textContent = original;
+          btn.classList.remove('copied');
+        }, 1500);
+      });
+    });
+  });
+</script>
 
 </body>
 </html>
