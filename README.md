@@ -55,7 +55,7 @@ You can then access the plugin by typing `/aetherfit` in chat.
 
 ## TODO/Wishlist
 Small bugs, QOL and big dream items that have popped into my head.  When and if they are implemented remains to be seen.
- - Edit description and tags directly in the interface
+ - Integrate with Simple Glamour Switcher
 
 
 
