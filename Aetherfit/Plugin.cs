@@ -30,6 +30,8 @@ public sealed class Plugin : IDalamudPlugin
     // Prefix on every chat message we print, so players can tell our output apart.
     public const string ChatPrefix = "[Aetherfit] ";
 
+    public static readonly string Version = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "unknown";
+
     private const string CommandName = "/aetherfit";
 
     public Configuration Configuration { get; init; }

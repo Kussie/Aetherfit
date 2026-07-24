@@ -56,7 +56,7 @@ public partial class MainWindow : Window, IDisposable
     private readonly HashSet<string> selectedTagsForApply = new(StringComparer.OrdinalIgnoreCase);
 
     public MainWindow(Plugin plugin)
-        : base("Aetherfit###AetherfitMain", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+        : base($"Aetherfit - {Plugin.Version}###AetherfitMain", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         SizeConstraints = new WindowSizeConstraints
         {
