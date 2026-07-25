@@ -81,6 +81,9 @@ public partial class MainWindow
             return;
         }
 
+        ImGui.Checkbox("Group by tags", ref coverGroupByTags);
+        ImGui.Spacing();
+
         DrawFilterUi(defaultOpen: true, wide: true);
         ImGui.Spacing();
         ImGui.Separator();
@@ -226,8 +229,14 @@ public partial class MainWindow
         cachedFavouriteVersion != favouriteVersion ||
         cachedHiddenVersion != hiddenVersion;
 
+    // Bumped every time RebuildGalleryCache actually runs, regardless of why (filter/sort/generation/...
+    // all funnel through here) - lets other caches derived from cachedVisible (e.g. the tag-grouped
+    // Cover Mode view) detect staleness without duplicating this method's own dirty-check fields.
+    private int galleryCacheVersion;
+
     private void RebuildGalleryCache()
     {
+        galleryCacheVersion++;
         cachedVisible.Clear();
         CollectVisibleDesigns(root, cachedVisible);
         SortGalleryDesigns(cachedVisible);
@@ -264,13 +273,13 @@ public partial class MainWindow
             return;
         }
 
-        var spacing = ImGui.GetStyle().ItemSpacing.X;
-        var avail = ImGui.GetContentRegionAvail().X;
-        // As many columns as the target thumbnail width allows.
-        var target = Math.Max(CoverMinThumbSize, plugin.Configuration.GalleryThumbTargetWidth) * ImGuiHelpers.GlobalScale;
-        var columns = Math.Max(1, (int)((avail + spacing) / (target + spacing)));
-        var thumbWidth = Math.Max(CoverMinThumbSize, (avail - (columns - 1) * spacing) / columns);
-        var thumbHeight = thumbWidth * CoverAspectRatio;
+        if (coverGroupByTags)
+        {
+            DrawCoverGroupedByTags();
+            return;
+        }
+
+        var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
 
         // Favourites are only contiguous at the front of `visible` when pinning is on (see SortGalleryDesigns).
         if (cachedPinFavourites)
@@ -304,6 +313,20 @@ public partial class MainWindow
         }
 
         DrawCoverGridRange(visible, 0, visible.Count, columns, thumbWidth, thumbHeight);
+    }
+
+    // Recomputed fresh wherever it's needed (rather than once per grid) - grouped/nested sections
+    // shrink the available width via ImGui.Indent(), so column count has to be reevaluated per section.
+    private (int Columns, float ThumbWidth, float ThumbHeight) ComputeGridLayout()
+    {
+        var spacing = ImGui.GetStyle().ItemSpacing.X;
+        var avail = ImGui.GetContentRegionAvail().X;
+        // As many columns as the target thumbnail width allows.
+        var target = Math.Max(CoverMinThumbSize, plugin.Configuration.GalleryThumbTargetWidth) * ImGuiHelpers.GlobalScale;
+        var columns = Math.Max(1, (int)((avail + spacing) / (target + spacing)));
+        var thumbWidth = Math.Max(CoverMinThumbSize, (avail - (columns - 1) * spacing) / columns);
+        var thumbHeight = thumbWidth * CoverAspectRatio;
+        return (columns, thumbWidth, thumbHeight);
     }
 
     private void DrawCoverGridRange(List<DesignLeaf> visible, int start, int end, int columns, float thumbWidth, float thumbHeight)
