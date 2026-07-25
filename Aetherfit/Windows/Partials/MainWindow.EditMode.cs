@@ -471,16 +471,24 @@ public partial class MainWindow
         }
 
         // Nudge the floating footer in one level so the dates line up with the indented content above.
+        var sourceName = plugin.DesignProviders.FirstOrDefault(p => p.Source == details.Source)?.DisplayName
+            ?? details.Source.ToString();
+        var sourceText = $"Source: {sourceName}";
+        ImGui.Indent();
         if (details.CreatedAt is not null || details.LastEdit is not null)
         {
-            ImGui.Indent();
-            const string sourceText = "Source: Glamourer";
             if (details.CreatedAt is { } created)
                 DrawDateLine("Created", created, details.LastEdit is null ? sourceText : null);
             if (details.LastEdit is { } edited)
                 DrawDateLine("Last edited", edited, sourceText);
-            ImGui.Unindent();
         }
+        else
+        {
+            // A source with no creation/edit timestamps of its own (e.g. Glamaholic) still gets its
+            // own unconditional line - the date lines above aren't the only thing gating this text.
+            ImGui.TextDisabled(sourceText);
+        }
+        ImGui.Unindent();
     }
 
     private void DrawImagesBlock(Guid id)

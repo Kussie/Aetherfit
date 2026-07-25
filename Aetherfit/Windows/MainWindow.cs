@@ -189,12 +189,12 @@ public partial class MainWindow : Window, IDisposable
         }
     }
 
-    // A refresh in flight: the design list is fetched up front (one cheap IPC call), while the
-    // per-design metadata IPC calls are spread over framework ticks so a large collection doesn't
+    // A refresh in flight: the design list is fetched up front (one cheap call per provider), while
+    // the per-design metadata calls are spread over framework ticks so a large collection doesn't
     // stall a frame. The previous CachedOutfits stay live until the new set is complete.
     private sealed class RefreshJob
     {
-        public required IReadOnlyList<GlamourerService.DesignInfo> Designs { get; init; }
+        public required IReadOnlyList<(IDesignProvider Provider, Guid NativeId, Guid AetherfitId)> Designs { get; init; }
         public Dictionary<Guid, CachedOutfit> Metadata { get; } = new();
         public int Index;
     }
@@ -205,25 +205,46 @@ public partial class MainWindow : Window, IDisposable
 
     private void RefreshDesigns()
     {
-        var list = plugin.Glamourer.FetchDesignList();
-        if (list.Error != null)
+        var entries = new List<(IDesignProvider Provider, Guid NativeId, Guid AetherfitId)>();
+        var leaves = new List<DesignLeaf>();
+        var errors = new List<string>();
+        var multipleProviders = plugin.DesignProviders.Count > 1;
+
+        foreach (var provider in plugin.DesignProviders)
+        {
+            var result = provider.FetchDesignList();
+            if (result.Error != null)
+                errors.Add(multipleProviders ? $"{provider.DisplayName}: {result.Error}" : result.Error);
+
+            foreach (var info in result.Designs)
+            {
+                var aetherfitId = DesignIdentity.Resolve(plugin.Configuration, provider.Source, info.NativeId);
+                entries.Add((provider, info.NativeId, aetherfitId));
+                var fullPath = multipleProviders ? $"{provider.DisplayName}/{info.FullPath}" : info.FullPath;
+                leaves.Add(new DesignLeaf(aetherfitId, info.DisplayName, fullPath, info.Color));
+            }
+        }
+
+        // With a single provider (today), any error aborts the refresh entirely - same as before, so
+        // a transient IPC failure never wipes existing cached data. Partial-failure handling across
+        // multiple providers is Phase 2 scope, once there's a second provider to test it against.
+        if (errors.Count > 0 && !multipleProviders)
         {
             root = new FolderNode();
             designsCount = 0;
-            designsError = list.Error;
+            designsError = errors[0];
             activeRefresh = null;
             designListGeneration++;
             return;
         }
 
         // The tree only needs the list, so it shows immediately; metadata streams in behind it.
-        root = BuildFolderTree(list.Designs
-            .Select(d => new DesignLeaf(d.Id, d.DisplayName, d.FullPath, d.Color)));
-        designsCount = list.Designs.Count;
-        designsError = null;
+        root = BuildFolderTree(leaves);
+        designsCount = leaves.Count;
+        designsError = errors.Count > 0 ? string.Join("\n", errors) : null;
         designListGeneration++;
 
-        activeRefresh = new RefreshJob { Designs = list.Designs };
+        activeRefresh = new RefreshJob { Designs = entries };
     }
 
     private void OnFrameworkUpdate(Dalamud.Plugin.Services.IFramework framework)
@@ -235,13 +256,16 @@ public partial class MainWindow : Window, IDisposable
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (job.Index < job.Designs.Count && sw.ElapsedMilliseconds < 4)
         {
-            var design = job.Designs[job.Index++];
-            if (plugin.Glamourer.FetchDesignMetadata(design.Id) is { } outfit)
+            var (provider, nativeId, aetherfitId) = job.Designs[job.Index++];
+            if (provider.FetchDesignMetadata(nativeId) is { } outfit)
             {
-                var meta = plugin.Configuration.GetOrSeedDesignMeta(design.Id, outfit.GlamourerDescription, outfit.GlamourerTags);
+                outfit.Source = provider.Source;
+                outfit.ProviderDesignId = nativeId;
+
+                var meta = plugin.Configuration.GetOrSeedDesignMeta(aetherfitId, outfit.GlamourerDescription, outfit.GlamourerTags);
                 outfit.Description = meta.Description;
                 outfit.Tags = new List<string>(meta.Tags);
-                job.Metadata[design.Id] = outfit;
+                job.Metadata[aetherfitId] = outfit;
             }
         }
 
@@ -261,7 +285,7 @@ public partial class MainWindow : Window, IDisposable
         plugin.Penumbra.ClearChangedItemsCache();
         affectedByCache.Clear();
 
-        var validIds = new HashSet<Guid>(job.Designs.Select(d => d.Id));
+        var validIds = new HashSet<Guid>(job.Designs.Select(d => d.AetherfitId));
         plugin.ImageStorage.CleanupRemovedDesigns(validIds);
 
         var staleJobAssociations = plugin.Configuration.DesignJobAssociations.Keys

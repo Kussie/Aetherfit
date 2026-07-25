@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Utils;
 
 namespace Aetherfit.Services;
@@ -30,7 +31,20 @@ public sealed class DesignApplyService
     private void ApplyDesignCore(Guid id, List<Guid> layerIds, bool quiet = false)
     {
         var name = plugin.Configuration.ResolveDesignName(id);
-        if (!plugin.Glamourer.Apply(id, name, layerIds.Select(plugin.Configuration.ResolveDesignName).ToList(), quiet))
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{name}\": design not found.");
+            return;
+        }
+
+        var provider = plugin.DesignProviders.FirstOrDefault(p => p.Source == outfit.Source);
+        if (provider == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{name}\": its source is no longer available.");
+            return;
+        }
+
+        if (!provider.Apply(outfit.ProviderDesignId, name, layerIds.Select(plugin.Configuration.ResolveDesignName).ToList(), quiet))
             return;
 
         if (layerIds.Count > 0)
@@ -39,7 +53,11 @@ public sealed class DesignApplyService
             try
             {
                 foreach (var layerId in layerIds)
-                    plugin.Glamourer.ApplyLayer(layerId);
+                {
+                    if (plugin.Configuration.CachedOutfits.TryGetValue(layerId, out var layerOutfit)
+                        && plugin.DesignProviders.FirstOrDefault(p => p.Source == layerOutfit.Source) is { } layerProvider)
+                        layerProvider.ApplyLayer(layerOutfit.ProviderDesignId);
+                }
             }
             finally { applyingLayer = false; }
         }
@@ -139,8 +157,7 @@ public sealed class DesignApplyService
         foreach (var slot in plugin.Configuration.GetLayerSlots(baseId))
         {
             var candidates = slot.Designs
-                .Where(l => (l.AllJobs || l.Jobs.Contains(jobId))
-                            && plugin.Configuration.CachedOutfits.ContainsKey(l.DesignId))
+                .Where(l => (l.AllJobs || l.Jobs.Contains(jobId)) && SupportsLayers(l.DesignId))
                 .ToList();
 
             if (candidates.Count > 0)
@@ -149,6 +166,13 @@ public sealed class DesignApplyService
 
         return picks;
     }
+
+    // A design can only be picked as a layer if it still exists and its provider supports layering
+    // (Glamourer only, for now - a source like Glamaholic has no equivalent apply-on-top mechanism).
+    private bool SupportsLayers(Guid id)
+        => plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
+           && plugin.DesignProviders.FirstOrDefault(p => p.Source == outfit.Source) is { } provider
+           && provider.Capabilities.HasFlag(DesignProviderCapabilities.Layers);
 
     public ApplyResult ApplyRandomDesign()
     {
