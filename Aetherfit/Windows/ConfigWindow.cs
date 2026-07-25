@@ -140,9 +140,8 @@ public class ConfigWindow : Window, IDisposable
     {
         ImGui.TextColored(UiTheme.GoldAccent, command);
         ImGui.Indent();
-        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(ImGuiCol.TextDisabled));
-        ImGui.TextWrapped(description);
-        ImGui.PopStyleColor();
+        using (ImRaii.PushColor(ImGuiCol.Text, ImGui.GetColorU32(ImGuiCol.TextDisabled)))
+            ImGui.TextWrapped(description);
         ImGui.Unindent();
         ImGui.Spacing();
     }
@@ -187,9 +186,8 @@ public class ConfigWindow : Window, IDisposable
     private static void DrawIndentedDisabledText(string text)
     {
         ImGui.Indent();
-        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(ImGuiCol.TextDisabled));
-        ImGui.TextWrapped(text);
-        ImGui.PopStyleColor();
+        using (ImRaii.PushColor(ImGuiCol.Text, ImGui.GetColorU32(ImGuiCol.TextDisabled)))
+            ImGui.TextWrapped(text);
         ImGui.Unindent();
     }
 

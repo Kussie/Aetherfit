@@ -65,6 +65,8 @@ Once added, find Aetherfit in the main `/xlplugins` window and install it. You c
 ## TODO/Wishlist
 Small bugs, QOL and big dream items that have popped into my head.  When and if they are implemented remains to be seen.
  - Integrate with Simple Glamour Switcher
+ - Investigate IAsyncDalamudPlugin
+ - Add an IPC
 
 
 

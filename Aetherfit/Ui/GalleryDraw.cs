@@ -108,8 +108,7 @@ internal static class GalleryDraw
 
     public static void DrawChevron(ImDrawListPtr dl, Vector2 min, Vector2 max, bool isLeft, bool hovered)
     {
-        var bgAlpha = hovered ? 0.85f : 0.55f;
-        var bg = ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, bgAlpha));
+        var bg = ImGui.ColorConvertFloat4ToU32(hovered ? UiTheme.IconOverlayBgHovered : UiTheme.IconOverlayBg);
         dl.AddRectFilled(min, max, bg, ThumbRounding);
 
         var center = (min + max) * 0.5f;

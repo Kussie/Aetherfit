@@ -159,7 +159,7 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
         var rectMax = new Vector2(Math.Max(p1.X, p2.X), Math.Max(p1.Y, p2.Y));
 
         var dl = ImGui.GetWindowDrawList();
-        var dim = ImGui.ColorConvertFloat4ToU32(new Vector4(0, 0, 0, 0.5f));
+        var dim = ImGui.ColorConvertFloat4ToU32(UiTheme.CropDimOverlay);
         dl.AddRectFilled(imgMin, new Vector2(imgMax.X, rectMin.Y), dim);
         dl.AddRectFilled(new Vector2(imgMin.X, rectMax.Y), imgMax, dim);
         dl.AddRectFilled(new Vector2(imgMin.X, rectMin.Y), new Vector2(rectMin.X, rectMax.Y), dim);

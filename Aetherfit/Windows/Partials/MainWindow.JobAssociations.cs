@@ -84,14 +84,13 @@ public partial class MainWindow
 
         var p0 = ImGui.GetCursorScreenPos();
 
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);
-        ImGui.PushStyleVar(ImGuiStyleVar.ButtonTextAlign, new Vector2(1f, 0.5f));
-        ImGui.PushStyleColor(ImGuiCol.Button, UiTheme.PillBase);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.PillHovered);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.PillActive);
-        var clicked = ImGui.Button($"{label}##job{job}", new Vector2(width, height));
-        ImGui.PopStyleColor(3);
-        ImGui.PopStyleVar(2);
+        bool clicked;
+        using (ImRaii.PushStyle(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding)
+                   .Push(ImGuiStyleVar.ButtonTextAlign, new Vector2(1f, 0.5f)))
+        using (ImRaii.PushColor(ImGuiCol.Button, UiTheme.PillBase)
+                   .Push(ImGuiCol.ButtonHovered, UiTheme.PillHovered)
+                   .Push(ImGuiCol.ButtonActive, UiTheme.PillActive))
+            clicked = ImGui.Button($"{label}##job{job}", new Vector2(width, height));
 
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip($"Remove \"{name}\"");

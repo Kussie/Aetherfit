@@ -73,9 +73,9 @@ public partial class MainWindow
         // AllowOverlap lets the count badge and Clear button sit on the header row itself.
         var flags = (defaultOpen ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None)
                   | ImGuiTreeNodeFlags.AllowItemOverlap;
-        var open = ImGui.CollapsingHeader("Filters", flags);
+        using var header = ImRaii.Header("Filters", flags);
         DrawFilterHeaderOverlay();
-        if (!open)
+        if (!header.Success)
             return;
 
         ImGui.Spacing();
@@ -102,11 +102,11 @@ public partial class MainWindow
         ImGui.TextColored(UiTheme.GoldAccent, countText);
         ImGui.SameLine();
 
-        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive);
-        var clear = ImGui.Button($"{clearLabel}##clearFilters");
-        ImGui.PopStyleColor(3);
+        bool clear;
+        using (ImRaii.PushColor(ImGuiCol.Button, Vector4.Zero)
+                   .Push(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered)
+                   .Push(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive))
+            clear = ImGui.Button($"{clearLabel}##clearFilters");
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Clear all filters");
         if (clear)
@@ -246,15 +246,13 @@ public partial class MainWindow
     private static void DrawSearchScopeToggle(string letter, string tooltip, ref bool enabled)
     {
         var size = ImGui.GetFrameHeight();
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding);
-        ImGui.PushStyleColor(ImGuiCol.Button,
-            enabled ? UiTheme.PillBase : UiTheme.ToggleOffBg);
-        ImGui.PushStyleColor(ImGuiCol.Text,
-            enabled ? UiTheme.GoldAccent : UiTheme.PlaceholderText);
-        if (ImGui.Button($"{letter}##scope{letter}", new Vector2(size, size)))
-            enabled = !enabled;
-        ImGui.PopStyleColor(2);
-        ImGui.PopStyleVar();
+        using (ImRaii.PushStyle(ImGuiStyleVar.FrameRounding, UiTheme.PillRounding))
+        using (ImRaii.PushColor(ImGuiCol.Button, enabled ? UiTheme.PillBase : UiTheme.ToggleOffBg)
+                   .Push(ImGuiCol.Text, enabled ? UiTheme.GoldAccent : UiTheme.PlaceholderText))
+        {
+            if (ImGui.Button($"{letter}##scope{letter}", new Vector2(size, size)))
+                enabled = !enabled;
+        }
 
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(tooltip);
@@ -276,14 +274,13 @@ public partial class MainWindow
         var count = filterTags.Count + filterJobs.Count + filterMods.Count;
         var label = count == 0 ? "Filter by tag(s), job or mod..." : count == 1 ? "1 tag/job/mod filter active" : $"{count} tag/job/mod filters active";
 
-        ImGui.PushStyleVar(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f));
-        ImGui.PushStyleColor(ImGuiCol.Button, ImGui.GetColorU32(ImGuiCol.FrameBg));
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ImGui.GetColorU32(ImGuiCol.FrameBgHovered));
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, ImGui.GetColorU32(ImGuiCol.FrameBgActive));
-        ImGui.PushStyleColor(ImGuiCol.Text, UiTheme.PlaceholderText);
-        var clicked = ImGui.Button($"{label}##tagJobPicker", new Vector2(width, 0));
-        ImGui.PopStyleColor(4);
-        ImGui.PopStyleVar();
+        bool clicked;
+        using (ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f)))
+        using (ImRaii.PushColor(ImGuiCol.Button, ImGui.GetColorU32(ImGuiCol.FrameBg))
+                   .Push(ImGuiCol.ButtonHovered, ImGui.GetColorU32(ImGuiCol.FrameBgHovered))
+                   .Push(ImGuiCol.ButtonActive, ImGui.GetColorU32(ImGuiCol.FrameBgActive))
+                   .Push(ImGuiCol.Text, UiTheme.PlaceholderText))
+            clicked = ImGui.Button($"{label}##tagJobPicker", new Vector2(width, 0));
 
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();

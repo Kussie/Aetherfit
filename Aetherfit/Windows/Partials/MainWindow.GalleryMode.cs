@@ -424,7 +424,7 @@ public partial class MainWindow
             var badgeMax = new Vector2(thumbStart.X + thumbWidth - margin, thumbStart.Y + thumbHeight - margin);
             var badgeMin = badgeMax - badgeTextSize - new Vector2(pad * 2f, pad * 2f);
             dl.AddRectFilled(badgeMin, badgeMax,
-                ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.55f)), 3f);
+                ImGui.ColorConvertFloat4ToU32(UiTheme.IconOverlayBg), 3f);
             dl.AddText(badgeMin + new Vector2(pad, pad), ImGui.ColorConvertFloat4ToU32(Vector4.One), badge);
         }
 
@@ -501,9 +501,8 @@ public partial class MainWindow
         if (isFavourite || imageHovered)
         {
             var dl = ImGui.GetWindowDrawList();
-            var bgAlpha = overStar ? 0.85f : 0.55f;
             dl.AddRectFilled(starMin, starMax,
-                ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, bgAlpha)), 3f);
+                ImGui.ColorConvertFloat4ToU32(overStar ? UiTheme.IconOverlayBgHovered : UiTheme.IconOverlayBg), 3f);
             var starChar = isFavourite ? "★" : "☆";
             var starColor = isFavourite
                 ? ImGui.ColorConvertFloat4ToU32(UiTheme.FavouriteStar)
@@ -518,9 +517,8 @@ public partial class MainWindow
         if (imageHovered)
         {
             var dl = ImGui.GetWindowDrawList();
-            var bgAlpha = overEye ? 0.85f : 0.55f;
             dl.AddRectFilled(eyeMin, eyeMax,
-                ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, bgAlpha)), 3f);
+                ImGui.ColorConvertFloat4ToU32(overEye ? UiTheme.IconOverlayBgHovered : UiTheme.IconOverlayBg), 3f);
             var eyeColor = ImGui.ColorConvertFloat4ToU32(UiTheme.HiddenEyeOff);
             using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
             {
@@ -540,11 +538,8 @@ public partial class MainWindow
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
 
         var hasColor = design.Color != 0;
-        if (hasColor)
-            ImGui.PushStyleColor(ImGuiCol.Text, design.Color);
-        ImGui.TextUnformatted(label);
-        if (hasColor)
-            ImGui.PopStyleColor();
+        using (ImRaii.PushColor(ImGuiCol.Text, design.Color, hasColor))
+            ImGui.TextUnformatted(label);
         if (label != fullName && ImGui.IsItemHovered())
             ImGui.SetTooltip(fullName);
 
