@@ -147,7 +147,8 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
 
     private void DrawFilters()
     {
-        if (!ImGui.CollapsingHeader("Filters", ImGuiTreeNodeFlags.DefaultOpen))
+        using var header = ImRaii.Header("Filters", ImGuiTreeNodeFlags.DefaultOpen);
+        if (!header.Success)
             return;
 
         ImGui.PushItemWidth(-1);
@@ -301,11 +302,12 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
 
         ImGui.BeginTooltip();
 
-        ImGui.PushStyleColor(ImGuiCol.Text, UiTheme.GoldAccent);
-        ImGui.PushTextWrapPos(panelWidth);
-        ImGui.TextUnformatted(design.Name);
-        ImGui.PopTextWrapPos();
-        ImGui.PopStyleColor();
+        using (ImRaii.PushColor(ImGuiCol.Text, UiTheme.GoldAccent))
+        {
+            ImGui.PushTextWrapPos(panelWidth);
+            ImGui.TextUnformatted(design.Name);
+            ImGui.PopTextWrapPos();
+        }
 
         var hasDetails = !string.IsNullOrWhiteSpace(design.Description)
                          || design.Tags.Count > 0
