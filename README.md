@@ -20,6 +20,8 @@ It adds the following functionality:
 - Associate designs with specific jobs
 - Apply multiple layered designs (Including ability to randomly select a design from a pool, useful for having a random weapon appearance as an example)
 
+> **Composite tags:** tags can be written as `category/type`, e.g. `swimsuit/bikini` or `colour/blue`. A design tagged this way matches filters for the full tag *or* either half on its own — so it shows up whether you filter by `swimsuit/bikini`, just `swimsuit`, or just `bikini`, without having to add all three as separate tags. When designs are grouped by tags instead of folders, composite tags also build a nested tree instead of one flat entry — `swimsuit/bikini` shows up as a `swimsuit` branch containing a `bikini` branch, and a design carrying `summer/casual` and `winter/casual` appears under both, keeping same-named subtags (like `casual`) apart under their own parent.
+
 ---
 
 ***Important Note***, this has only been tested on the FFXIV client on Windows.  Whilst the bulk of the plugin should work no matter what, the direct screenshot capture might not work on other clients/operating systems.
