@@ -31,6 +31,9 @@ public partial class MainWindow : Window, IDisposable
     private bool groupByJob;
     private bool groupByTags;
 
+    // Cover Mode's own tag-grouping toggle - independent of Edit Mode's groupByTags above.
+    private bool coverGroupByTags;
+
     // When a filter is active we force every matching tree node open and keep note of the previous state so it can be restored whe nthe filters are cleared
     private readonly Dictionary<uint, bool> treeOpenSnapshot = new();
     private bool wasFilterActive;
@@ -78,6 +81,7 @@ public partial class MainWindow : Window, IDisposable
         coverMode = plugin.Configuration.DefaultToCoverMode;
         groupByJob = false;
         groupByTags = false;
+        coverGroupByTags = false;
         RefreshDesigns();
     }
 
