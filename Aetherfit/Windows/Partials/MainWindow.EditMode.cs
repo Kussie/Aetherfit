@@ -217,32 +217,29 @@ public partial class MainWindow
     {
         var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
         var hasColor = design.Color != 0;
-        if (hasColor)
-            ImGui.PushStyleColor(ImGuiCol.Text, design.Color);
-
         var selected = selectedDesign == design.Id;
-
         var label = GetLeafLabel(design, isFavourite);
-        if (ImGui.Selectable(label, selected))
-            selectedDesign = design.Id;
 
-        if (!isFavourite)
-            DrawLeafDot(hasColor ? design.Color : ImGui.GetColorU32(ImGuiCol.Text));
-
-        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+        using (ImRaii.PushColor(ImGuiCol.Text, design.Color, hasColor))
         {
-            selectedDesign = design.Id;
-            ApplyDesignById(design.Id);
-        }
+            if (ImGui.Selectable(label, selected))
+                selectedDesign = design.Id;
 
-        if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
-        {
-            selectedDesign = design.Id;
-            plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
-        }
+            if (!isFavourite)
+                DrawLeafDot(hasColor ? design.Color : ImGui.GetColorU32(ImGuiCol.Text));
 
-        if (hasColor)
-            ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+            {
+                selectedDesign = design.Id;
+                ApplyDesignById(design.Id);
+            }
+
+            if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
+            {
+                selectedDesign = design.Id;
+                plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
+            }
+        }
 
         if (ImGui.IsItemHovered())
             hoveredDesignForTooltip = design;
@@ -649,15 +646,13 @@ public partial class MainWindow
     // font and frame height so the glyphs line up; tint null keeps the normal text colour.
     private static bool HeaderIconButton(string id, FontAwesomeIcon icon, Vector4? tint, Vector2 size)
     {
-        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive);
-        if (tint is { } t)
-            ImGui.PushStyleColor(ImGuiCol.Text, t);
+        using var colors = ImRaii.PushColor(ImGuiCol.Button, Vector4.Zero)
+            .Push(ImGuiCol.ButtonHovered, UiTheme.GhostButtonHovered)
+            .Push(ImGuiCol.ButtonActive, UiTheme.GhostButtonActive)
+            .Push(ImGuiCol.Text, tint);
         bool clicked;
         using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
             clicked = ImGui.Button($"{icon.ToIconString()}##{id}", size);
-        ImGui.PopStyleColor(tint.HasValue ? 4 : 3);
         return clicked;
     }
 
@@ -665,13 +660,11 @@ public partial class MainWindow
     // sitting next to the image thumbnails.
     private static bool DrawImageActionTile(string id, FontAwesomeIcon icon, string label, string tooltip, float size)
     {
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 4f);
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, ImGuiHelpers.GlobalScale);
-        ImGui.PushStyleColor(ImGuiCol.Button, UiTheme.PlaceholderBg);
-        ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(0.65f, 0.65f, 0.68f, 0.45f));
+        using var styles = ImRaii.PushStyle(ImGuiStyleVar.FrameRounding, 4f)
+            .Push(ImGuiStyleVar.FrameBorderSize, ImGuiHelpers.GlobalScale);
+        using var colors = ImRaii.PushColor(ImGuiCol.Button, UiTheme.PlaceholderBg)
+            .Push(ImGuiCol.Border, UiTheme.ImageTileBorder);
         var clicked = ImGui.Button($"##imgTile{id}", new Vector2(size, size));
-        ImGui.PopStyleColor(2);
-        ImGui.PopStyleVar(2);
 
         var hovered = ImGui.IsItemHovered();
         if (hovered)
