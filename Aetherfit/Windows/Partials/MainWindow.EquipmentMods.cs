@@ -70,11 +70,17 @@ public partial class MainWindow
             DrawBonusRow(label, slotLabelWidth, entry, affectedBy);
         }
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+        // These flags are Glamourer design metadata - Glamaholic/Glamour Plate designs are relayed
+        // through Glamourer's equipment-only apply, so they never carry them.
+        if (details.Source == DesignSource.Glamourer)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
 
-        DrawToggleRow(details);
+            DrawToggleRow(details);
+        }
+
         ImGui.Unindent();
         ImGui.Spacing();
     }
