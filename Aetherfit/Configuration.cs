@@ -50,6 +50,16 @@ public class Configuration : IPluginConfiguration
     // When disabled, the Additional Design Layers panel is hidden and applying a base design never applies layers.
     public bool EnableRandomLayers { get; set; } = false;
 
+    public bool GlamaholicEnabled { get; set; } = true;
+    public bool GlamourPlateEnabled { get; set; } = true;
+
+    public bool IsProviderEnabled(DesignSource source) => source switch
+    {
+        DesignSource.Glamaholic => GlamaholicEnabled,
+        DesignSource.GlamourPlate => GlamourPlateEnabled,
+        _ => true, // Glamourer (and any future required source) has no toggle
+    };
+
     // Set once the user closes the help blurb in the Additional Design Layers panel.
     public bool AdditionalLayersHelpDismissed { get; set; }
 

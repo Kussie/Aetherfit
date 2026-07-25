@@ -10,6 +10,7 @@ public enum DesignSource
 {
     Glamourer = 0,
     Glamaholic = 1,
+    GlamourPlate = 2,
 }
 
 [Flags]

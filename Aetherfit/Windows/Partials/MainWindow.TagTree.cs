@@ -21,12 +21,16 @@ public partial class MainWindow
     private FilterSnapshot cachedTagTreeFilterSnapshot;
     private Dictionary<string, bool> cachedTagTreeFilterTags = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<uint, bool> cachedTagTreeFilterJobs = new();
+    private bool cachedTagTreeGlamaholicEnabled = true;
+    private bool cachedTagTreeGlamourPlateEnabled = true;
 
     private bool IsTagTreeCacheStale() =>
         cachedTagTreeGeneration != designListGeneration ||
         cachedTagTreeFilterSnapshot != CaptureFilterSnapshot() ||
         !FiltersEqual(cachedTagTreeFilterTags, filterTags) ||
-        !FiltersEqual(cachedTagTreeFilterJobs, filterJobs);
+        !FiltersEqual(cachedTagTreeFilterJobs, filterJobs) ||
+        cachedTagTreeGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
+        cachedTagTreeGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled;
 
     private void RebuildTagTreeCache()
     {
@@ -80,6 +84,8 @@ public partial class MainWindow
         cachedTagTreeFilterSnapshot = CaptureFilterSnapshot();
         cachedTagTreeFilterTags = new(filterTags, StringComparer.OrdinalIgnoreCase);
         cachedTagTreeFilterJobs = new(filterJobs);
+        cachedTagTreeGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
+        cachedTagTreeGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
     }
 
     private void DrawTagTree(bool hasFilter)

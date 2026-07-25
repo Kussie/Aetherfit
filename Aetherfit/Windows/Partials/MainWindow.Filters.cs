@@ -373,6 +373,9 @@ public partial class MainWindow
 
     private bool DesignMatchesFilters(DesignLeaf design, CachedOutfit? cached)
     {
+        if (cached != null && !plugin.Configuration.IsProviderEnabled(cached.Source))
+            return false;
+
         if (filterName.Length > 0 && !NameFilterMatches(design, cached))
             return false;
 
