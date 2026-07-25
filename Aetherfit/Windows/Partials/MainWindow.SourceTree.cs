@@ -18,12 +18,16 @@ public partial class MainWindow
     private FilterSnapshot cachedSourceTreeFilterSnapshot;
     private Dictionary<string, bool> cachedSourceTreeFilterTags = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<uint, bool> cachedSourceTreeFilterJobs = new();
+    private bool cachedSourceTreeGlamaholicEnabled = true;
+    private bool cachedSourceTreeGlamourPlateEnabled = true;
 
     private bool IsSourceTreeCacheStale() =>
         cachedSourceTreeGeneration != designListGeneration ||
         cachedSourceTreeFilterSnapshot != CaptureFilterSnapshot() ||
         !FiltersEqual(cachedSourceTreeFilterTags, filterTags) ||
-        !FiltersEqual(cachedSourceTreeFilterJobs, filterJobs);
+        !FiltersEqual(cachedSourceTreeFilterJobs, filterJobs) ||
+        cachedSourceTreeGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
+        cachedSourceTreeGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled;
 
     private void RebuildSourceTreeCache()
     {
@@ -56,6 +60,8 @@ public partial class MainWindow
         cachedSourceTreeFilterSnapshot = CaptureFilterSnapshot();
         cachedSourceTreeFilterTags = new(filterTags, StringComparer.OrdinalIgnoreCase);
         cachedSourceTreeFilterJobs = new(filterJobs);
+        cachedSourceTreeGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
+        cachedSourceTreeGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
     }
 
     private void DrawSourceTree(bool hasFilter)

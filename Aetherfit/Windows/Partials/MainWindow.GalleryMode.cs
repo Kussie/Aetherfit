@@ -50,6 +50,8 @@ public partial class MainWindow
     private bool cachedFilterVanillaOnly;
     private bool cachedFilterModdedOnly;
     private bool cachedPinFavourites = true;
+    private bool cachedGlamaholicEnabled = true;
+    private bool cachedGlamourPlateEnabled = true;
     private int favouriteVersion;
     private int cachedFavouriteVersion = -1;
     private int hiddenVersion;
@@ -69,17 +71,26 @@ public partial class MainWindow
             coverMode = false;
         ImGui.Separator();
 
-        if (designsError != null)
+        // A source erroring doesn't mean nothing is available - only block the whole pane when every
+        // source failed and there's genuinely nothing to show (designsCount == 0). Otherwise the error
+        // is just a heads-up shown alongside whatever other sources did succeed.
+        if (designsError != null && designsCount == 0)
         {
-            ImGui.TextWrapped("Glamourer is not available. Make sure it is installed and enabled.");
+            ImGui.TextWrapped("No design sources are currently available.");
             ImGui.TextDisabled(designsError);
             return;
         }
 
         if (designsCount == 0)
         {
-            ImGui.Text("No Glamourer designs found.");
+            ImGui.Text("No designs found.");
             return;
+        }
+
+        if (designsError != null)
+        {
+            ImGui.TextWrapped(designsError);
+            ImGui.Spacing();
         }
 
         DrawFilterUi(defaultOpen: true, wide: true, extraControls: DrawCoverGroupByControls);
@@ -224,6 +235,8 @@ public partial class MainWindow
         cachedFilterVanillaOnly != filterVanillaOnly ||
         cachedFilterModdedOnly != filterModdedOnly ||
         cachedPinFavourites != plugin.Configuration.GalleryPinFavouritesFirst ||
+        cachedGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
+        cachedGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled ||
         cachedFavouriteVersion != favouriteVersion ||
         cachedHiddenVersion != hiddenVersion;
 
@@ -254,6 +267,8 @@ public partial class MainWindow
         cachedFilterVanillaOnly = filterVanillaOnly;
         cachedFilterModdedOnly = filterModdedOnly;
         cachedPinFavourites = plugin.Configuration.GalleryPinFavouritesFirst;
+        cachedGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
+        cachedGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
         cachedFavouriteVersion = favouriteVersion;
         cachedHiddenVersion = hiddenVersion;
     }

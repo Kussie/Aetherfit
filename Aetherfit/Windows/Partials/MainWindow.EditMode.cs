@@ -55,9 +55,12 @@ public partial class MainWindow
             coverMode = true;
         ImGui.Separator();
 
-        if (designsError != null)
+        // A source erroring doesn't mean nothing is available - only block the whole pane when every
+        // source failed and there's genuinely nothing to show (designsCount == 0). Otherwise the error
+        // is just a heads-up shown alongside whatever other sources did succeed.
+        if (designsError != null && designsCount == 0)
         {
-            ImGui.TextWrapped("Glamourer is not available. Make sure it is installed and enabled.");
+            ImGui.TextWrapped("No design sources are currently available.");
             ImGui.TextDisabled(designsError);
             return;
         }
@@ -66,6 +69,12 @@ public partial class MainWindow
         {
             ImGui.Text("No designs found.");
             return;
+        }
+
+        if (designsError != null)
+        {
+            ImGui.TextWrapped(designsError);
+            ImGui.Spacing();
         }
 
         DrawFilterUi(extraControls: DrawEditModeGroupByControls);

@@ -37,6 +37,12 @@ public sealed class DesignApplyService
             return;
         }
 
+        if (!plugin.Configuration.IsProviderEnabled(outfit.Source))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{name}\": its source is currently disabled in Aetherfit's settings.");
+            return;
+        }
+
         var provider = plugin.DesignProviders.FirstOrDefault(p => p.Source == outfit.Source);
         if (provider == null)
         {
@@ -174,10 +180,15 @@ public sealed class DesignApplyService
            && plugin.DesignProviders.FirstOrDefault(p => p.Source == outfit.Source) is { } provider
            && provider.Capabilities.HasFlag(DesignProviderCapabilities.Layers);
 
+    private bool IsUsable(Guid id)
+        => !plugin.Configuration.HiddenDesigns.Contains(id)
+           && plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
+           && plugin.Configuration.IsProviderEnabled(outfit.Source);
+
     public ApplyResult ApplyRandomDesign()
     {
         var ids = plugin.Configuration.CachedOutfits.Keys
-            .Where(id => !plugin.Configuration.HiddenDesigns.Contains(id))
+            .Where(IsUsable)
             .ToList();
         if (ids.Count == 0)
         {
@@ -201,7 +212,7 @@ public sealed class DesignApplyService
         }
 
         var matching = plugin.Configuration.CachedOutfits
-            .Where(kv => !plugin.Configuration.HiddenDesigns.Contains(kv.Key)
+            .Where(kv => IsUsable(kv.Key)
                          && (!favouritesOnly || plugin.Configuration.FavouriteDesigns.Contains(kv.Key))
                          && tags.All(t => TagMatching.AnyMatch(kv.Value.Tags, t)))
             .Select(kv => kv.Key)
@@ -222,8 +233,7 @@ public sealed class DesignApplyService
     public ApplyResult ApplyRandomFavourite(bool matchCurrentJob)
     {
         var favourites = plugin.Configuration.FavouriteDesigns
-            .Where(id => plugin.Configuration.CachedOutfits.ContainsKey(id)
-                         && !plugin.Configuration.HiddenDesigns.Contains(id))
+            .Where(IsUsable)
             .ToList();
 
         if (favourites.Count == 0)
@@ -272,9 +282,7 @@ public sealed class DesignApplyService
 
         var jobId = Plugin.PlayerState.ClassJob.RowId;
         var matching = plugin.Configuration.DesignJobAssociations
-            .Where(kv => kv.Value.Contains(jobId)
-                         && plugin.Configuration.CachedOutfits.ContainsKey(kv.Key)
-                         && !plugin.Configuration.HiddenDesigns.Contains(kv.Key))
+            .Where(kv => kv.Value.Contains(jobId) && IsUsable(kv.Key))
             .Select(kv => kv.Key)
             .ToList();
 
