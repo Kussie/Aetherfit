@@ -9,6 +9,7 @@ using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
@@ -116,6 +117,29 @@ public class ConfigWindow : Window, IDisposable
 
         ImGui.Spacing();
         ImGui.Separator();
+        ImGui.Spacing();
+
+        using (ImRaii.PushColor(ImGuiCol.Button, UiTheme.KofiBase)
+                   .Push(ImGuiCol.ButtonHovered, UiTheme.KofiHovered)
+                   .Push(ImGuiCol.ButtonActive, UiTheme.KofiActive))
+        {
+            if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Coffee, "Support on Ko-fi", Vector2.Zero))
+                Dalamud.Utility.Util.OpenLink("https://ko-fi.com/kussie");
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Tips and donations are entirely voluntary.");
+
+        ImGui.SameLine();
+        using (ImRaii.PushColor(ImGuiCol.Button, UiTheme.PatreonBase)
+                   .Push(ImGuiCol.ButtonHovered, UiTheme.PatreonHovered)
+                   .Push(ImGuiCol.ButtonActive, UiTheme.PatreonActive))
+        {
+            if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.HandHoldingHeart, "Support on Patreon", Vector2.Zero))
+                Dalamud.Utility.Util.OpenLink("https://www.patreon.com/Kussie");
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Tips and donations are entirely voluntary.");
+
         ImGui.Spacing();
         ImGui.TextDisabled($"Aetherfit v{Plugin.Version}");
     }

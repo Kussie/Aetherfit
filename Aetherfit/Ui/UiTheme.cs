@@ -74,6 +74,14 @@ internal static class UiTheme
     // Dims the area outside the active selection in the screenshot cropper.
     public static readonly Vector4 CropDimOverlay = new(0f, 0f, 0f, 0.5f);
 
+    public static readonly Vector4 KofiBase = new(0.92f, 0.30f, 0.30f, 1.0f);
+    public static readonly Vector4 KofiHovered = new(1.00f, 0.40f, 0.40f, 1.0f);
+    public static readonly Vector4 KofiActive = new(0.76f, 0.22f, 0.22f, 1.0f);
+
+    public static readonly Vector4 PatreonBase = new(0.93f, 0.44f, 0.18f, 1.0f);
+    public static readonly Vector4 PatreonHovered = new(1.00f, 0.53f, 0.24f, 1.0f);
+    public static readonly Vector4 PatreonActive = new(0.78f, 0.35f, 0.12f, 1.0f);
+
     // The big "Glamourer Designs" header.
     public const float HeaderFontScale = 1.25f;
 
