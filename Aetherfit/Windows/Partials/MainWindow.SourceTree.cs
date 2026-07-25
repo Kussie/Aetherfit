@@ -20,6 +20,7 @@ public partial class MainWindow
     private Dictionary<uint, bool> cachedSourceTreeFilterJobs = new();
     private bool cachedSourceTreeGlamaholicEnabled = true;
     private bool cachedSourceTreeGlamourPlateEnabled = true;
+    private bool cachedSourceTreeSimpleGlamourSwitcherEnabled = true;
 
     private bool IsSourceTreeCacheStale() =>
         cachedSourceTreeGeneration != designListGeneration ||
@@ -27,7 +28,8 @@ public partial class MainWindow
         !FiltersEqual(cachedSourceTreeFilterTags, filterTags) ||
         !FiltersEqual(cachedSourceTreeFilterJobs, filterJobs) ||
         cachedSourceTreeGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
-        cachedSourceTreeGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled;
+        cachedSourceTreeGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled ||
+        cachedSourceTreeSimpleGlamourSwitcherEnabled != plugin.Configuration.SimpleGlamourSwitcherEnabled;
 
     private void RebuildSourceTreeCache()
     {
@@ -49,8 +51,6 @@ public partial class MainWindow
             list.Add(leaf);
         }
 
-        // Ordered by the providers' own registration order rather than the dictionary's, and skips
-        // any source with nothing to show (e.g. Glamaholic before it's ever been used).
         cachedSourceGroups = plugin.DesignProviders
             .Where(p => bySource.ContainsKey(p.Source))
             .Select(p => new SourceGroup(p.DisplayName, BuildFolderTree(bySource[p.Source])))
@@ -62,6 +62,7 @@ public partial class MainWindow
         cachedSourceTreeFilterJobs = new(filterJobs);
         cachedSourceTreeGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
         cachedSourceTreeGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
+        cachedSourceTreeSimpleGlamourSwitcherEnabled = plugin.Configuration.SimpleGlamourSwitcherEnabled;
     }
 
     private void DrawSourceTree(bool hasFilter)

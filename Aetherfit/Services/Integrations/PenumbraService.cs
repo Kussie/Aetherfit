@@ -12,6 +12,9 @@ public sealed class PenumbraService
 {
     private readonly OpenMainWindow openMainWindow;
     private readonly GetChangedItems getChangedItems;
+    private readonly SetTemporaryModSettingsPlayer setTemporaryModSettingsPlayer;
+    private readonly RemoveTemporaryModSettingsPlayer removeTemporaryModSettingsPlayer;
+    private readonly RemoveAllTemporaryModSettingsPlayer removeAllTemporaryModSettingsPlayer;
 
     // A mod changes the same items no matter which design pulls it in, so we look them up once per mod
     // directory and reuse that across every design.
@@ -23,6 +26,9 @@ public sealed class PenumbraService
     {
         openMainWindow = new OpenMainWindow(Plugin.PluginInterface);
         getChangedItems = new GetChangedItems(Plugin.PluginInterface);
+        setTemporaryModSettingsPlayer = new SetTemporaryModSettingsPlayer(Plugin.PluginInterface);
+        removeTemporaryModSettingsPlayer = new RemoveTemporaryModSettingsPlayer(Plugin.PluginInterface);
+        removeAllTemporaryModSettingsPlayer = new RemoveAllTemporaryModSettingsPlayer(Plugin.PluginInterface);
     }
 
     // Penumbra's own reported ApiVersion (BreakingVersion/FeatureVersion in its PenumbraApi.cs) - confirmed
@@ -92,4 +98,17 @@ public sealed class PenumbraService
     }
 
     public void ClearChangedItemsCache() => changedItemsCache.Clear();
+
+    // Temporary mod settings, scoped to the local player and a caller-owned lock key (see
+    // SimpleGlamourSwitcherService's own key range) - the same relay mechanism SGS itself uses to
+    // activate a design's mods, since Glamourer's own apply never touches Penumbra mod state at all.
+    public PenumbraApiEc SetTemporaryModSettingsPlayer(string modDirectory, bool enabled, int priority,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> settings, string source, int key)
+        => setTemporaryModSettingsPlayer.Invoke(0, modDirectory, false, enabled, priority, settings, source, key);
+
+    public PenumbraApiEc RemoveTemporaryModSettingsPlayer(string modDirectory, int key)
+        => removeTemporaryModSettingsPlayer.Invoke(0, modDirectory, key);
+
+    public PenumbraApiEc RemoveAllTemporaryModSettingsPlayer(int key)
+        => removeAllTemporaryModSettingsPlayer.Invoke(0, key);
 }

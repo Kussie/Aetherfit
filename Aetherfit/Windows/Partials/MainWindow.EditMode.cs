@@ -495,7 +495,7 @@ public partial class MainWindow
                 DrawEquipmentPanel(id, details);
                 DrawCustomizationsPanel(id, details);
                 DrawDesignLinksPanel(details);
-                if (isGlamourer)
+                if (details.Source is DesignSource.Glamourer or DesignSource.SimpleGlamourSwitcher)
                     DrawModsPanel(details);
                 // Layers are applied via their own provider on top of whatever base was applied, so the
                 // base design's source doesn't matter here - only Glamourer-sourced designs can be picked

@@ -21,6 +21,7 @@ public partial class MainWindow
     private Dictionary<uint, bool> cachedJobTreeFilterJobs = new();
     private bool cachedJobTreeGlamaholicEnabled = true;
     private bool cachedJobTreeGlamourPlateEnabled = true;
+    private bool cachedJobTreeSimpleGlamourSwitcherEnabled = true;
 
     private bool IsJobTreeCacheStale() =>
         cachedJobTreeGeneration != designListGeneration ||
@@ -29,7 +30,8 @@ public partial class MainWindow
         !FiltersEqual(cachedJobTreeFilterTags, filterTags) ||
         !FiltersEqual(cachedJobTreeFilterJobs, filterJobs) ||
         cachedJobTreeGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
-        cachedJobTreeGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled;
+        cachedJobTreeGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled ||
+        cachedJobTreeSimpleGlamourSwitcherEnabled != plugin.Configuration.SimpleGlamourSwitcherEnabled;
 
     private void RebuildJobTreeCache()
     {
@@ -80,6 +82,7 @@ public partial class MainWindow
         cachedJobTreeFilterJobs = new(filterJobs);
         cachedJobTreeGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
         cachedJobTreeGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
+        cachedJobTreeSimpleGlamourSwitcherEnabled = plugin.Configuration.SimpleGlamourSwitcherEnabled;
     }
 
     private void DrawJobTree(bool hasFilter)

@@ -71,8 +71,10 @@ public partial class MainWindow
         }
 
         // These flags are Glamourer design metadata - Glamaholic/Glamour Plate designs are relayed
-        // through Glamourer's equipment-only apply, so they never carry them.
-        if (details.Source == DesignSource.Glamourer)
+        // through Glamourer's equipment-only apply, so they never carry them. Simple Glamour Switcher
+        // does carry Hat/Weapon/Visor toggles of its own (see SimpleGlamourSwitcherService), so it's
+        // included here too.
+        if (details.Source is DesignSource.Glamourer or DesignSource.SimpleGlamourSwitcher)
         {
             ImGui.Spacing();
             ImGui.Separator();

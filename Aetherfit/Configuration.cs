@@ -52,11 +52,13 @@ public class Configuration : IPluginConfiguration
 
     public bool GlamaholicEnabled { get; set; } = true;
     public bool GlamourPlateEnabled { get; set; } = true;
+    public bool SimpleGlamourSwitcherEnabled { get; set; } = true;
 
     public bool IsProviderEnabled(DesignSource source) => source switch
     {
         DesignSource.Glamaholic => GlamaholicEnabled,
         DesignSource.GlamourPlate => GlamourPlateEnabled,
+        DesignSource.SimpleGlamourSwitcher => SimpleGlamourSwitcherEnabled,
         _ => true, // Glamourer (and any future required source) has no toggle
     };
 

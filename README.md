@@ -14,7 +14,7 @@ It also provides a quick and easy way to preview your designs with screenshots a
 > **Tip:** this isn't required, but if your designs rely on mods through Penumbra, the ideal setup is to use mod associations with temporary settings on your Glamourer designs, rather than enabling everything all the time. That way the relevant mods are automatically turned on and off as you switch between designs. See [this guide](https://docs.google.com/document/d/1WxaNWRRTlm5o6KShM_so54yoD5RDPIpFg2UqSid71ek/edit?tab=t.nb010xi108ph#heading=h.o8utyg3da3rc) for a brief explanation of mod associations and temporary settings.
 
 It adds the following functionality:
-- Source designs from Glamourer, Glamaholic, and the game's own Glamour Plates, all in one gallery
+- Source designs from Glamourer, Glamaholic, Simple Glamour Switcher, and the game's own Glamour Plates, all in one gallery
 - Browse designs by tags
 - Add screenshots to designs
 - Apply a random design to your character or a random design based on a selection of tags
@@ -69,7 +69,6 @@ Once added, find Aetherfit in the main `/xlplugins` window and install it. You c
 
 ## TODO/Wishlist
 Small bugs, QOL and big dream items that have popped into my head.  When and if they are implemented remains to be seen.
- - Integrate with Simple Glamour Switcher
  - Investigate IAsyncDalamudPlugin
  - Add an IPC
 

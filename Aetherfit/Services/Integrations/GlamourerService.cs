@@ -232,16 +232,21 @@ public sealed class GlamourerService : IDisposable
     public GlamourerApiEc ApplyEquipmentState(JObject state, int objectIndex = 0)
         => InvokeOwnChange(() => applyState.Invoke(state, objectIndex, 0, ApplyFlag.Equipment));
 
+    // Same as ApplyEquipmentState but also applies the "Customize" section - used by SimpleGlamourSwitcherService,
+    // the only relay source whose designs carry customize values as well as equipment.
+    public GlamourerApiEc ApplyEquipmentAndCustomizeState(JObject state, int objectIndex = 0)
+        => InvokeOwnChange(() => applyState.Invoke(state, objectIndex, 0, ApplyFlag.Equipment | ApplyFlag.Customization));
+
     private static CachedOutfit ParseOutfit(JObject j)
     {
         var customize = j["Customize"] as JObject;
-        var name = ReadString(j["Name"]) ?? "(unnamed)";
-        var description = ReadString(j["Description"]);
+        var name = GlamourerJsonSchema.ReadString(j["Name"]) ?? "(unnamed)";
+        var description = GlamourerJsonSchema.ReadString(j["Description"]);
         if (string.IsNullOrWhiteSpace(description))
             description = null;
 
         var tags = j["Tags"] is JArray tagArray
-            ? tagArray.Select(t => ReadString(t) ?? string.Empty)
+            ? tagArray.Select(t => GlamourerJsonSchema.ReadString(t) ?? string.Empty)
                       .Where(t => !string.IsNullOrWhiteSpace(t))
                       .ToList()
             : new List<string>();
@@ -259,17 +264,17 @@ public sealed class GlamourerService : IDisposable
             LastEdit = ReadDateTimeOffset(j["LastEdit"]),
             Equipment = ParseEquipment(equipment),
             BonusItems = ParseBonusItems(j["Bonus"]),
-            Customizations = ParseCustomizations(customize),
-            CustomizeClan = (int)ReadUInt64(customize?["Clan"]?["Value"]),
-            CustomizeGender = (int)ReadUInt64(customize?["Gender"]?["Value"]),
-            CustomizeClanApplied = ReadBool(customize?["Clan"]?["Apply"]),
-            CustomizeGenderApplied = ReadBool(customize?["Gender"]?["Apply"]),
+            Customizations = GlamourerJsonSchema.ParseCustomizations(customize),
+            CustomizeClan = (int)GlamourerJsonSchema.ReadUInt64(customize?["Clan"]?["Value"]),
+            CustomizeGender = (int)GlamourerJsonSchema.ReadUInt64(customize?["Gender"]?["Value"]),
+            CustomizeClanApplied = GlamourerJsonSchema.ReadBool(customize?["Clan"]?["Apply"]),
+            CustomizeGenderApplied = GlamourerJsonSchema.ReadBool(customize?["Gender"]?["Apply"]),
             Links = ParseLinks(j["Links"]),
-            HatVisible = ParseMetaToggle(equipment?["Hat"], "Show"),
-            WeaponVisible = ParseMetaToggle(equipment?["Weapon"], "Show"),
-            VisorToggled = ParseMetaToggle(equipment?["Visor"], "IsToggled"),
-            ForcedRedraw = ReadBool(j["ForcedRedraw"]),
-            ResetTemporarySettings = ReadBool(j["ResetTemporarySettings"]),
+            HatVisible = GlamourerJsonSchema.ParseMetaToggle(equipment?["Hat"], "Show"),
+            WeaponVisible = GlamourerJsonSchema.ParseMetaToggle(equipment?["Weapon"], "Show"),
+            VisorToggled = GlamourerJsonSchema.ParseMetaToggle(equipment?["Visor"], "IsToggled"),
+            ForcedRedraw = GlamourerJsonSchema.ReadBool(j["ForcedRedraw"]),
+            ResetTemporarySettings = GlamourerJsonSchema.ReadBool(j["ResetTemporarySettings"]),
             Mods = ParseMods(j["Mods"]),
         };
     }
@@ -288,11 +293,11 @@ public sealed class GlamourerService : IDisposable
             result.Add(new CachedEquipmentSlot
             {
                 Slot = slot,
-                ItemId = ReadUInt64(slotObj["ItemId"]),
-                Stain = (byte)ReadUInt64(slotObj["Stain"]),
-                Stain2 = (byte)ReadUInt64(slotObj["Stain2"]),
-                Apply = ReadBool(slotObj["Apply"]),
-                ApplyStain = ReadBool(slotObj["ApplyStain"]),
+                ItemId = GlamourerJsonSchema.ReadUInt64(slotObj["ItemId"]),
+                Stain = (byte)GlamourerJsonSchema.ReadUInt64(slotObj["Stain"]),
+                Stain2 = (byte)GlamourerJsonSchema.ReadUInt64(slotObj["Stain2"]),
+                Apply = GlamourerJsonSchema.ReadBool(slotObj["Apply"]),
+                ApplyStain = GlamourerJsonSchema.ReadBool(slotObj["ApplyStain"]),
             });
         }
         return result;
@@ -311,132 +316,11 @@ public sealed class GlamourerService : IDisposable
             result.Add(new CachedBonusItem
             {
                 Slot = prop.Name,
-                ItemId = ReadUInt64(slotObj["BonusId"]),
-                Apply = ReadBool(slotObj["Apply"]),
+                ItemId = GlamourerJsonSchema.ReadUInt64(slotObj["BonusId"]),
+                Apply = GlamourerJsonSchema.ReadBool(slotObj["Apply"]),
             });
         }
         return result;
-    }
-
-    // Listed in the order we want to show them. Toggle rows hold a flag (0 / non-zero); everything else
-    // is a raw index. Race/Gender/Clan get turned into their in-game names - see FormatCustomizeValue.
-    private static readonly (string Key, string Label, bool IsToggle)[] CustomizeDisplay =
-    {
-        ("Race",              "Race",                false),
-        ("Gender",            "Gender",              false),
-        ("BodyType",          "Body Type",           false),
-        ("Clan",              "Clan",                false),
-        ("Height",            "Height",              false),
-        ("Face",              "Face",                false),
-        ("Hairstyle",         "Hairstyle",           false),
-        ("Highlights",        "Highlights",          true),
-        ("HairColor",         "Hair Color",          false),
-        ("HighlightsColor",   "Highlights Color",    false),
-        ("SkinColor",         "Skin Color",          false),
-        ("Eyebrows",          "Eyebrows",            false),
-        ("EyeShape",          "Eye Shape",           false),
-        ("SmallIris",         "Small Iris",          true),
-        ("EyeColorRight",     "Right Eye Color",     false),
-        ("EyeColorLeft",      "Left Eye Color",      false),
-        ("Nose",              "Nose",                false),
-        ("Jaw",               "Jaw",                 false),
-        ("Mouth",             "Mouth",               false),
-        ("Lipstick",          "Lipstick",            true),
-        ("LipColor",          "Lip Color",           false),
-        ("FacialFeature1",    "Facial Feature 1",    true),
-        ("FacialFeature2",    "Facial Feature 2",    true),
-        ("FacialFeature3",    "Facial Feature 3",    true),
-        ("FacialFeature4",    "Facial Feature 4",    true),
-        ("FacialFeature5",    "Facial Feature 5",    true),
-        ("FacialFeature6",    "Facial Feature 6",    true),
-        ("FacialFeature7",    "Facial Feature 7",    true),
-        ("LegacyTattoo",      "Legacy Tattoo",       true),
-        ("TattooColor",       "Tattoo Color",        false),
-        ("FacePaint",         "Face Paint",          false),
-        ("FacePaintReversed", "Face Paint Reversed", true),
-        ("FacePaintColor",    "Face Paint Color",    false),
-        ("MuscleMass",        "Muscle Tone",         false),
-        ("TailShape",         "Tail / Ear Shape",    false),
-        ("BustSize",          "Bust Size",           false),
-        ("Wetness",           "Wetness",             true),
-    };
-
-    // The fixed enum customizations have proper in-game names, keyed by their raw customize value.
-    private static readonly IReadOnlyDictionary<int, string> RaceNames = new Dictionary<int, string>
-    {
-        [1] = "Hyur", [2] = "Elezen", [3] = "Lalafell", [4] = "Miqo'te",
-        [5] = "Roegadyn", [6] = "Au Ra", [7] = "Hrothgar", [8] = "Viera",
-    };
-
-    private static readonly IReadOnlyDictionary<int, string> ClanNames = new Dictionary<int, string>
-    {
-        [1] = "Midlander", [2] = "Highlander", [3] = "Wildwood", [4] = "Duskwight",
-        [5] = "Plainsfolk", [6] = "Dunesfolk", [7] = "Seeker of the Sun", [8] = "Keeper of the Moon",
-        [9] = "Sea Wolf", [10] = "Hellsguard", [11] = "Raen", [12] = "Xaela",
-        [13] = "Helions", [14] = "The Lost", [15] = "Rava", [16] = "Veena",
-    };
-
-    private static string FormatCustomizeValue(string key, int value) => key switch
-    {
-        "Race"   => RaceNames.GetValueOrDefault(value, value.ToString()),
-        "Clan"   => ClanNames.GetValueOrDefault(value, value.ToString()),
-        "Gender" => value switch { 0 => "Masculine", 1 => "Feminine", _ => value.ToString() },
-        _        => value.ToString(),
-    };
-
-    private static List<CachedCustomization> ParseCustomizations(JToken? token)
-    {
-        var result = new List<CachedCustomization>();
-        if (token is not JObject obj)
-            return result;
-
-        foreach (var (key, label, isToggle) in CustomizeDisplay)
-        {
-            if (obj[key] is not JObject entry)
-                continue;
-            if (!ReadBool(entry["Apply"]))
-                continue;
-
-            // Glamourer always writes BodyType out as applied with value 1, even when the toggle is off
-            // in its UI, and there's no separate flag to tell the two apart. So treat the default (1) as
-            // "not really set" - otherwise it'd show up on every single design. A non-default still shows.
-            if (key == "BodyType" && ReadUInt64(entry["Value"]) == 1)
-                continue;
-
-            var rawValue = (int)ReadUInt64(entry["Value"]);
-
-            string value;
-            if (isToggle)
-            {
-                // Toggles come through either as a bool (Wetness) or a flag byte (0 / 128).
-                var on = ReadBool(entry["Value"]) || rawValue != 0;
-                value = on ? "On" : "Off";
-            }
-            else
-            {
-                value = FormatCustomizeValue(key, rawValue);
-            }
-
-            result.Add(new CachedCustomization
-            {
-                Key = key,
-                Label = label,
-                Value = value,
-                RawValue = rawValue,
-                IsToggle = isToggle,
-            });
-        }
-
-        return result;
-    }
-
-    private static bool? ParseMetaToggle(JToken? token, string valueKey)
-    {
-        if (token is not JObject obj)
-            return null;
-        if (!ReadBool(obj["Apply"]))
-            return null;
-        return ReadBool(obj[valueKey]);
     }
 
     private static List<CachedMod> ParseMods(JToken? token)
@@ -447,18 +331,18 @@ public sealed class GlamourerService : IDisposable
 
         foreach (var entry in array.OfType<JObject>())
         {
-            var state = ReadBool(entry["Remove"]) ? ModState.Remove
-                      : ReadBool(entry["Inherit"]) ? ModState.Inherit
-                      : ReadBool(entry["Enabled"]) ? ModState.Enabled
+            var state = GlamourerJsonSchema.ReadBool(entry["Remove"]) ? ModState.Remove
+                      : GlamourerJsonSchema.ReadBool(entry["Inherit"]) ? ModState.Inherit
+                      : GlamourerJsonSchema.ReadBool(entry["Enabled"]) ? ModState.Enabled
                       : ModState.Disabled;
 
             result.Add(new CachedMod
             {
-                Name = ReadString(entry["Name"]) ?? string.Empty,
-                Directory = ReadString(entry["Directory"]) ?? string.Empty,
+                Name = GlamourerJsonSchema.ReadString(entry["Name"]) ?? string.Empty,
+                Directory = GlamourerJsonSchema.ReadString(entry["Directory"]) ?? string.Empty,
                 State = state,
-                Priority = (int)ReadUInt64(entry["Priority"]),
-                Settings = ParseModSettings(entry["Settings"]),
+                Priority = (int)GlamourerJsonSchema.ReadUInt64(entry["Priority"]),
+                Settings = GlamourerJsonSchema.ParseModSettings(entry["Settings"]),
             });
         }
         return result;
@@ -482,91 +366,19 @@ public sealed class GlamourerService : IDisposable
 
         foreach (var entry in array.OfType<JObject>())
         {
-            if (!Guid.TryParse(ReadString(entry["Design"]), out var designId))
+            if (!Guid.TryParse(GlamourerJsonSchema.ReadString(entry["Design"]), out var designId))
                 continue;
 
             var conditions = entry["Conditions"] as JObject;
             result.Add(new CachedDesignLink
             {
                 DesignId = designId,
-                LinkType = (int)ReadUInt64(entry["Type"]),
-                Gearset = conditions?["Gearset"] == null ? -1 : ReadInt32(conditions["Gearset"], -1),
-                JobGroup = (int)ReadUInt64(conditions?["JobGroup"]),
+                LinkType = (int)GlamourerJsonSchema.ReadUInt64(entry["Type"]),
+                Gearset = conditions?["Gearset"] == null ? -1 : GlamourerJsonSchema.ReadInt32(conditions["Gearset"], -1),
+                JobGroup = (int)GlamourerJsonSchema.ReadUInt64(conditions?["JobGroup"]),
                 IsBefore = isBefore,
             });
         }
-    }
-
-    private static Dictionary<string, string> ParseModSettings(JToken? token)
-    {
-        var result = new Dictionary<string, string>();
-        if (token is not JObject obj)
-            return result;
-
-        foreach (var prop in obj.Properties())
-        {
-            result[prop.Name] = prop.Value switch
-            {
-                JArray arr => string.Join(", ", arr.Select(v => v.ToString())),
-                JValue v => v.Value?.ToString() ?? string.Empty,
-                _ => prop.Value.ToString(),
-            };
-        }
-        return result;
-    }
-
-    private static bool ReadBool(JToken? token)
-    {
-        if (token is not JValue v || v.Value is null)
-            return false;
-        return v.Value switch
-        {
-            bool b => b,
-            string s when bool.TryParse(s, out var parsed) => parsed,
-            _ => false,
-        };
-    }
-
-    private static ulong ReadUInt64(JToken? token)
-    {
-        if (token is not JValue v || v.Value is null)
-            return 0;
-        return v.Value switch
-        {
-            ulong u => u,
-            long l => l < 0 ? 0 : (ulong)l,
-            int i => i < 0 ? 0 : (ulong)i,
-            uint u => u,
-            string s when ulong.TryParse(s, out var parsed) => parsed,
-            _ => 0,
-        };
-    }
-
-    // A signed reader for fields that legitimately go negative (e.g. a gearset index of -1 = "any").
-    private static int ReadInt32(JToken? token, int fallback)
-    {
-        if (token is not JValue v || v.Value is null)
-            return fallback;
-        return v.Value switch
-        {
-            long l => (int)l,
-            int i => i,
-            uint u => (int)u,
-            ulong u => (int)u,
-            string s when int.TryParse(s, out var parsed) => parsed,
-            _ => fallback,
-        };
-    }
-
-    // Avoid JToken.Value<string>(): it goes through Convert.ChangeType, which throws
-    // "Object must implement IConvertible" on token values like DateTimeOffset.
-    private static string? ReadString(JToken? token)
-    {
-        if (token is null || token.Type == JTokenType.Null)
-            return null;
-        if (token is JValue v)
-            return v.Value?.ToString();
-        return token.ToString();
     }
 
     private static DateTimeOffset? ReadDateTimeOffset(JToken? token)

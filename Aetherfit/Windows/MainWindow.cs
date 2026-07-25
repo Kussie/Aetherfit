@@ -220,6 +220,16 @@ public partial class MainWindow : Window, IDisposable
 
         foreach (var provider in plugin.DesignProviders)
         {
+            // A disabled source is never fetched at all - not just filtered from the tree afterward -
+            // so it can't surface an error notice (e.g. Glamour Plate's "not loaded this zone") while
+            // switched off. Treated like a fetch failure for preservation purposes: whatever was cached
+            // for it stays intact, just not refreshed, until it's re-enabled.
+            if (!plugin.Configuration.IsProviderEnabled(provider.Source))
+            {
+                failedProviders.Add(provider.Source);
+                continue;
+            }
+
             var result = provider.FetchDesignList();
             if (result.Error != null)
             {
@@ -233,7 +243,7 @@ public partial class MainWindow : Window, IDisposable
                 entries.Add((provider, info.NativeId, aetherfitId));
                 // Sources share the same tree by default (no per-provider top-level folder) - "Group
                 // by source" (MainWindow.SourceTree.cs) is the opt-in view that separates them.
-                leaves.Add(new DesignLeaf(aetherfitId, info.DisplayName, info.FullPath, info.Color));
+                leaves.Add(new DesignLeaf(aetherfitId, info.DisplayName, info.FullPath, info.Color, info.SourceSubGroup));
             }
         }
 
@@ -680,5 +690,8 @@ public partial class MainWindow : Window, IDisposable
         public List<DesignLeaf> Designs { get; } = new();
     }
 
-    private sealed record DesignLeaf(Guid Id, string DisplayName, string FullPath, uint Color);
+    // SourceSubGroup is display-only grouping above "folder path" - null for every provider except
+    // SimpleGlamourSwitcher (see MainWindow.SourceTree.cs / MainWindow.GallerySourceGroups.cs, the only
+    // consumers of this field). Never persisted, rebuilt fresh every refresh like FullPath itself.
+    private sealed record DesignLeaf(Guid Id, string DisplayName, string FullPath, uint Color, string? SourceSubGroup = null);
 }

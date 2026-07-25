@@ -41,8 +41,10 @@ public sealed class Plugin : IDalamudPlugin
     public GlamourerDesignFileService GlamourerDesignFile { get; init; }
     public GlamaholicService Glamaholic { get; init; }
     public GlamourPlateService GlamourPlate { get; init; }
+    public SimpleGlamourSwitcherService SimpleGlamourSwitcher { get; init; }
     public IReadOnlyList<IDesignProvider> DesignProviders { get; init; }
     public PenumbraService Penumbra { get; init; }
+    public CustomizePlusService CustomizePlus { get; init; }
     public GameDataService GameData { get; init; }
     public DesignAttributionService Attribution { get; init; }
     public ImageStorageService ImageStorage { get; init; }
@@ -127,8 +129,10 @@ public sealed class Plugin : IDalamudPlugin
         GlamourerDesignFile = new GlamourerDesignFileService();
         Glamaholic = new GlamaholicService(Glamourer);
         GlamourPlate = new GlamourPlateService(Glamourer, Configuration);
-        DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer), Glamaholic, GlamourPlate };
         Penumbra = new PenumbraService();
+        CustomizePlus = new CustomizePlusService();
+        SimpleGlamourSwitcher = new SimpleGlamourSwitcherService(Glamourer, Penumbra, CustomizePlus);
+        DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer), Glamaholic, GlamourPlate, SimpleGlamourSwitcher };
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);
         ImageStorage = new ImageStorageService(Configuration);
