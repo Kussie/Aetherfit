@@ -175,14 +175,23 @@ public class ConfigWindow : Window, IDisposable
         ImGui.TextDisabled("Status of the plugins Aetherfit integrates with.");
         ImGui.Spacing();
 
+        ImGui.TextUnformatted("Required");
+        ImGui.Spacing();
         DrawIntegrationRow("Penumbra", plugin.Penumbra.CheckIntegration(), PenumbraService.MinApiVersion);
         ImGui.Spacing();
         DrawIntegrationRow("Glamourer", plugin.Glamourer.CheckIntegration(), GlamourerService.MinApiVersion);
         ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        ImGui.TextUnformatted("Optional");
+        ImGui.Spacing();
+        DrawIntegrationRow("Glamaholic", plugin.Glamaholic.CheckIntegration());
+        ImGui.Spacing();
         DrawHardcodedIntegrationRow("Simple Glamour Switcher", "Integration coming soon");
     }
 
-    private static void DrawIntegrationRow(string label, PluginIntegrationInfo info, (int Major, int Minor) required)
+    private static void DrawIntegrationRow(string label, PluginIntegrationInfo info, (int Major, int Minor)? required = null)
     {
         var ok = info.Status == PluginIntegrationStatus.Ok;
         DesignDetailView.DrawFontAwesome(ok ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, ok ? UiTheme.StateOn : UiTheme.StateOff);
@@ -193,7 +202,9 @@ public class ConfigWindow : Window, IDisposable
         {
             PluginIntegrationStatus.NotInstalled  => $"{label} is not installed.",
             PluginIntegrationStatus.NotLoaded     => $"{label} is installed but not enabled.",
-            PluginIntegrationStatus.VersionTooLow => $"{label} API v{info.ApiVersion?.Major}.{info.ApiVersion?.Minor} found — v{required.Major}.{required.Minor}+ required.",
+            PluginIntegrationStatus.VersionTooLow => required is { } r
+                ? $"{label} API v{info.ApiVersion?.Major}.{info.ApiVersion?.Minor} found — v{r.Major}.{r.Minor}+ required."
+                : $"{label} API version too low.",
             _                                      => $"{label} v{info.PluginVersion} — OK.",
         };
         DrawIndentedDisabledText(status);

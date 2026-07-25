@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Sharing;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
@@ -81,10 +82,7 @@ public partial class MainWindow
             return;
         }
 
-        ImGui.Checkbox("Group by tags", ref coverGroupByTags);
-        ImGui.Spacing();
-
-        DrawFilterUi(defaultOpen: true, wide: true);
+        DrawFilterUi(defaultOpen: true, wide: true, extraControls: DrawCoverGroupByControls);
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -260,6 +258,29 @@ public partial class MainWindow
         cachedHiddenVersion = hiddenVersion;
     }
 
+    // The groupings are mutually exclusive - ticking one unticks the others (all three can be off).
+    // Independent state from Edit Mode's own DrawEditModeGroupByControls.
+    private void DrawCoverGroupByControls()
+    {
+        if (ImGui.Checkbox("Group by job association", ref coverGroupByJob) && coverGroupByJob)
+        {
+            coverGroupByTags = false;
+            coverGroupBySource = false;
+        }
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Group by tags", ref coverGroupByTags) && coverGroupByTags)
+        {
+            coverGroupByJob = false;
+            coverGroupBySource = false;
+        }
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Group by source", ref coverGroupBySource) && coverGroupBySource)
+        {
+            coverGroupByJob = false;
+            coverGroupByTags = false;
+        }
+    }
+
     private void DrawCoverGrid()
     {
         if (IsGalleryCacheStale())
@@ -273,9 +294,19 @@ public partial class MainWindow
             return;
         }
 
+        if (coverGroupByJob)
+        {
+            DrawCoverGroupedByJob();
+            return;
+        }
         if (coverGroupByTags)
         {
             DrawCoverGroupedByTags();
+            return;
+        }
+        if (coverGroupBySource)
+        {
+            DrawCoverGroupedBySource();
             return;
         }
 
@@ -576,7 +607,9 @@ public partial class MainWindow
         if (shiftRightClicked)
         {
             selectedDesign = design.Id;
-            plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
+            if (plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var quickOpenOutfit)
+                && quickOpenOutfit.Source == DesignSource.Glamourer)
+                plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
         }
         if (doubleClicked)
         {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -255,7 +256,9 @@ public partial class MainWindow
                 selectedDesign = layer.DesignId;
                 coverMode = false;
             }
-            if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+            if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Right)
+                && plugin.Configuration.CachedOutfits.TryGetValue(layer.DesignId, out var quickOpenOutfit)
+                && quickOpenOutfit.Source == DesignSource.Glamourer)
                 plugin.Glamourer.OpenInGlamourer(layer.DesignId, name);
         }
 
@@ -436,8 +439,11 @@ public partial class MainWindow
         ImGui.Spacing();
     }
 
+    // Only Glamourer-sourced designs can be picked as a layer - a source like Glamaholic has no
+    // apply-on-top mechanism, so it can never be composited into a layer stack.
     private IEnumerable<(Guid Id, string Name)> AllDesignsSorted()
         => plugin.Configuration.CachedOutfits
+            .Where(kv => kv.Value.Source == DesignSource.Glamourer)
             .Select(kv => (kv.Key, kv.Value.Name))
             .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase);
 

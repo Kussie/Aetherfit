@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Aetherfit.Services;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -371,7 +372,11 @@ public partial class MainWindow
                 selectedDesign = link.DesignId;
                 coverMode = false;
             }
-            if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+            // Links are a native Glamourer concept (only ever populated from a Glamourer design's own
+            // JSON), so link.DesignId is always Glamourer-sourced - guarded anyway for consistency.
+            if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Right)
+                && plugin.Configuration.CachedOutfits.TryGetValue(link.DesignId, out var quickOpenOutfit)
+                && quickOpenOutfit.Source == DesignSource.Glamourer)
                 plugin.Glamourer.OpenInGlamourer(link.DesignId, name);
         }
 
