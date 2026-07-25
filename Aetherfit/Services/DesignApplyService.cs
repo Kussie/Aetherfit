@@ -50,6 +50,15 @@ public sealed class DesignApplyService
             return;
         }
 
+        // Applying anything other than an SGS design must clear any Penumbra mod overrides / Customize+
+        // template toggles a previous SGS-sourced apply left active - neither is tied to Glamourer's own
+        // apply/revert pipeline, so nothing else would ever clean them up (see SimpleGlamourSwitcherService).
+        if (outfit.Source != DesignSource.SimpleGlamourSwitcher)
+        {
+            plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();
+            plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
+        }
+
         if (!provider.Apply(outfit.ProviderDesignId, name, layerIds.Select(plugin.Configuration.ResolveDesignName).ToList(), quiet))
             return;
 
@@ -302,6 +311,8 @@ public sealed class DesignApplyService
     public void RevertAppearance()
     {
         plugin.Glamourer.Revert();
+        plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();
+        plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
 
         // A deliberate revert means "I want my real gear" — forget the last-worn record so LoginAction.ReapplyLast doesn't re-dress the character on the next login.
         if (Plugin.PlayerState.IsLoaded

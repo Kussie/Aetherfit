@@ -52,6 +52,7 @@ public partial class MainWindow
     private bool cachedPinFavourites = true;
     private bool cachedGlamaholicEnabled = true;
     private bool cachedGlamourPlateEnabled = true;
+    private bool cachedSimpleGlamourSwitcherEnabled = true;
     private int favouriteVersion;
     private int cachedFavouriteVersion = -1;
     private int hiddenVersion;
@@ -237,6 +238,7 @@ public partial class MainWindow
         cachedPinFavourites != plugin.Configuration.GalleryPinFavouritesFirst ||
         cachedGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
         cachedGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled ||
+        cachedSimpleGlamourSwitcherEnabled != plugin.Configuration.SimpleGlamourSwitcherEnabled ||
         cachedFavouriteVersion != favouriteVersion ||
         cachedHiddenVersion != hiddenVersion;
 
@@ -269,6 +271,7 @@ public partial class MainWindow
         cachedPinFavourites = plugin.Configuration.GalleryPinFavouritesFirst;
         cachedGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
         cachedGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
+        cachedSimpleGlamourSwitcherEnabled = plugin.Configuration.SimpleGlamourSwitcherEnabled;
         cachedFavouriteVersion = favouriteVersion;
         cachedHiddenVersion = hiddenVersion;
     }

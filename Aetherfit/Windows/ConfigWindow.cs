@@ -195,7 +195,9 @@ public class ConfigWindow : Window, IDisposable
         DrawGlamourPlateIntegrationRow();
         ImGui.Spacing();
 
-        DrawHardcodedIntegrationRow("Simple Glamour Switcher", "Integration coming soon");
+        DrawIntegrationRow("Simple Glamour Switcher", plugin.SimpleGlamourSwitcher.CheckIntegration(), rightAligned: () =>
+            plugin.Configuration.SimpleGlamourSwitcherEnabled = DrawRightAlignedCheckbox(
+                "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherEnabled, "Source designs from Simple Glamour Switcher"));
     }
 
     // Right-aligned on whatever row it's drawn from, matching DrawFilterHeaderOverlay's "N active"/
@@ -247,14 +249,6 @@ public class ConfigWindow : Window, IDisposable
                 : $"{label} API version too low.",
             _                                      => $"{label} v{info.PluginVersion} — OK.",
         };
-        DrawIndentedDisabledText(status);
-    }
-
-    private static void DrawHardcodedIntegrationRow(string label, string status)
-    {
-        DesignDetailView.DrawFontAwesome(FontAwesomeIcon.Times, UiTheme.StateOff);
-        ImGui.SameLine();
-        ImGui.TextUnformatted(label);
         DrawIndentedDisabledText(status);
     }
 

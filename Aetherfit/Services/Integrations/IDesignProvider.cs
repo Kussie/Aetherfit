@@ -11,6 +11,7 @@ public enum DesignSource
     Glamourer = 0,
     Glamaholic = 1,
     GlamourPlate = 2,
+    SimpleGlamourSwitcher = 3,
 }
 
 [Flags]
@@ -33,7 +34,10 @@ public enum DesignFinalizationType
     Other,
 }
 
-public sealed record ProviderDesignInfo(Guid NativeId, string DisplayName, string FullPath, uint Color);
+// SourceSubGroup is display-only grouping above "folder path" - null for every provider except
+// SimpleGlamourSwitcher, which sets it to the design's owning character name (see MainWindow.SourceTree.cs
+// / MainWindow.GallerySourceGroups.cs, the only consumers of this field).
+public sealed record ProviderDesignInfo(Guid NativeId, string DisplayName, string FullPath, uint Color, string? SourceSubGroup = null);
 
 public sealed record ProviderDesignListResult(IReadOnlyList<ProviderDesignInfo> Designs, string? Error);
 
