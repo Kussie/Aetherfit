@@ -16,6 +16,8 @@ public sealed class GlamourerService : IDisposable
     private readonly ApplyDesign applyDesign;
     private readonly RevertState revertState;
     private readonly OpenDesign openDesign;
+    private readonly GetState getState;
+    private readonly ApplyState applyState;
     private readonly EventSubscriber<nint, StateFinalizationType> stateFinalized;
 
     private bool invokingOwnChange;
@@ -32,6 +34,8 @@ public sealed class GlamourerService : IDisposable
         applyDesign = new ApplyDesign(Plugin.PluginInterface);
         revertState = new RevertState(Plugin.PluginInterface);
         openDesign = new OpenDesign(Plugin.PluginInterface);
+        getState = new GetState(Plugin.PluginInterface);
+        applyState = new ApplyState(Plugin.PluginInterface);
         stateFinalized = StateFinalized.Subscriber(Plugin.PluginInterface, OnStateFinalized);
     }
 
@@ -212,6 +216,21 @@ public sealed class GlamourerService : IDisposable
             ServiceErrors.Fail(ex, $"{Plugin.ChatPrefix}Revert failed: {ex.Message}", "Failed to revert appearance");
         }
     }
+
+    // Returns the local character's current full state (Glamourer's own JObject shape, the same one
+    // GetDesignJObject uses for a saved design) - used as the base for a relay-apply from a
+    // non-Glamourer source, so only the "Equipment" section needs touching rather than guessing what
+    // else ApplyState's JObject is expected to contain.
+    public (GlamourerApiEc Result, JObject? State) GetState(int objectIndex = 0)
+        => getState.Invoke(objectIndex, 0);
+
+    // Applies an arbitrary state JObject (typically GetState's own output, with just its "Equipment"
+    // section overwritten) in one call - used to relay a non-Glamourer source's item/dye list through
+    // Glamourer's own apply engine. ApplyState(JObject, int objectIndex, uint key, ApplyFlag flags) is
+    // a real IPC (confirmed against Glamourer.Api.dll directly), separate from ApplyDesign which only
+    // accepts a saved design's GUID. Scoping flags to ApplyFlag.Equipment means only Equipment is touched.
+    public GlamourerApiEc ApplyEquipmentState(JObject state, int objectIndex = 0)
+        => InvokeOwnChange(() => applyState.Invoke(state, objectIndex, 0, ApplyFlag.Equipment));
 
     private static CachedOutfit ParseOutfit(JObject j)
     {

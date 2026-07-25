@@ -26,13 +26,16 @@ public partial class MainWindow : Window, IDisposable
     private Guid? viewerFollowedDesign;
     private DesignLeaf? hoveredDesignForTooltip;
 
-    // Session-only: the Edit Mode tree groups designs by job association or by tag instead of folder
-    // path. At most one grouping is active at a time.
+    // Session-only: the Edit Mode tree groups designs by job association, by tag, or by source
+    // instead of folder path. At most one grouping is active at a time.
     private bool groupByJob;
     private bool groupByTags;
+    private bool groupBySource;
 
-    // Cover Mode's own tag-grouping toggle - independent of Edit Mode's groupByTags above.
+    // Cover Mode's own grouping toggles - independent of Edit Mode's groupBy* above.
+    private bool coverGroupByJob;
     private bool coverGroupByTags;
+    private bool coverGroupBySource;
 
     // When a filter is active we force every matching tree node open and keep note of the previous state so it can be restored whe nthe filters are cleared
     private readonly Dictionary<uint, bool> treeOpenSnapshot = new();
@@ -81,7 +84,10 @@ public partial class MainWindow : Window, IDisposable
         coverMode = plugin.Configuration.DefaultToCoverMode;
         groupByJob = false;
         groupByTags = false;
+        groupBySource = false;
+        coverGroupByJob = false;
         coverGroupByTags = false;
+        coverGroupBySource = false;
         RefreshDesigns();
     }
 
@@ -195,6 +201,7 @@ public partial class MainWindow : Window, IDisposable
     private sealed class RefreshJob
     {
         public required IReadOnlyList<(IDesignProvider Provider, Guid NativeId, Guid AetherfitId)> Designs { get; init; }
+        public required HashSet<DesignSource> FailedProviders { get; init; }
         public Dictionary<Guid, CachedOutfit> Metadata { get; } = new();
         public int Index;
     }
@@ -208,27 +215,34 @@ public partial class MainWindow : Window, IDisposable
         var entries = new List<(IDesignProvider Provider, Guid NativeId, Guid AetherfitId)>();
         var leaves = new List<DesignLeaf>();
         var errors = new List<string>();
+        var failedProviders = new HashSet<DesignSource>();
         var multipleProviders = plugin.DesignProviders.Count > 1;
 
         foreach (var provider in plugin.DesignProviders)
         {
             var result = provider.FetchDesignList();
             if (result.Error != null)
+            {
                 errors.Add(multipleProviders ? $"{provider.DisplayName}: {result.Error}" : result.Error);
+                failedProviders.Add(provider.Source);
+            }
 
             foreach (var info in result.Designs)
             {
                 var aetherfitId = DesignIdentity.Resolve(plugin.Configuration, provider.Source, info.NativeId);
                 entries.Add((provider, info.NativeId, aetherfitId));
-                var fullPath = multipleProviders ? $"{provider.DisplayName}/{info.FullPath}" : info.FullPath;
-                leaves.Add(new DesignLeaf(aetherfitId, info.DisplayName, fullPath, info.Color));
+                // Sources share the same tree by default (no per-provider top-level folder) - "Group
+                // by source" (MainWindow.SourceTree.cs) is the opt-in view that separates them.
+                leaves.Add(new DesignLeaf(aetherfitId, info.DisplayName, info.FullPath, info.Color));
             }
         }
 
-        // With a single provider (today), any error aborts the refresh entirely - same as before, so
-        // a transient IPC failure never wipes existing cached data. Partial-failure handling across
-        // multiple providers is Phase 2 scope, once there's a second provider to test it against.
-        if (errors.Count > 0 && !multipleProviders)
+        // Total failure (nothing fetched at all) aborts entirely - CachedOutfits and everything keyed
+        // off it stays exactly as-is rather than a redundant rebuild that would just reproduce the same
+        // state. A *partial* failure (some providers succeeded) falls through instead: FinishRefresh
+        // preserves whatever a failed provider's own designs already were, so one source's transient
+        // error can't wipe another source's - or its own previous - cached data/favourites/tags.
+        if (entries.Count == 0 && errors.Count > 0)
         {
             root = new FolderNode();
             designsCount = 0;
@@ -244,7 +258,7 @@ public partial class MainWindow : Window, IDisposable
         designsError = errors.Count > 0 ? string.Join("\n", errors) : null;
         designListGeneration++;
 
-        activeRefresh = new RefreshJob { Designs = entries };
+        activeRefresh = new RefreshJob { Designs = entries, FailedProviders = failedProviders };
     }
 
     private void OnFrameworkUpdate(Dalamud.Plugin.Services.IFramework framework)
@@ -277,7 +291,16 @@ public partial class MainWindow : Window, IDisposable
     {
         activeRefresh = null;
 
-        plugin.Configuration.CachedOutfits = job.Metadata;
+        // A provider that failed to fetch this round keeps whatever it last had cached, rather than
+        // a transient error wiping its designs (and their favourites/hidden/tags/job associations)
+        // out of Configuration entirely.
+        var merged = new Dictionary<Guid, CachedOutfit>(job.Metadata);
+        if (job.FailedProviders.Count > 0)
+            foreach (var (existingId, outfit) in plugin.Configuration.CachedOutfits)
+                if (job.FailedProviders.Contains(outfit.Source))
+                    merged.TryAdd(existingId, outfit);
+
+        plugin.Configuration.CachedOutfits = merged;
         plugin.OutfitCache.Save();
 
         // Mods might have changed since last time, so clear the affected-item caches and let the
@@ -285,7 +308,7 @@ public partial class MainWindow : Window, IDisposable
         plugin.Penumbra.ClearChangedItemsCache();
         affectedByCache.Clear();
 
-        var validIds = new HashSet<Guid>(job.Designs.Select(d => d.AetherfitId));
+        var validIds = new HashSet<Guid>(merged.Keys);
         plugin.ImageStorage.CleanupRemovedDesigns(validIds);
 
         var staleJobAssociations = plugin.Configuration.DesignJobAssociations.Keys

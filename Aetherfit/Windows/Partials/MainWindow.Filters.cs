@@ -68,7 +68,10 @@ public partial class MainWindow
         filterName, searchDesignName, searchModName, searchEquipmentName,
         filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly);
 
-    private void DrawFilterUi(bool defaultOpen = false, bool wide = false)
+    // extraControls renders view-specific rows (e.g. the "Group by..." checkboxes) inside the same
+    // collapsible Filters panel, after the shared controls - each view owns its own grouping state,
+    // so this stays a callback rather than DrawFilterControls knowing about groupBy* fields itself.
+    private void DrawFilterUi(bool defaultOpen = false, bool wide = false, Action? extraControls = null)
     {
         // AllowOverlap lets the count badge and Clear button sit on the header row itself.
         var flags = (defaultOpen ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None)
@@ -80,6 +83,13 @@ public partial class MainWindow
 
         ImGui.Spacing();
         DrawFilterControls(wide);
+        if (extraControls != null)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            extraControls();
+        }
         DrawFilterTagsPopup();
     }
 

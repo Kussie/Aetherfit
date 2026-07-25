@@ -39,6 +39,7 @@ public sealed class Plugin : IDalamudPlugin
     public OutfitCacheStore OutfitCache { get; init; }
     public GlamourerService Glamourer { get; init; }
     public GlamourerDesignFileService GlamourerDesignFile { get; init; }
+    public GlamaholicService Glamaholic { get; init; }
     public IReadOnlyList<IDesignProvider> DesignProviders { get; init; }
     public PenumbraService Penumbra { get; init; }
     public GameDataService GameData { get; init; }
@@ -123,7 +124,8 @@ public sealed class Plugin : IDalamudPlugin
 
         Glamourer = new GlamourerService();
         GlamourerDesignFile = new GlamourerDesignFileService();
-        DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer) };
+        Glamaholic = new GlamaholicService(Glamourer);
+        DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer), Glamaholic };
         Penumbra = new PenumbraService();
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);

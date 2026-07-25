@@ -9,6 +9,7 @@ using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Aetherfit.Services;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 
 namespace Aetherfit.Windows;
@@ -67,14 +68,7 @@ public partial class MainWindow
             return;
         }
 
-        // The two groupings are mutually exclusive - ticking one unticks the other (both can be off).
-        if (ImGui.Checkbox("Group by job association", ref groupByJob) && groupByJob)
-            groupByTags = false;
-        if (ImGui.Checkbox("Group by tags", ref groupByTags) && groupByTags)
-            groupByJob = false;
-        ImGui.Spacing();
-
-        DrawFilterUi();
+        DrawFilterUi(extraControls: DrawEditModeGroupByControls);
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -121,6 +115,8 @@ public partial class MainWindow
                 DrawJobTree(hasFilter);
             else if (groupByTags)
                 DrawTagTree(hasFilter);
+            else if (groupBySource)
+                DrawSourceTree(hasFilter);
             else
                 DrawTree(root, hasFilter);
         }
@@ -130,6 +126,26 @@ public partial class MainWindow
 
         if (hoveredDesignForTooltip is { } hovered)
             DrawDesignLeafTooltip(hovered);
+    }
+
+    // The groupings are mutually exclusive - ticking one unticks the others (all three can be off).
+    private void DrawEditModeGroupByControls()
+    {
+        if (ImGui.Checkbox("Group by job association", ref groupByJob) && groupByJob)
+        {
+            groupByTags = false;
+            groupBySource = false;
+        }
+        if (ImGui.Checkbox("Group by tags", ref groupByTags) && groupByTags)
+        {
+            groupByJob = false;
+            groupBySource = false;
+        }
+        if (ImGui.Checkbox("Group by source", ref groupBySource) && groupBySource)
+        {
+            groupByJob = false;
+            groupByTags = false;
+        }
     }
 
     private void DrawTree(FolderNode node, bool hasFilter, int depth = 0)
@@ -237,7 +253,9 @@ public partial class MainWindow
             if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift)
             {
                 selectedDesign = design.Id;
-                plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
+                if (plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var quickOpenOutfit)
+                    && quickOpenOutfit.Source == DesignSource.Glamourer)
+                    plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
             }
         }
 
@@ -323,9 +341,9 @@ public partial class MainWindow
         }
 
         var datesLineCount = (details.CreatedAt.HasValue ? 1 : 0) + (details.LastEdit.HasValue ? 1 : 0);
-        var datesBlockHeight = datesLineCount > 0
-            ? datesLineCount * ImGui.GetTextLineHeightWithSpacing()
-            : 0;
+        // The footer always draws at least one line - the Source label rides along an existing date
+        // line when there is one, or gets its own standalone line when there are none (e.g. Glamaholic).
+        var datesBlockHeight = Math.Max(datesLineCount, 1) * ImGui.GetTextLineHeightWithSpacing();
 
         var bodyHeight = Math.Max(0, ImGui.GetContentRegionAvail().Y - datesBlockHeight);
 
@@ -335,6 +353,7 @@ public partial class MainWindow
             {
                 var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(id);
                 var isHidden = plugin.Configuration.HiddenDesigns.Contains(id);
+                var isGlamourer = details.Source == DesignSource.Glamourer;
                 var style = ImGui.GetStyle();
                 var inner = style.ItemInnerSpacing.X;
 
@@ -352,7 +371,7 @@ public partial class MainWindow
                     syncW = ImGui.CalcTextSize(FontAwesomeIcon.CloudUploadAlt.ToIconString()).X
                           + (style.FramePadding.X * 2);
                 }
-                var actionsW = starW + eyeW + linkW + syncW + (inner * 4);
+                var actionsW = starW + eyeW + (inner * 2) + (isGlamourer ? linkW + syncW + (inner * 2) : 0f);
 
                 var rowTopY = ImGui.GetCursorPosY();
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (6f * ImGuiHelpers.GlobalScale));
@@ -401,32 +420,35 @@ public partial class MainWindow
                         ? "Hidden — click to show in the gallery and exports"
                         : "Click to hide from the gallery and exports");
 
-                ImGui.SameLine(0, inner);
-                ImGui.SetCursorPosY(actionY);
-                if (HeaderIconButton("openGlamourer", FontAwesomeIcon.ExternalLinkAlt, null, new Vector2(linkW, frameH)))
-                    plugin.Glamourer.OpenInGlamourer(id, details.Name);
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Open in Glamourer");
-
-                ImGui.SameLine(0, inner);
-                ImGui.SetCursorPosY(actionY);
-                if (HeaderIconButton("forceSync", FontAwesomeIcon.CloudUploadAlt, null, new Vector2(syncW, frameH)))
-                    ConfirmDialog.Open(ForceSyncPopupId);
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Force sync Tags and Description to the Glamourer design file");
-
-                if (ConfirmDialog.Draw(ForceSyncPopupId,
-                        $"This will overwrite the Description and Tags stored in the Glamourer design file for \"{details.Name}\" "
-                        + "with what's shown here in Aetherfit, without touching anything else in the file.\n\n"
-                        + "If this design is currently open in Glamourer's own editor, Glamourer may discard this change "
-                        + "the moment you touch it there or on its next autosave. Close the design in Glamourer first.",
-                        "Force Sync"))
+                if (isGlamourer)
                 {
-                    var result = plugin.GlamourerDesignFile.PushMetadataToGlamourer(id, details.Description, details.Tags);
-                    if (result.Success)
-                        Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Pushed Tags and Description to Glamourer for \"{details.Name}\"");
-                    else
-                        Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
+                    ImGui.SameLine(0, inner);
+                    ImGui.SetCursorPosY(actionY);
+                    if (HeaderIconButton("openGlamourer", FontAwesomeIcon.ExternalLinkAlt, null, new Vector2(linkW, frameH)))
+                        plugin.Glamourer.OpenInGlamourer(id, details.Name);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Open in Glamourer");
+
+                    ImGui.SameLine(0, inner);
+                    ImGui.SetCursorPosY(actionY);
+                    if (HeaderIconButton("forceSync", FontAwesomeIcon.CloudUploadAlt, null, new Vector2(syncW, frameH)))
+                        ConfirmDialog.Open(ForceSyncPopupId);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Force sync Tags and Description to the Glamourer design file");
+
+                    if (ConfirmDialog.Draw(ForceSyncPopupId,
+                            $"This will overwrite the Description and Tags stored in the Glamourer design file for \"{details.Name}\" "
+                            + "with what's shown here in Aetherfit, without touching anything else in the file.\n\n"
+                            + "If this design is currently open in Glamourer's own editor, Glamourer may discard this change "
+                            + "the moment you touch it there or on its next autosave. Close the design in Glamourer first.",
+                            "Force Sync"))
+                    {
+                        var result = plugin.GlamourerDesignFile.PushMetadataToGlamourer(id, details.Description, details.Tags);
+                        if (result.Success)
+                            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Pushed Tags and Description to Glamourer for \"{details.Name}\"");
+                        else
+                            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
+                    }
                 }
 
                 ImGui.Spacing();
@@ -465,7 +487,7 @@ public partial class MainWindow
                 DrawCustomizationsPanel(id, details);
                 DrawDesignLinksPanel(details);
                 DrawModsPanel(details);
-                if (plugin.Configuration.EnableRandomLayers)
+                if (plugin.Configuration.EnableRandomLayers && isGlamourer)
                     DrawAdditionalLayersPanel(id);
             }
         }
@@ -486,6 +508,9 @@ public partial class MainWindow
         {
             // A source with no creation/edit timestamps of its own (e.g. Glamaholic) still gets its
             // own unconditional line - the date lines above aren't the only thing gating this text.
+            // Right-aligned to match where it sits when it rides along a date line instead.
+            var rightW = ImGui.CalcTextSize(sourceText).X;
+            ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(), ImGui.GetContentRegionMax().X - rightW));
             ImGui.TextDisabled(sourceText);
         }
         ImGui.Unindent();
@@ -802,19 +827,22 @@ public partial class MainWindow
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Add tag");
 
-        var newTagCount = details.GlamourerTags.Count(t => !details.Tags.Contains(t, StringComparer.OrdinalIgnoreCase));
-        var refreshWidth = ImGui.GetFrameHeight();
-        Pills.PlaceItem(refreshWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
-        if (ImGuiComponents.IconButton("mergeTags", FontAwesomeIcon.Sync) && newTagCount > 0)
+        if (details.Source == DesignSource.Glamourer)
         {
-            var added = plugin.Configuration.MergeTagsFromGlamourer(id, details);
-            if (added > 0)
-                Plugin.ChatGui.Print($"{Plugin.ChatPrefix}+{added} tag{(added == 1 ? "" : "s")} added from Glamourer");
+            var newTagCount = details.GlamourerTags.Count(t => !details.Tags.Contains(t, StringComparer.OrdinalIgnoreCase));
+            var refreshWidth = ImGui.GetFrameHeight();
+            Pills.PlaceItem(refreshWidth, ref first, ref lineRight, cursorStart, spacing, availRight);
+            if (ImGuiComponents.IconButton("mergeTags", FontAwesomeIcon.Sync) && newTagCount > 0)
+            {
+                var added = plugin.Configuration.MergeTagsFromGlamourer(id, details);
+                if (added > 0)
+                    Plugin.ChatGui.Print($"{Plugin.ChatPrefix}+{added} tag{(added == 1 ? "" : "s")} added from Glamourer");
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(newTagCount > 0
+                    ? $"Merge {newTagCount} tag{(newTagCount == 1 ? "" : "s")} in from Glamourer"
+                    : "No new tags to merge from Glamourer");
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(newTagCount > 0
-                ? $"Merge {newTagCount} tag{(newTagCount == 1 ? "" : "s")} in from Glamourer"
-                : "No new tags to merge from Glamourer");
 
         DrawAddTagPopup(id, details);
 
@@ -974,21 +1002,24 @@ public partial class MainWindow
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Edit description");
 
-        ImGui.SameLine();
-        var hasGlamourerDescription = !string.IsNullOrWhiteSpace(details.GlamourerDescription);
-        if (ImGuiComponents.IconButton("pullDescription", FontAwesomeIcon.Sync) && hasGlamourerDescription)
-            ConfirmDialog.Open(PullDescriptionPopupId);
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(hasGlamourerDescription
-                ? "Replace the description above with the one currently set in Glamourer"
-                : "Glamourer has no description set for this design");
-
-        if (ConfirmDialog.Draw(PullDescriptionPopupId,
-                $"This will replace your saved description for \"{details.Name}\" with the one currently "
-                + "set on the design in Glamourer. This can't be undone.",
-                "Pull Description"))
+        if (details.Source == DesignSource.Glamourer)
         {
-            plugin.Configuration.PullDescriptionFromGlamourer(id, details);
+            ImGui.SameLine();
+            var hasGlamourerDescription = !string.IsNullOrWhiteSpace(details.GlamourerDescription);
+            if (ImGuiComponents.IconButton("pullDescription", FontAwesomeIcon.Sync) && hasGlamourerDescription)
+                ConfirmDialog.Open(PullDescriptionPopupId);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(hasGlamourerDescription
+                    ? "Replace the description above with the one currently set in Glamourer"
+                    : "Glamourer has no description set for this design");
+
+            if (ConfirmDialog.Draw(PullDescriptionPopupId,
+                    $"This will replace your saved description for \"{details.Name}\" with the one currently "
+                    + "set on the design in Glamourer. This can't be undone.",
+                    "Pull Description"))
+            {
+                plugin.Configuration.PullDescriptionFromGlamourer(id, details);
+            }
         }
     }
 
