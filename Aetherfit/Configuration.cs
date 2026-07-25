@@ -2,6 +2,7 @@ using Dalamud.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Services.Integrations;
 
 namespace Aetherfit;
 
@@ -72,6 +73,10 @@ public class Configuration : IPluginConfiguration
 
     // Legacy: replaced by DesignLayerSlots. Migrated on first plugin load into a single slot per base design.
     public Dictionary<Guid, List<DesignLayer>> DesignLayers { get; set; } = new();
+
+    // Provider -> (that provider's own native design id -> the stable Aetherfit-owned Guid for it).
+    // Only ever grows; Glamourer never appears here (see DesignIdentity.Resolve).
+    public Dictionary<DesignSource, Dictionary<Guid, Guid>> DesignIdentityMap { get; set; } = new();
 
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
@@ -272,6 +277,12 @@ public class LocalDesignMeta
 public class CachedOutfit
 {
     public string Name { get; set; } = string.Empty;
+
+    // Which provider this design came from, and that provider's own native id for it (== the
+    // Aetherfit id itself, for Glamourer). Source defaults to Glamourer (enum value 0) so entries
+    // written before this field existed still deserialize correctly.
+    public DesignSource Source { get; set; }
+    public Guid ProviderDesignId { get; set; }
 
     // Aetherfit's own locally-owned values (see Configuration.DesignMeta) - what's actually shown/used.
     public string? Description { get; set; }
