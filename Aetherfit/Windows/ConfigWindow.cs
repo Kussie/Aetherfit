@@ -187,31 +187,31 @@ public class ConfigWindow : Window, IDisposable
         ImGui.TextUnformatted("Optional");
         ImGui.Spacing();
 
-        var glamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
-        DrawEnabledCheckbox("Glamaholic", ref glamaholicEnabled, "Source designs from Glamaholic");
-        plugin.Configuration.GlamaholicEnabled = glamaholicEnabled;
-        DrawIntegrationRow("Glamaholic", plugin.Glamaholic.CheckIntegration());
+        DrawIntegrationRow("Glamaholic", plugin.Glamaholic.CheckIntegration(), rightAligned: () =>
+            plugin.Configuration.GlamaholicEnabled = DrawRightAlignedCheckbox(
+                "Glamaholic", plugin.Configuration.GlamaholicEnabled, "Source designs from Glamaholic"));
         ImGui.Spacing();
 
-        var glamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
-        DrawEnabledCheckbox("GlamourPlate", ref glamourPlateEnabled, "Source designs from the game's own Glamour Plates");
-        plugin.Configuration.GlamourPlateEnabled = glamourPlateEnabled;
         DrawGlamourPlateIntegrationRow();
         ImGui.Spacing();
 
         DrawHardcodedIntegrationRow("Simple Glamour Switcher", "Integration coming soon");
     }
 
+    // Right-aligned on whatever row it's drawn from, matching DrawFilterHeaderOverlay's "N active"/
+    // Clear positioning technique. Takes/returns by value (not ref) so it can be called from a lambda.
     // Unticking excludes that source's designs from browsing, filtering, and random/direct apply
     // (see Configuration.IsProviderEnabled / DesignApplyService.IsUsable) without touching their
     // cached local metadata - they reappear intact if re-enabled. On by default.
-    private void DrawEnabledCheckbox(string idSuffix, ref bool enabled, string tooltip)
+    private bool DrawRightAlignedCheckbox(string idSuffix, bool enabled, string tooltip)
     {
+        var size = ImGui.GetFrameHeight();
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - size);
         if (ImGui.Checkbox($"##enable{idSuffix}", ref enabled))
             plugin.Configuration.Save();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(tooltip);
-        ImGui.SameLine();
+        return enabled;
     }
 
     // Not a plugin, so DrawIntegrationRow's "is not installed"/"is installed but not enabled"
@@ -223,17 +223,20 @@ public class ConfigWindow : Window, IDisposable
         DesignDetailView.DrawFontAwesome(ok ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, ok ? UiTheme.StateOn : UiTheme.StateOff);
         ImGui.SameLine();
         ImGui.TextUnformatted("Glamour Plates");
+        plugin.Configuration.GlamourPlateEnabled = DrawRightAlignedCheckbox(
+            "GlamourPlate", plugin.Configuration.GlamourPlateEnabled, "Source designs from the game's own Glamour Plates");
         DrawIndentedDisabledText(ok
             ? "Glamour Plates loaded."
             : "Not yet loaded this zone — open the Glamour Dresser once.");
     }
 
-    private static void DrawIntegrationRow(string label, PluginIntegrationInfo info, (int Major, int Minor)? required = null)
+    private static void DrawIntegrationRow(string label, PluginIntegrationInfo info, (int Major, int Minor)? required = null, Action? rightAligned = null)
     {
         var ok = info.Status == PluginIntegrationStatus.Ok;
         DesignDetailView.DrawFontAwesome(ok ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, ok ? UiTheme.StateOn : UiTheme.StateOff);
         ImGui.SameLine();
         ImGui.TextUnformatted(label);
+        rightAligned?.Invoke();
 
         var status = info.Status switch
         {
