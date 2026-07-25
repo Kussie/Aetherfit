@@ -63,6 +63,17 @@ internal static class UiTheme
     public static readonly Vector4 GhostButtonHovered = new(1.0f, 1.0f, 1.0f, 0.08f);
     public static readonly Vector4 GhostButtonActive = new(1.0f, 1.0f, 1.0f, 0.15f);
 
+    // Translucent black circle behind a gallery thumbnail's icon overlays (favourite star, hide-eye,
+    // page arrows) and the multi-image page badge; darkens further on hover.
+    public static readonly Vector4 IconOverlayBg = new(0f, 0f, 0f, 0.55f);
+    public static readonly Vector4 IconOverlayBgHovered = new(0f, 0f, 0f, 0.85f);
+
+    // Faint border on the "add image"/"snap screenshot" tiles in the design detail panel.
+    public static readonly Vector4 ImageTileBorder = new(0.65f, 0.65f, 0.68f, 0.45f);
+
+    // Dims the area outside the active selection in the screenshot cropper.
+    public static readonly Vector4 CropDimOverlay = new(0f, 0f, 0f, 0.5f);
+
     // The big "Glamourer Designs" header.
     public const float HeaderFontScale = 1.25f;
 
