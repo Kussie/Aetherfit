@@ -52,6 +52,9 @@ public class Configuration : IPluginConfiguration
     // Set once the user closes the help blurb in the Additional Design Layers panel.
     public bool AdditionalLayersHelpDismissed { get; set; }
 
+    // Set once the user closes the composite-tags help note in the Add Tag popup.
+    public bool CompositeTagsHelpDismissed { get; set; }
+
     // Legacy: replaced by GalleryFitMode. Migrated on first plugin load if it was set to true.
     public bool GalleryFitWholeImage { get; set; } = false;
 
