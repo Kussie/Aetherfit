@@ -469,9 +469,9 @@ public partial class MainWindow
                     ImGui.Indent();
                     if (!plugin.Configuration.CompositeTagsHelpDismissed)
                         DrawCompositeTagsHelpNote();
-                    DrawTagsRow(id, details);
                     if (details.Tags.Count == 0)
                         ImGui.TextDisabled("This design has no tags set.");
+                    DrawTagsRow(id, details);
                     ImGui.Spacing();
                     DrawTagSuggestionsBlock(id, details);
                     ImGui.Unindent();

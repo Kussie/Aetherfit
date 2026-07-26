@@ -63,14 +63,14 @@ public partial class MainWindow
                 break;
 
             case TagModelStore.State.Ready:
-                if (IconTextButton(FontAwesomeIcon.Magic, "Suggest tags"))
+                if (IconTextButton(FontAwesomeIcon.Lightbulb, "Suggest tags"))
                     StartTagSuggestion(id, details, cover, additional);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Analyzes this design's screenshots locally and suggests tags.");
                 break;
 
             default:
-                if (IconTextButton(FontAwesomeIcon.Magic, "Suggest tags"))
+                if (IconTextButton(FontAwesomeIcon.Lightbulb, "Suggest tags"))
                     plugin.ToggleConfigUi();
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Requires a one-time model download — opens Settings.");
