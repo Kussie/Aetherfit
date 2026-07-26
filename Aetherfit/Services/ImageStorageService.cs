@@ -335,8 +335,8 @@ public sealed class ImageStorageService
         }
     }
 
-    private static readonly HashSet<string> AllowedImageExtensions =
-        new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
+    public static readonly IReadOnlyCollection<string> AllowedImageExtensions =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
 
     public static string NormalizeExtension(string? ext)
     {
