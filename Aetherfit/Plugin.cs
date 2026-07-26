@@ -39,7 +39,12 @@ public sealed class Plugin : IDalamudPlugin
     public OutfitCacheStore OutfitCache { get; init; }
     public GlamourerService Glamourer { get; init; }
     public GlamourerDesignFileService GlamourerDesignFile { get; init; }
+    public GlamaholicService Glamaholic { get; init; }
+    public GlamourPlateService GlamourPlate { get; init; }
+    public SimpleGlamourSwitcherService SimpleGlamourSwitcher { get; init; }
+    public IReadOnlyList<IDesignProvider> DesignProviders { get; init; }
     public PenumbraService Penumbra { get; init; }
+    public CustomizePlusService CustomizePlus { get; init; }
     public GameDataService GameData { get; init; }
     public DesignAttributionService Attribution { get; init; }
     public ImageStorageService ImageStorage { get; init; }
@@ -85,6 +90,15 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.Save();
         }
 
+        if (Configuration.Version < 1)
+        {
+            // No-op today (DesignIdentityMap defaults correctly via its own field initializer) -
+            // this just establishes Version as the real gate for future schema changes instead of
+            // another ad-hoc default-value check like the two migrations above.
+            Configuration.Version = 1;
+            Configuration.Save();
+        }
+
         // Attached after the migrations above so those still write directly.
         configSaver = new ConfigurationSaver(Configuration);
         Configuration.AttachSaver(configSaver);
@@ -113,7 +127,12 @@ public sealed class Plugin : IDalamudPlugin
 
         Glamourer = new GlamourerService();
         GlamourerDesignFile = new GlamourerDesignFileService();
+        Glamaholic = new GlamaholicService(Glamourer);
+        GlamourPlate = new GlamourPlateService(Glamourer, Configuration);
         Penumbra = new PenumbraService();
+        CustomizePlus = new CustomizePlusService();
+        SimpleGlamourSwitcher = new SimpleGlamourSwitcherService(Glamourer, Penumbra, CustomizePlus);
+        DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer), Glamaholic, GlamourPlate, SimpleGlamourSwitcher };
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);
         ImageStorage = new ImageStorageService(Configuration);
@@ -174,6 +193,8 @@ public sealed class Plugin : IDalamudPlugin
         Glamourer.OnExternalStateFinalized -= OnGlamourerStateFinalized;
         Glamourer.OnAnyStateFinalized -= OnGlamourerAnyStateFinalized;
         Glamourer.Dispose();
+        foreach (var provider in DesignProviders)
+            provider.Dispose();
 
         WindowSystem.RemoveAllWindows();
 

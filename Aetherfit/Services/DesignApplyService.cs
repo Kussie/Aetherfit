@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Utils;
 
 namespace Aetherfit.Services;
@@ -30,8 +31,44 @@ public sealed class DesignApplyService
     private void ApplyDesignCore(Guid id, List<Guid> layerIds, bool quiet = false)
     {
         var name = plugin.Configuration.ResolveDesignName(id);
-        if (!plugin.Glamourer.Apply(id, name, layerIds.Select(plugin.Configuration.ResolveDesignName).ToList(), quiet))
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{name}\": design not found.");
             return;
+        }
+
+        if (!plugin.Configuration.IsProviderEnabled(outfit.Source))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{name}\": its source is currently disabled in Aetherfit's settings.");
+            return;
+        }
+
+        var provider = plugin.DesignProviders.FirstOrDefault(p => p.Source == outfit.Source);
+        if (provider == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{name}\": its source is no longer available.");
+            return;
+        }
+
+        if (outfit.Source != DesignSource.SimpleGlamourSwitcher)
+        {
+            plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();
+            plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
+        }
+
+        if (plugin.Configuration.ResetTemporarySettingsBeforeApply(outfit.Source))
+        {
+            plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(0);
+            foreach (var key in GlamourerService.TemporarySettingsKeys)
+                plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(key);
+            plugin.Penumbra.RedrawLocalPlayer();
+        }
+
+        if (!provider.Apply(outfit.ProviderDesignId, name, layerIds.Select(plugin.Configuration.ResolveDesignName).ToList(), quiet))
+            return;
+
+        if (!quiet && plugin.GameData.DesignHasAnyIncompatibleItems(outfit))
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" can only be partially applied on your current character.");
 
         if (layerIds.Count > 0)
         {
@@ -39,7 +76,11 @@ public sealed class DesignApplyService
             try
             {
                 foreach (var layerId in layerIds)
-                    plugin.Glamourer.ApplyLayer(layerId);
+                {
+                    if (plugin.Configuration.CachedOutfits.TryGetValue(layerId, out var layerOutfit)
+                        && plugin.DesignProviders.FirstOrDefault(p => p.Source == layerOutfit.Source) is { } layerProvider)
+                        layerProvider.ApplyLayer(layerOutfit.ProviderDesignId);
+                }
             }
             finally { applyingLayer = false; }
         }
@@ -139,8 +180,7 @@ public sealed class DesignApplyService
         foreach (var slot in plugin.Configuration.GetLayerSlots(baseId))
         {
             var candidates = slot.Designs
-                .Where(l => (l.AllJobs || l.Jobs.Contains(jobId))
-                            && plugin.Configuration.CachedOutfits.ContainsKey(l.DesignId))
+                .Where(l => (l.AllJobs || l.Jobs.Contains(jobId)) && SupportsLayers(l.DesignId))
                 .ToList();
 
             if (candidates.Count > 0)
@@ -150,10 +190,22 @@ public sealed class DesignApplyService
         return picks;
     }
 
+    // A design can only be picked as a layer if it still exists and its provider supports layering
+    // (Glamourer only, for now - a source like Glamaholic has no equivalent apply-on-top mechanism).
+    private bool SupportsLayers(Guid id)
+        => plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
+           && plugin.DesignProviders.FirstOrDefault(p => p.Source == outfit.Source) is { } provider
+           && provider.Capabilities.HasFlag(DesignProviderCapabilities.Layers);
+
+    private bool IsUsable(Guid id)
+        => !plugin.Configuration.HiddenDesigns.Contains(id)
+           && plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
+           && plugin.Configuration.IsProviderEnabled(outfit.Source);
+
     public ApplyResult ApplyRandomDesign()
     {
         var ids = plugin.Configuration.CachedOutfits.Keys
-            .Where(id => !plugin.Configuration.HiddenDesigns.Contains(id))
+            .Where(IsUsable)
             .ToList();
         if (ids.Count == 0)
         {
@@ -177,7 +229,7 @@ public sealed class DesignApplyService
         }
 
         var matching = plugin.Configuration.CachedOutfits
-            .Where(kv => !plugin.Configuration.HiddenDesigns.Contains(kv.Key)
+            .Where(kv => IsUsable(kv.Key)
                          && (!favouritesOnly || plugin.Configuration.FavouriteDesigns.Contains(kv.Key))
                          && tags.All(t => TagMatching.AnyMatch(kv.Value.Tags, t)))
             .Select(kv => kv.Key)
@@ -198,8 +250,7 @@ public sealed class DesignApplyService
     public ApplyResult ApplyRandomFavourite(bool matchCurrentJob)
     {
         var favourites = plugin.Configuration.FavouriteDesigns
-            .Where(id => plugin.Configuration.CachedOutfits.ContainsKey(id)
-                         && !plugin.Configuration.HiddenDesigns.Contains(id))
+            .Where(IsUsable)
             .ToList();
 
         if (favourites.Count == 0)
@@ -248,9 +299,7 @@ public sealed class DesignApplyService
 
         var jobId = Plugin.PlayerState.ClassJob.RowId;
         var matching = plugin.Configuration.DesignJobAssociations
-            .Where(kv => kv.Value.Contains(jobId)
-                         && plugin.Configuration.CachedOutfits.ContainsKey(kv.Key)
-                         && !plugin.Configuration.HiddenDesigns.Contains(kv.Key))
+            .Where(kv => kv.Value.Contains(jobId) && IsUsable(kv.Key))
             .Select(kv => kv.Key)
             .ToList();
 
@@ -270,6 +319,8 @@ public sealed class DesignApplyService
     public void RevertAppearance()
     {
         plugin.Glamourer.Revert();
+        plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();
+        plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
 
         // A deliberate revert means "I want my real gear" — forget the last-worn record so LoginAction.ReapplyLast doesn't re-dress the character on the next login.
         if (Plugin.PlayerState.IsLoaded

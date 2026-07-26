@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Sharing;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
@@ -49,6 +50,9 @@ public partial class MainWindow
     private bool cachedFilterVanillaOnly;
     private bool cachedFilterModdedOnly;
     private bool cachedPinFavourites = true;
+    private bool cachedGlamaholicEnabled = true;
+    private bool cachedGlamourPlateEnabled = true;
+    private bool cachedSimpleGlamourSwitcherEnabled = true;
     private int favouriteVersion;
     private int cachedFavouriteVersion = -1;
     private int hiddenVersion;
@@ -68,23 +72,29 @@ public partial class MainWindow
             coverMode = false;
         ImGui.Separator();
 
-        if (designsError != null)
+        // A source erroring doesn't mean nothing is available - only block the whole pane when every
+        // source failed and there's genuinely nothing to show (designsCount == 0). Otherwise the error
+        // is just a heads-up shown alongside whatever other sources did succeed.
+        if (designsError != null && designsCount == 0)
         {
-            ImGui.TextWrapped("Glamourer is not available. Make sure it is installed and enabled.");
+            ImGui.TextWrapped("No design sources are currently available.");
             ImGui.TextDisabled(designsError);
             return;
         }
 
         if (designsCount == 0)
         {
-            ImGui.Text("No Glamourer designs found.");
+            ImGui.Text("No designs found.");
             return;
         }
 
-        ImGui.Checkbox("Group by tags", ref coverGroupByTags);
-        ImGui.Spacing();
+        if (designsError != null)
+        {
+            ImGui.TextWrapped(designsError);
+            ImGui.Spacing();
+        }
 
-        DrawFilterUi(defaultOpen: true, wide: true);
+        DrawFilterUi(defaultOpen: true, wide: true, extraControls: DrawCoverGroupByControls);
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -226,6 +236,9 @@ public partial class MainWindow
         cachedFilterVanillaOnly != filterVanillaOnly ||
         cachedFilterModdedOnly != filterModdedOnly ||
         cachedPinFavourites != plugin.Configuration.GalleryPinFavouritesFirst ||
+        cachedGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
+        cachedGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled ||
+        cachedSimpleGlamourSwitcherEnabled != plugin.Configuration.SimpleGlamourSwitcherEnabled ||
         cachedFavouriteVersion != favouriteVersion ||
         cachedHiddenVersion != hiddenVersion;
 
@@ -256,8 +269,34 @@ public partial class MainWindow
         cachedFilterVanillaOnly = filterVanillaOnly;
         cachedFilterModdedOnly = filterModdedOnly;
         cachedPinFavourites = plugin.Configuration.GalleryPinFavouritesFirst;
+        cachedGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
+        cachedGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
+        cachedSimpleGlamourSwitcherEnabled = plugin.Configuration.SimpleGlamourSwitcherEnabled;
         cachedFavouriteVersion = favouriteVersion;
         cachedHiddenVersion = hiddenVersion;
+    }
+
+    // The groupings are mutually exclusive - ticking one unticks the others (all three can be off).
+    // Independent state from Edit Mode's own DrawEditModeGroupByControls.
+    private void DrawCoverGroupByControls()
+    {
+        if (ImGui.Checkbox("Group by job association", ref coverGroupByJob) && coverGroupByJob)
+        {
+            coverGroupByTags = false;
+            coverGroupBySource = false;
+        }
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Group by tags", ref coverGroupByTags) && coverGroupByTags)
+        {
+            coverGroupByJob = false;
+            coverGroupBySource = false;
+        }
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Group by source", ref coverGroupBySource) && coverGroupBySource)
+        {
+            coverGroupByJob = false;
+            coverGroupByTags = false;
+        }
     }
 
     private void DrawCoverGrid()
@@ -273,9 +312,19 @@ public partial class MainWindow
             return;
         }
 
+        if (coverGroupByJob)
+        {
+            DrawCoverGroupedByJob();
+            return;
+        }
         if (coverGroupByTags)
         {
             DrawCoverGroupedByTags();
+            return;
+        }
+        if (coverGroupBySource)
+        {
+            DrawCoverGroupedBySource();
             return;
         }
 
@@ -576,7 +625,9 @@ public partial class MainWindow
         if (shiftRightClicked)
         {
             selectedDesign = design.Id;
-            plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
+            if (plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var quickOpenOutfit)
+                && quickOpenOutfit.Source == DesignSource.Glamourer)
+                plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
         }
         if (doubleClicked)
         {
