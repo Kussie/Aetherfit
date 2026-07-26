@@ -19,13 +19,19 @@ public partial class MainWindow
     private FilterSnapshot cachedJobTreeFilterSnapshot;
     private Dictionary<string, bool> cachedJobTreeFilterTags = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<uint, bool> cachedJobTreeFilterJobs = new();
+    private bool cachedJobTreeGlamaholicEnabled = true;
+    private bool cachedJobTreeGlamourPlateEnabled = true;
+    private bool cachedJobTreeSimpleGlamourSwitcherEnabled = true;
 
     private bool IsJobTreeCacheStale() =>
         cachedJobTreeGeneration != designListGeneration ||
         cachedJobTreeJobVersion != jobAssociationVersion ||
         cachedJobTreeFilterSnapshot != CaptureFilterSnapshot() ||
         !FiltersEqual(cachedJobTreeFilterTags, filterTags) ||
-        !FiltersEqual(cachedJobTreeFilterJobs, filterJobs);
+        !FiltersEqual(cachedJobTreeFilterJobs, filterJobs) ||
+        cachedJobTreeGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
+        cachedJobTreeGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled ||
+        cachedJobTreeSimpleGlamourSwitcherEnabled != plugin.Configuration.SimpleGlamourSwitcherEnabled;
 
     private void RebuildJobTreeCache()
     {
@@ -74,6 +80,9 @@ public partial class MainWindow
         cachedJobTreeFilterSnapshot = CaptureFilterSnapshot();
         cachedJobTreeFilterTags = new(filterTags, StringComparer.OrdinalIgnoreCase);
         cachedJobTreeFilterJobs = new(filterJobs);
+        cachedJobTreeGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
+        cachedJobTreeGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
+        cachedJobTreeSimpleGlamourSwitcherEnabled = plugin.Configuration.SimpleGlamourSwitcherEnabled;
     }
 
     private void DrawJobTree(bool hasFilter)

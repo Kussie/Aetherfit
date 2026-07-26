@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Aetherfit.Services;
 
@@ -10,6 +11,10 @@ namespace Aetherfit.Services;
 // the config means favourite toggles and apply records don't rewrite megabytes of JSON every time.
 public sealed class OutfitCacheStore
 {
+    // 1 = pre-provider-abstraction (bare `{ guid: outfit }` dictionary, no envelope at all).
+    // 2 = adds CachedOutfit.Source/ProviderDesignId, wrapped in CacheEnvelope.
+    private const int CurrentCacheVersion = 2;
+
     private readonly Configuration configuration;
     private readonly string path;
 
@@ -17,6 +22,12 @@ public sealed class OutfitCacheStore
     {
         this.configuration = configuration;
         path = Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "outfit-cache.json");
+    }
+
+    private sealed class CacheEnvelope
+    {
+        public int Version { get; set; }
+        public Dictionary<Guid, CachedOutfit> Outfits { get; set; } = new();
     }
 
     // Called once at startup. Older versions stored the cache inside the plugin config; if the cache
@@ -32,9 +43,25 @@ public sealed class OutfitCacheStore
 
         try
         {
-            var loaded = JsonConvert.DeserializeObject<Dictionary<Guid, CachedOutfit>>(File.ReadAllText(path));
-            if (loaded != null)
-                configuration.CachedOutfits = loaded;
+            var root = JObject.Parse(File.ReadAllText(path));
+            Dictionary<Guid, CachedOutfit> outfits;
+            int fromVersion;
+
+            if (root.ContainsKey("Version")) // current envelope shape
+            {
+                var envelope = root.ToObject<CacheEnvelope>()!;
+                outfits = envelope.Outfits;
+                fromVersion = envelope.Version;
+            }
+            else // v1: no envelope ever existed, root IS the bare outfit dictionary
+            {
+                outfits = root.ToObject<Dictionary<Guid, CachedOutfit>>() ?? new();
+                fromVersion = 1;
+            }
+
+            if (fromVersion < CurrentCacheVersion)
+                MigrateOutfits(outfits, fromVersion);
+            configuration.CachedOutfits = outfits;
         }
         catch (Exception ex)
         {
@@ -43,13 +70,27 @@ public sealed class OutfitCacheStore
         }
     }
 
+    // Ordered, explicit migration steps - add one new `if (fromVersion < N)` block per future schema
+    // change here, instead of a scattered default-value check.
+    private static void MigrateOutfits(Dictionary<Guid, CachedOutfit> outfits, int fromVersion)
+    {
+        if (fromVersion < 2)
+        {
+            // v1 -> v2: introduced Source/ProviderDesignId. Every v1 entry is implicitly Glamourer-
+            // sourced, and its native provider id has always just been its own dictionary key.
+            foreach (var (id, outfit) in outfits)
+                outfit.ProviderDesignId = id;
+        }
+    }
+
     // Called after a refresh replaces the cache or tags are written into it — not on ordinary config saves.
     public void Save()
     {
         try
         {
+            var envelope = new CacheEnvelope { Version = CurrentCacheVersion, Outfits = configuration.CachedOutfits };
             var tempPath = path + ".tmp";
-            File.WriteAllText(tempPath, JsonConvert.SerializeObject(configuration.CachedOutfits, Formatting.None));
+            File.WriteAllText(tempPath, JsonConvert.SerializeObject(envelope, Formatting.None));
             File.Move(tempPath, path, overwrite: true);
         }
         catch (Exception ex)
