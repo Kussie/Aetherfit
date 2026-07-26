@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Aetherfit.Services;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -54,13 +55,14 @@ public partial class MainWindow
         var slotMap = BuildSlotMap(details.Equipment);
         var bonusMap = BuildBonusMap(details.BonusItems);
         var affectedBy = GetAffectedBy(id, details);
+        var raceGender = plugin.GameData.ResolveEffectiveRaceGender(details);
 
         var slotLabelWidth = LabelColumnWidth(details);
 
         foreach (var (slot, label) in DesignDetailView.SlotDisplay)
         {
             slotMap.TryGetValue(slot, out var entry);
-            DrawEquipmentRow(label, slotLabelWidth, entry, affectedBy);
+            DrawEquipmentRow(label, slotLabelWidth, entry, affectedBy, raceGender);
         }
 
         foreach (var (slotKey, label) in DesignDetailView.BonusSlotDisplay)
@@ -69,11 +71,19 @@ public partial class MainWindow
             DrawBonusRow(label, slotLabelWidth, entry, affectedBy);
         }
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
+        // These flags are Glamourer design metadata - Glamaholic/Glamour Plate designs are relayed
+        // through Glamourer's equipment-only apply, so they never carry them. Simple Glamour Switcher
+        // does carry Hat/Weapon/Visor toggles of its own (see SimpleGlamourSwitcherService), so it's
+        // included here too.
+        if (details.Source is DesignSource.Glamourer or DesignSource.SimpleGlamourSwitcher)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
 
-        DrawToggleRow(details);
+            DrawToggleRow(details);
+        }
+
         ImGui.Unindent();
         ImGui.Spacing();
     }
@@ -246,12 +256,18 @@ public partial class MainWindow
         return affected;
     }
 
-    private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry, AffectedBy affectedBy)
+    private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry, AffectedBy affectedBy,
+        (uint RaceRowId, bool IsFemale)? raceGender)
     {
         var applied = entry?.Apply == true;
         var itemName = entry == null ? null : plugin.GameData.ResolveItemName(entry.ItemId);
+        bool? wearable = entry != null && raceGender is { } rg
+            ? plugin.GameData.IsItemWearableBy(entry.ItemId, rg.RaceRowId, rg.IsFemale)
+            : null;
+        var wearableRacesText = wearable == false ? plugin.GameData.DescribeWearableRaces(entry!.ItemId) : null;
         var modHovered = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
-            entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, applied, affectedBy.Items);
+            entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, applied, affectedBy.Items,
+            wearable, wearableRacesText);
         if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
             HandleAffectedModHover(mod);
     }
@@ -371,7 +387,11 @@ public partial class MainWindow
                 selectedDesign = link.DesignId;
                 coverMode = false;
             }
-            if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+            // Links are a native Glamourer concept (only ever populated from a Glamourer design's own
+            // JSON), so link.DesignId is always Glamourer-sourced - guarded anyway for consistency.
+            if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Right)
+                && plugin.Configuration.CachedOutfits.TryGetValue(link.DesignId, out var quickOpenOutfit)
+                && quickOpenOutfit.Source == DesignSource.Glamourer)
                 plugin.Glamourer.OpenInGlamourer(link.DesignId, name);
         }
 

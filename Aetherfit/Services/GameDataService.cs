@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Dalamud.Game.Player;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
 using Lumina.Excel;
@@ -33,6 +34,7 @@ public sealed class GameDataService
     private readonly ExcelSheet<Glasses>? glassesSheet;
     private readonly ExcelSheet<ClassJob>? classJobSheet;
     private readonly ExcelSheet<ClassJobCategory>? classJobCategorySheet;
+    private readonly ExcelSheet<EquipRaceCategory>? equipRaceCategorySheet;
 
     private readonly ConcurrentDictionary<ulong, string> itemNameCache = new();
     private readonly ConcurrentDictionary<byte, (string Name, uint Color)> stainCache = new();
@@ -71,6 +73,7 @@ public sealed class GameDataService
         glassesSheet = TryLoadSheet<Glasses>();
         classJobSheet = TryLoadSheet<ClassJob>();
         classJobCategorySheet = TryLoadSheet<ClassJobCategory>();
+        equipRaceCategorySheet = TryLoadSheet<EquipRaceCategory>();
     }
 
     // The name of a Glamourer design-link job condition (a ClassJobCategory, e.g. "All Classes" or "Healer").
@@ -84,6 +87,78 @@ public sealed class GameDataService
         var name = row.Name.ExtractText();
         return string.IsNullOrWhiteSpace(name) ? null : name;
     }
+
+    public bool? IsItemWearableBy(ulong itemId, uint raceRowId, bool isFemale)
+    {
+        if (itemId == 0 || itemSheet == null || equipRaceCategorySheet == null)
+            return null;
+        if (!itemSheet.TryGetRow((uint)Math.Min(itemId, uint.MaxValue), out var item))
+            return null;
+        if (!equipRaceCategorySheet.TryGetRow(item.EquipRestriction.RowId, out var category))
+            return null;
+
+        var raceOk = raceRowId switch
+        {
+            1 => category.Hyur,
+            2 => category.Elezen,
+            3 => category.Lalafell,
+            4 => category.Miqote,
+            5 => category.Roegadyn,
+            6 => category.AuRa,
+            7 => category.Hrothgar,
+            8 => category.Viera,
+            _ => true,
+        };
+        return raceOk && (isFemale ? category.Female : category.Male);
+    }
+
+    public (uint RaceRowId, bool IsFemale)? ResolveEffectiveRaceGender(CachedOutfit details)
+    {
+        uint? race = details.CustomizeClanApplied ? ClanToRace(details.CustomizeClan) : CurrentPlayerRace();
+        bool? female = details.CustomizeGenderApplied ? details.CustomizeGender == 1 : CurrentPlayerIsFemale();
+        return race is { } r && female is { } f ? (r, f) : null;
+    }
+
+    public bool? IsItemWearableByCurrentCharacter(ulong itemId, CachedOutfit details)
+        => ResolveEffectiveRaceGender(details) is { } rg ? IsItemWearableBy(itemId, rg.RaceRowId, rg.IsFemale) : null;
+
+    // True only when at least one equipped item is a *known* mismatch - an unresolvable item never counts
+    // (see IsItemWearableBy's null case), and a design with no equipment/no resolvable race is never flagged.
+    public bool DesignHasAnyIncompatibleItems(CachedOutfit details)
+    {
+        if (ResolveEffectiveRaceGender(details) is not { } rg)
+            return false;
+        return details.Equipment.Any(e => IsItemWearableBy(e.ItemId, rg.RaceRowId, rg.IsFemale) == false);
+    }
+
+    // "Au Ra, Hrothgar" (and a Male/Female-only suffix if one gender is excluded) - for the incompatibility tooltip.
+    public string DescribeWearableRaces(ulong itemId)
+    {
+        if (itemSheet == null || equipRaceCategorySheet == null
+            || !itemSheet.TryGetRow((uint)Math.Min(itemId, uint.MaxValue), out var item)
+            || !equipRaceCategorySheet.TryGetRow(item.EquipRestriction.RowId, out var category))
+            return "unknown races";
+
+        var races = new (bool On, string Name)[]
+        {
+            (category.Hyur, "Hyur"), (category.Elezen, "Elezen"), (category.Lalafell, "Lalafell"),
+            (category.Miqote, "Miqo'te"), (category.Roegadyn, "Roegadyn"), (category.AuRa, "Au Ra"),
+            (category.Hrothgar, "Hrothgar"), (category.Viera, "Viera"),
+        };
+        var names = races.Where(r => r.On).Select(r => r.Name).ToList();
+        var raceText = names.Count == 0 ? "no races" : string.Join(", ", names);
+
+        return (category.Male, category.Female) switch
+        {
+            (true, false) => $"{raceText} (Male only)",
+            (false, true) => $"{raceText} (Female only)",
+            _ => raceText,
+        };
+    }
+
+    private static uint ClanToRace(int clan) => (uint)((clan + 1) / 2); // Glamourer clan 1-16 -> Race 1-8
+    private static uint? CurrentPlayerRace() => Plugin.PlayerState.IsLoaded ? Plugin.PlayerState.Race.RowId : null;
+    private static bool? CurrentPlayerIsFemale() => Plugin.PlayerState.IsLoaded ? Plugin.PlayerState.Sex == Sex.Female : null;
 
     private static ExcelSheet<T>? TryLoadSheet<T>() where T : struct, IExcelRow<T>
     {

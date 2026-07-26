@@ -375,36 +375,105 @@ public class ConfigWindow : Window, IDisposable
         ImGui.TextDisabled("Status of the plugins Aetherfit integrates with.");
         ImGui.Spacing();
 
+        ImGui.TextUnformatted("Required");
+        ImGui.Spacing();
         DrawIntegrationRow("Penumbra", plugin.Penumbra.CheckIntegration(), PenumbraService.MinApiVersion);
         ImGui.Spacing();
         DrawIntegrationRow("Glamourer", plugin.Glamourer.CheckIntegration(), GlamourerService.MinApiVersion);
         ImGui.Spacing();
-        DrawHardcodedIntegrationRow("Simple Glamour Switcher", "Integration coming soon");
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        ImGui.TextUnformatted("Optional");
+        ImGui.Spacing();
+
+        DrawIntegrationRow("Glamaholic", plugin.Glamaholic.CheckIntegration(),
+            rightAligned: () => plugin.Configuration.GlamaholicEnabled = DrawRightAlignedCheckbox(
+                "Glamaholic", plugin.Configuration.GlamaholicEnabled, "Source designs from Glamaholic"),
+            extra: plugin.Configuration.GlamaholicEnabled ? () =>
+                plugin.Configuration.GlamaholicResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
+                    "Glamaholic", plugin.Configuration.GlamaholicResetTemporarySettingsBeforeApply) : null);
+        ImGui.Spacing();
+
+        DrawGlamourPlateIntegrationRow();
+        ImGui.Spacing();
+
+        DrawIntegrationRow("Simple Glamour Switcher", plugin.SimpleGlamourSwitcher.CheckIntegration(),
+            rightAligned: () => plugin.Configuration.SimpleGlamourSwitcherEnabled = DrawRightAlignedCheckbox(
+                "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherEnabled, "Source designs from Simple Glamour Switcher"),
+            extra: plugin.Configuration.SimpleGlamourSwitcherEnabled ? () =>
+                plugin.Configuration.SimpleGlamourSwitcherResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
+                    "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherResetTemporarySettingsBeforeApply) : null);
     }
 
-    private static void DrawIntegrationRow(string label, PluginIntegrationInfo info, (int Major, int Minor) required)
+    // Right-aligned on whatever row it's drawn from, matching DrawFilterHeaderOverlay's "N active"/
+    // Clear positioning technique. Takes/returns by value (not ref) so it can be called from a lambda.
+    // Unticking excludes that source's designs from browsing, filtering, and random/direct apply
+    // (see Configuration.IsProviderEnabled / DesignApplyService.IsUsable) without touching their
+    // cached local metadata - they reappear intact if re-enabled. On by default.
+    private bool DrawRightAlignedCheckbox(string idSuffix, bool enabled, string tooltip)
+    {
+        var size = ImGui.GetFrameHeight();
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - size);
+        if (ImGui.Checkbox($"##enable{idSuffix}", ref enabled))
+            plugin.Configuration.Save();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
+        return enabled;
+    }
+
+    // Not a plugin, so DrawIntegrationRow's "is not installed"/"is installed but not enabled"
+    // phrasing doesn't fit - native game data that's only populated once the Dresser/Mirage Prism
+    // Plate window has been touched that zone (see GlamourPlateService).
+    private void DrawGlamourPlateIntegrationRow()
+    {
+        var ok = plugin.GlamourPlate.CheckIntegration().Status == PluginIntegrationStatus.Ok;
+        DesignDetailView.DrawFontAwesome(ok ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, ok ? UiTheme.StateOn : UiTheme.StateOff);
+        ImGui.SameLine();
+        ImGui.TextUnformatted("Glamour Plates");
+        plugin.Configuration.GlamourPlateEnabled = DrawRightAlignedCheckbox(
+            "GlamourPlate", plugin.Configuration.GlamourPlateEnabled, "Source designs from the game's own Glamour Plates");
+        DrawIndentedDisabledText(ok
+            ? "Glamour Plates loaded."
+            : "Not yet loaded this zone — open the Glamour Dresser once.");
+        if (plugin.Configuration.GlamourPlateEnabled)
+            plugin.Configuration.GlamourPlateResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
+                "GlamourPlate", plugin.Configuration.GlamourPlateResetTemporarySettingsBeforeApply);
+    }
+
+    private static void DrawIntegrationRow(string label, PluginIntegrationInfo info, (int Major, int Minor)? required = null,
+        Action? rightAligned = null, Action? extra = null)
     {
         var ok = info.Status == PluginIntegrationStatus.Ok;
         DesignDetailView.DrawFontAwesome(ok ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, ok ? UiTheme.StateOn : UiTheme.StateOff);
         ImGui.SameLine();
         ImGui.TextUnformatted(label);
+        rightAligned?.Invoke();
 
         var status = info.Status switch
         {
             PluginIntegrationStatus.NotInstalled  => $"{label} is not installed.",
             PluginIntegrationStatus.NotLoaded     => $"{label} is installed but not enabled.",
-            PluginIntegrationStatus.VersionTooLow => $"{label} API v{info.ApiVersion?.Major}.{info.ApiVersion?.Minor} found — v{required.Major}.{required.Minor}+ required.",
+            PluginIntegrationStatus.VersionTooLow => required is { } r
+                ? $"{label} API v{info.ApiVersion?.Major}.{info.ApiVersion?.Minor} found — v{r.Major}.{r.Minor}+ required."
+                : $"{label} API version too low.",
             _                                      => $"{label} v{info.PluginVersion} — OK.",
         };
         DrawIndentedDisabledText(status);
+        extra?.Invoke();
     }
 
-    private static void DrawHardcodedIntegrationRow(string label, string status)
+    // Off by default - see Configuration.ResetTemporarySettingsBeforeApply.
+    private bool DrawResetTemporarySettingsToggle(string idSuffix, bool enabled)
     {
-        DesignDetailView.DrawFontAwesome(FontAwesomeIcon.Times, UiTheme.StateOff);
-        ImGui.SameLine();
-        ImGui.TextUnformatted(label);
-        DrawIndentedDisabledText(status);
+        ImGui.Indent();
+        if (ImGui.Checkbox($"Reset Penumbra temporary mod settings before applying##resetTemp{idSuffix}", ref enabled))
+            plugin.Configuration.Save();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Clears leftover Penumbra temporary mod settings (including Glamourer's own mod "
+                + "associations) right before applying a design from this source. Doesn't run before additional layers.");
+        ImGui.Unindent();
+        return enabled;
     }
 
     private static void DrawIndentedDisabledText(string text)
