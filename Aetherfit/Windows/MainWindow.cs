@@ -291,6 +291,9 @@ public partial class MainWindow : Window, IDisposable
                 outfit.Description = meta.Description;
                 outfit.Tags = new List<string>(meta.Tags);
                 job.Metadata[aetherfitId] = outfit;
+
+                if (!plugin.ImageStorage.HasCover(aetherfitId) && provider.GetNativeImagePath(nativeId) is { } nativeImagePath)
+                    plugin.ImageStorage.SetCover(aetherfitId, nativeImagePath);
             }
         }
 

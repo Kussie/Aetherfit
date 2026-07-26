@@ -247,6 +247,7 @@ public sealed class GlamourPlateService : IDesignProvider
     public void ApplyLayer(Guid nativeId) { }
     public void OpenInNativeUi(Guid nativeId, string designName) { }
     public void Revert() { }
+    public string? GetNativeImagePath(Guid nativeId) => null;
 
     public event Action<nint, DesignFinalizationType>? OnExternalStateFinalized { add { } remove { } }
     public event Action<nint, DesignFinalizationType>? OnAnyStateFinalized { add { } remove { } }

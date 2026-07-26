@@ -587,6 +587,22 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         lastKnownTemplateStates.Clear();
     }
 
+    public string? GetNativeImagePath(Guid nativeId)
+    {
+        var outfitPath = FindOutfitFile(nativeId);
+        if (outfitPath == null)
+            return null;
+
+        var imagesDir = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(outfitPath))!, "images");
+        foreach (var ext in ImageStorageService.AllowedImageExtensions)
+        {
+            var candidate = Path.Combine(imagesDir, $"{nativeId}{ext}");
+            if (File.Exists(candidate))
+                return candidate;
+        }
+        return null;
+    }
+
     public void ApplyLayer(Guid nativeId) { }
     public void OpenInNativeUi(Guid nativeId, string designName) { }
     public void Revert() { }

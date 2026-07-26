@@ -59,6 +59,9 @@ public interface IDesignProvider : IDisposable
     void OpenInNativeUi(Guid nativeId, string designName);
     void Revert();
 
+    // A screenshot the source itself owns for this design, if any - null for sources with no such concept.
+    string? GetNativeImagePath(Guid nativeId);
+
     event Action<nint, DesignFinalizationType>? OnExternalStateFinalized;
     event Action<nint, DesignFinalizationType>? OnAnyStateFinalized;
 }

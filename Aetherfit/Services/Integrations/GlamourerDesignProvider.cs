@@ -50,6 +50,8 @@ public sealed class GlamourerDesignProvider : IDesignProvider
 
     public void Revert() => glamourer.Revert();
 
+    public string? GetNativeImagePath(Guid nativeId) => null;
+
     public event Action<nint, DesignFinalizationType>? OnExternalStateFinalized
     {
         add
