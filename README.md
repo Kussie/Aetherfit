@@ -3,15 +3,18 @@
 
 **Requires:** [Penumbra](https://github.com/xivdev/Penumbra), [Glamourer](https://github.com/Ottermandias/Glamourer)
 
-Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit builds on top of it with a more intuitive, gallery-style frontend for browsing and applying those designs, while still relying on Glamourer for the actual design data and application process and keeping it as the source of truth for all your designs.
+**Optional:** [Glamaholic](https://github.com/caitlyn-gg/Glamaholic) — if installed, Aetherfit can also browse and apply your Glamaholic plates. The game's own native Glamour Plates are supported too, no extra plugin required. Both sources can be toggled on or off independently from the Integrations tab.
 
-Aetherfit is meant to be a lightweight, easy-to-use alternative to the default Glamourer interface — making it much easier to quickly find and apply the perfect design for any occasion. You'll still use Glamourer itself to create, edit, and manage your actual designs; Aetherfit is focused purely on making it quick and easy to choose which one to switch to.
+Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit builds on top of it with a more intuitive, gallery-style frontend for browsing and applying designs. Designs no longer have to live in Glamourer itself, either — Aetherfit can pull them in from **Glamaholic** and the game's own **Glamour Plates** too, showing everything together in one unified gallery regardless of where it's actually saved. Glamourer remains required either way, since it's still the engine Aetherfit uses to actually apply an outfit to your character, no matter which source a design came from.
+
+Aetherfit is meant to be a lightweight, easy-to-use alternative to the default Glamourer interface — making it much easier to quickly find and apply the perfect design for any occasion. You'll still use Glamourer itself (or Glamaholic, or the game's own Glamour Dresser) to create, edit, and manage your actual designs; Aetherfit is focused purely on making it quick and easy to choose which one to switch to.
 
 It also provides a quick and easy way to preview your designs with screenshots and images that can be added to them. Screenshots can either be loaded from disk or taken directly in game.
 
 > **Tip:** this isn't required, but if your designs rely on mods through Penumbra, the ideal setup is to use mod associations with temporary settings on your Glamourer designs, rather than enabling everything all the time. That way the relevant mods are automatically turned on and off as you switch between designs. See [this guide](https://docs.google.com/document/d/1WxaNWRRTlm5o6KShM_so54yoD5RDPIpFg2UqSid71ek/edit?tab=t.nb010xi108ph#heading=h.o8utyg3da3rc) for a brief explanation of mod associations and temporary settings.
 
 It adds the following functionality:
+- Source designs from Glamourer, Glamaholic, Simple Glamour Switcher, and the game's own Glamour Plates, all in one gallery
 - Browse designs by tags
 - Add screenshots to designs
 - Apply a random design to your character or a random design based on a selection of tags
@@ -66,7 +69,6 @@ Once added, find Aetherfit in the main `/xlplugins` window and install it. You c
 
 ## TODO/Wishlist
 Small bugs, QOL and big dream items that have popped into my head.  When and if they are implemented remains to be seen.
- - Integrate with Simple Glamour Switcher
  - Investigate IAsyncDalamudPlugin
  - Add an IPC
 

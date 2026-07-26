@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
 using Aetherfit.Services.Integrations;
+using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -26,13 +27,16 @@ public partial class MainWindow : Window, IDisposable
     private Guid? viewerFollowedDesign;
     private DesignLeaf? hoveredDesignForTooltip;
 
-    // Session-only: the Edit Mode tree groups designs by job association or by tag instead of folder
-    // path. At most one grouping is active at a time.
+    // Session-only: the Edit Mode tree groups designs by job association, by tag, or by source
+    // instead of folder path. At most one grouping is active at a time.
     private bool groupByJob;
     private bool groupByTags;
+    private bool groupBySource;
 
-    // Cover Mode's own tag-grouping toggle - independent of Edit Mode's groupByTags above.
+    // Cover Mode's own grouping toggles - independent of Edit Mode's groupBy* above.
+    private bool coverGroupByJob;
     private bool coverGroupByTags;
+    private bool coverGroupBySource;
 
     // When a filter is active we force every matching tree node open and keep note of the previous state so it can be restored whe nthe filters are cleared
     private readonly Dictionary<uint, bool> treeOpenSnapshot = new();
@@ -81,7 +85,10 @@ public partial class MainWindow : Window, IDisposable
         coverMode = plugin.Configuration.DefaultToCoverMode;
         groupByJob = false;
         groupByTags = false;
+        groupBySource = false;
+        coverGroupByJob = false;
         coverGroupByTags = false;
+        coverGroupBySource = false;
         RefreshDesigns();
     }
 
@@ -189,12 +196,13 @@ public partial class MainWindow : Window, IDisposable
         }
     }
 
-    // A refresh in flight: the design list is fetched up front (one cheap IPC call), while the
-    // per-design metadata IPC calls are spread over framework ticks so a large collection doesn't
+    // A refresh in flight: the design list is fetched up front (one cheap call per provider), while
+    // the per-design metadata calls are spread over framework ticks so a large collection doesn't
     // stall a frame. The previous CachedOutfits stay live until the new set is complete.
     private sealed class RefreshJob
     {
-        public required IReadOnlyList<GlamourerService.DesignInfo> Designs { get; init; }
+        public required IReadOnlyList<(IDesignProvider Provider, Guid NativeId, Guid AetherfitId)> Designs { get; init; }
+        public required HashSet<DesignSource> FailedProviders { get; init; }
         public Dictionary<Guid, CachedOutfit> Metadata { get; } = new();
         public int Index;
     }
@@ -205,25 +213,63 @@ public partial class MainWindow : Window, IDisposable
 
     private void RefreshDesigns()
     {
-        var list = plugin.Glamourer.FetchDesignList();
-        if (list.Error != null)
+        var entries = new List<(IDesignProvider Provider, Guid NativeId, Guid AetherfitId)>();
+        var leaves = new List<DesignLeaf>();
+        var errors = new List<string>();
+        var failedProviders = new HashSet<DesignSource>();
+        var multipleProviders = plugin.DesignProviders.Count > 1;
+
+        foreach (var provider in plugin.DesignProviders)
+        {
+            // A disabled source is never fetched at all - not just filtered from the tree afterward -
+            // so it can't surface an error notice (e.g. Glamour Plate's "not loaded this zone") while
+            // switched off. Treated like a fetch failure for preservation purposes: whatever was cached
+            // for it stays intact, just not refreshed, until it's re-enabled.
+            if (!plugin.Configuration.IsProviderEnabled(provider.Source))
+            {
+                failedProviders.Add(provider.Source);
+                continue;
+            }
+
+            var result = provider.FetchDesignList();
+            if (result.Error != null)
+            {
+                errors.Add(multipleProviders ? $"{provider.DisplayName}: {result.Error}" : result.Error);
+                failedProviders.Add(provider.Source);
+            }
+
+            foreach (var info in result.Designs)
+            {
+                var aetherfitId = DesignIdentity.Resolve(plugin.Configuration, provider.Source, info.NativeId);
+                entries.Add((provider, info.NativeId, aetherfitId));
+                // Sources share the same tree by default (no per-provider top-level folder) - "Group
+                // by source" (MainWindow.SourceTree.cs) is the opt-in view that separates them.
+                leaves.Add(new DesignLeaf(aetherfitId, info.DisplayName, info.FullPath, info.Color, info.SourceSubGroup));
+            }
+        }
+
+        // Total failure (nothing fetched at all) aborts entirely - CachedOutfits and everything keyed
+        // off it stays exactly as-is rather than a redundant rebuild that would just reproduce the same
+        // state. A *partial* failure (some providers succeeded) falls through instead: FinishRefresh
+        // preserves whatever a failed provider's own designs already were, so one source's transient
+        // error can't wipe another source's - or its own previous - cached data/favourites/tags.
+        if (entries.Count == 0 && errors.Count > 0)
         {
             root = new FolderNode();
             designsCount = 0;
-            designsError = list.Error;
+            designsError = errors[0];
             activeRefresh = null;
             designListGeneration++;
             return;
         }
 
         // The tree only needs the list, so it shows immediately; metadata streams in behind it.
-        root = BuildFolderTree(list.Designs
-            .Select(d => new DesignLeaf(d.Id, d.DisplayName, d.FullPath, d.Color)));
-        designsCount = list.Designs.Count;
-        designsError = null;
+        root = BuildFolderTree(leaves);
+        designsCount = leaves.Count;
+        designsError = errors.Count > 0 ? string.Join("\n", errors) : null;
         designListGeneration++;
 
-        activeRefresh = new RefreshJob { Designs = list.Designs };
+        activeRefresh = new RefreshJob { Designs = entries, FailedProviders = failedProviders };
     }
 
     private void OnFrameworkUpdate(Dalamud.Plugin.Services.IFramework framework)
@@ -235,13 +281,19 @@ public partial class MainWindow : Window, IDisposable
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (job.Index < job.Designs.Count && sw.ElapsedMilliseconds < 4)
         {
-            var design = job.Designs[job.Index++];
-            if (plugin.Glamourer.FetchDesignMetadata(design.Id) is { } outfit)
+            var (provider, nativeId, aetherfitId) = job.Designs[job.Index++];
+            if (provider.FetchDesignMetadata(nativeId) is { } outfit)
             {
-                var meta = plugin.Configuration.GetOrSeedDesignMeta(design.Id, outfit.GlamourerDescription, outfit.GlamourerTags);
+                outfit.Source = provider.Source;
+                outfit.ProviderDesignId = nativeId;
+
+                var meta = plugin.Configuration.GetOrSeedDesignMeta(aetherfitId, outfit.GlamourerDescription, outfit.GlamourerTags);
                 outfit.Description = meta.Description;
                 outfit.Tags = new List<string>(meta.Tags);
-                job.Metadata[design.Id] = outfit;
+                job.Metadata[aetherfitId] = outfit;
+
+                if (!plugin.ImageStorage.HasCover(aetherfitId) && provider.GetNativeImagePath(nativeId) is { } nativeImagePath)
+                    plugin.ImageStorage.SetCover(aetherfitId, nativeImagePath);
             }
         }
 
@@ -253,7 +305,16 @@ public partial class MainWindow : Window, IDisposable
     {
         activeRefresh = null;
 
-        plugin.Configuration.CachedOutfits = job.Metadata;
+        // A provider that failed to fetch this round keeps whatever it last had cached, rather than
+        // a transient error wiping its designs (and their favourites/hidden/tags/job associations)
+        // out of Configuration entirely.
+        var merged = new Dictionary<Guid, CachedOutfit>(job.Metadata);
+        if (job.FailedProviders.Count > 0)
+            foreach (var (existingId, outfit) in plugin.Configuration.CachedOutfits)
+                if (job.FailedProviders.Contains(outfit.Source))
+                    merged.TryAdd(existingId, outfit);
+
+        plugin.Configuration.CachedOutfits = merged;
         plugin.OutfitCache.Save();
 
         // Mods might have changed since last time, so clear the affected-item caches and let the
@@ -261,7 +322,7 @@ public partial class MainWindow : Window, IDisposable
         plugin.Penumbra.ClearChangedItemsCache();
         affectedByCache.Clear();
 
-        var validIds = new HashSet<Guid>(job.Designs.Select(d => d.Id));
+        var validIds = new HashSet<Guid>(merged.Keys);
         plugin.ImageStorage.CleanupRemovedDesigns(validIds);
 
         var staleJobAssociations = plugin.Configuration.DesignJobAssociations.Keys
@@ -370,19 +431,23 @@ public partial class MainWindow : Window, IDisposable
             ImGui.SetTooltip("Settings");
     }
 
-    private static float IconTextButtonWidth(FontAwesomeIcon icon, string label, bool dropdown = false)
+    private static float IconTextButtonWidth(FontAwesomeIcon icon, string label, bool dropdown = false, bool warning = false)
     {
         var style = ImGui.GetStyle();
-        float iconW;
+        float iconW, warningW;
         using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+        {
             iconW = ImGui.CalcTextSize(icon.ToIconString()).X;
+            warningW = warning ? style.ItemInnerSpacing.X + ImGui.CalcTextSize(FontAwesomeIcon.ExclamationTriangle.ToIconString()).X : 0f;
+        }
         var caretW = dropdown ? style.ItemInnerSpacing.X + (ImGui.GetFontSize() * 0.5f) : 0f;
-        return (style.FramePadding.X * 2) + iconW + style.ItemInnerSpacing.X + ImGui.CalcTextSize(label).X + caretW;
+        return (style.FramePadding.X * 2) + iconW + style.ItemInnerSpacing.X + ImGui.CalcTextSize(label).X + warningW + caretW;
     }
 
-    // Icon + label button, with a caret when it opens a menu. Drawn by hand because a single
-    // ImGui button can't mix the icon font with the text font.
-    internal static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false)
+    // Icon + label button, with a caret when it opens a menu and/or a trailing warning icon+tooltip.
+    // Drawn by hand because a single ImGui button can't mix the icon font with the text font.
+    internal static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false,
+        bool warning = false, string? warningTooltip = null)
     {
         var style = ImGui.GetStyle();
         var iconStr = icon.ToIconString();
@@ -392,7 +457,8 @@ public partial class MainWindow : Window, IDisposable
         var textW = ImGui.CalcTextSize(label).X;
         var caretHalf = ImGui.GetFontSize() * 0.25f;
 
-        var clicked = ImGui.Button($"##iconText{label}", new Vector2(IconTextButtonWidth(icon, label, dropdown), 0));
+        var clicked = ImGui.Button($"##iconText{label}", new Vector2(IconTextButtonWidth(icon, label, dropdown, warning), 0));
+        var hovered = ImGui.IsItemHovered();
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
         var dl = ImGui.GetWindowDrawList();
@@ -404,10 +470,18 @@ public partial class MainWindow : Window, IDisposable
             dl.AddText(new Vector2(x, textY), color, iconStr);
         x += iconW + style.ItemInnerSpacing.X;
         dl.AddText(new Vector2(x, textY), color, label);
+        x += textW;
+
+        if (warning)
+        {
+            x += style.ItemInnerSpacing.X;
+            using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+                dl.AddText(new Vector2(x, textY), ImGui.GetColorU32(UiTheme.ErrorText), FontAwesomeIcon.ExclamationTriangle.ToIconString());
+        }
 
         if (dropdown)
         {
-            x += textW + style.ItemInnerSpacing.X;
+            x += style.ItemInnerSpacing.X;
             var centerY = (min.Y + max.Y) * 0.5f;
             dl.AddTriangleFilled(
                 new Vector2(x, centerY - (caretHalf * 0.5f)),
@@ -415,6 +489,9 @@ public partial class MainWindow : Window, IDisposable
                 new Vector2(x + caretHalf, centerY + (caretHalf * 0.75f)),
                 color);
         }
+
+        if (warning && hovered && warningTooltip != null)
+            ImGui.SetTooltip(warningTooltip);
 
         return clicked;
     }
@@ -475,7 +552,12 @@ public partial class MainWindow : Window, IDisposable
         const string randomLabel = "Apply Random";
         const string byTagLabel = "Apply Random By Tag(s)";
 
-        var applyW = IconTextButtonWidth(FontAwesomeIcon.Check, applyLabel);
+        var hasIncompatibleSelection = selectedDesign is { } warnId
+            && plugin.Configuration.CachedOutfits.TryGetValue(warnId, out var warnOutfit)
+            && plugin.GameData.DesignHasAnyIncompatibleItems(warnOutfit);
+        const string incompatibleTooltip = "This design can only be partially applied on your current character.";
+
+        var applyW = IconTextButtonWidth(FontAwesomeIcon.Check, applyLabel, warning: hasIncompatibleSelection);
         var randomW = IconTextButtonWidth(FontAwesomeIcon.Random, randomLabel);
         var byTagW = IconTextButtonWidth(FontAwesomeIcon.Tags, byTagLabel);
         var rightTotal = applyW + randomW + byTagW + 2 * style.ItemSpacing.X;
@@ -492,7 +574,8 @@ public partial class MainWindow : Window, IDisposable
 
         using (ImRaii.Disabled(!hasSelection))
         {
-            if (IconTextButton(FontAwesomeIcon.Check, applyLabel) && selectedDesign is { } id)
+            if (IconTextButton(FontAwesomeIcon.Check, applyLabel, warning: hasIncompatibleSelection, warningTooltip: incompatibleTooltip)
+                && selectedDesign is { } id)
                 ApplyDesignById(id);
         }
         ImGui.SameLine();
@@ -633,5 +716,8 @@ public partial class MainWindow : Window, IDisposable
         public List<DesignLeaf> Designs { get; } = new();
     }
 
-    private sealed record DesignLeaf(Guid Id, string DisplayName, string FullPath, uint Color);
+    // SourceSubGroup is display-only grouping above "folder path" - null for every provider except
+    // SimpleGlamourSwitcher (see MainWindow.SourceTree.cs / MainWindow.GallerySourceGroups.cs, the only
+    // consumers of this field). Never persisted, rebuilt fresh every refresh like FullPath itself.
+    private sealed record DesignLeaf(Guid Id, string DisplayName, string FullPath, uint Color, string? SourceSubGroup = null);
 }
