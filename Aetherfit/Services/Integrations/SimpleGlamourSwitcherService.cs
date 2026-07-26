@@ -11,23 +11,17 @@ using Penumbra.Api.Enums;
 
 namespace Aetherfit.Services.Integrations;
 
-// Reads Simple Glamour Switcher's outfits directly from its own files - SGS exposes no IPC of its own
-// (confirmed from its source: github.com/Caraxi/SimpleGlamourSwitcher). Applies equipment/customize by
-// relaying through GlamourerService.ApplyEquipmentAndCustomizeState, and separately activates a design's
-// mods and Customize+ template toggles directly - SGS itself never routes either of those through
-// Glamourer, so a state relay alone would never have activated them (see the plan for the full trace).
+// SGS has no IPC of its own - reads outfits straight from its files, relays equipment/customize through
+// Glamourer, and activates mods/Customize+ templates itself (Glamourer never touches either).
 public sealed class SimpleGlamourSwitcherService : IDesignProvider
 {
     private readonly GlamourerService glamourer;
     private readonly PenumbraService penumbra;
     private readonly CustomizePlusService customizePlus;
 
-    // Outfit native id -> the character folder it lives under, populated by the most recent
-    // FetchDesignList() - avoids re-scanning every character folder on every metadata/apply call.
     private readonly Dictionary<Guid, string> lastKnownOutfitCharacters = new();
 
-    // Template id -> (profile, state before Aetherfit toggled it), so a later cleanup can restore it -
-    // Customize+ template toggles have no atomic "temporary" concept the way Penumbra's do.
+    // Template id -> (profile, prior state), so a later revert can restore it.
     private readonly Dictionary<Guid, (Guid Profile, bool PreviousState)> lastKnownTemplateStates = new();
 
     public SimpleGlamourSwitcherService(GlamourerService glamourer, PenumbraService penumbra, CustomizePlusService customizePlus)
@@ -43,17 +37,15 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
     public DesignProviderCapabilities Capabilities =>
         DesignProviderCapabilities.Apply | DesignProviderCapabilities.Customizations | DesignProviderCapabilities.Mods;
 
-    // The equipment slots SGS names directly (matching Aetherfit's own EquipmentSlot names exactly, no
-    // translation table needed) - MainHand/OffHand come from Weapons.ClassWeapons separately, not here.
+    // Names match Aetherfit's own EquipmentSlot 1:1, no translation table needed. Weapons come from
+    // Weapons.ClassWeapons separately.
     private static readonly EquipmentSlot[] NamedGearSlots =
     {
         EquipmentSlot.Head, EquipmentSlot.Body, EquipmentSlot.Hands, EquipmentSlot.Legs, EquipmentSlot.Feet,
         EquipmentSlot.Ears, EquipmentSlot.Neck, EquipmentSlot.Wrists, EquipmentSlot.RFinger, EquipmentSlot.LFinger,
     };
 
-    // Reserved key range for Aetherfit's own Penumbra temporary mod settings - distinct from SGS's own
-    // 0x_53_47_53_0 base so the two never fight over the same (modDirectory, key) lock. One stable key
-    // per equipment slot (including weapons) and one per curated customize field.
+    // Own reserved key range for Penumbra temp mod settings, distinct from SGS's own 0x_53_47_53_0 base.
     private const int KeyBase = 0x_41_45_54_0;
     private static int SlotKey(EquipmentSlot slot) => -(KeyBase + (int)slot);
     private static int CustomizeKey(int customizeDisplayIndex) => -(KeyBase + 100 + customizeDisplayIndex);
@@ -161,7 +153,6 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         return new CharacterInfo(name, folders);
     }
 
-    // Walks the flat parent-pointer map up to the all-zero root, guarding against cycles in malformed data.
     private static string ResolveFolderPath(Guid folderId, Dictionary<Guid, (string Name, Guid Parent)> folders)
     {
         var segments = new List<string>();
@@ -193,8 +184,6 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         }
     }
 
-    // In-session cache first (fast path, populated by the last FetchDesignList()), then a cold-start
-    // fallback scan across every character folder - same two-tier shape GlamourPlateService uses.
     private string? FindOutfitFile(Guid nativeId)
     {
         if (lastKnownOutfitCharacters.TryGetValue(nativeId, out var characterDir))
@@ -247,7 +236,6 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
             HatVisible = GlamourerJsonSchema.ParseMetaToggle(equipment?["HatVisible"], "Toggle"),
             WeaponVisible = GlamourerJsonSchema.ParseMetaToggle(equipment?["WeaponVisible"], "Toggle"),
             VisorToggled = GlamourerJsonSchema.ParseMetaToggle(equipment?["VisorToggle"], "Toggle"),
-            // SGS's relay-apply never forces a redraw or resets temporary settings - no equivalent flag exists.
             ForcedRedraw = false,
             ResetTemporarySettings = false,
             Mods = mods.Values.ToList(),
@@ -286,14 +274,12 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
             Stain = (byte)GlamourerJsonSchema.ReadUInt64(stain?["Stain"]),
             Stain2 = (byte)GlamourerJsonSchema.ReadUInt64(stain?["Stain2"]),
             Apply = GlamourerJsonSchema.ReadBool(slotObj["Apply"]),
-            // SGS never gates the stain separately (ApplicableStain.ApplyToCharacter is a no-op) - it
-            // always rides along with the item, so this mirrors the slot's own Apply, not Stain.Apply.
+            // Stain has no gate of its own (SGS always applies it alongside the item) - mirrors Apply.
             ApplyStain = GlamourerJsonSchema.ReadBool(slotObj["Apply"]),
         };
     }
 
-    // Aetherfit's ResolveBonusItemName only recognizes "Glasses" (Glamourer's own bonus slot name) -
-    // SGS's own JSON key for the same slot is "Face" (HumanSlot.Face), so it's translated here.
+    // Aetherfit only recognizes "Glasses" (Glamourer's bonus slot name); SGS calls the same slot "Face".
     private static List<CachedBonusItem> ParseBonusItems(JObject? equipment)
     {
         var result = new List<CachedBonusItem>();
@@ -309,9 +295,7 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         return result;
     }
 
-    // SGS's Weapons.ClassWeapons is keyed by the current job's base/parent class ClassJob.RowId (e.g. a
-    // Paladin's weapon lives under Gladiator's row id) - confirmed from SGS's own OutfitWeapons.cs. A
-    // best-effort live preview for display; Apply() re-resolves this fresh against whatever job is current then.
+    // ClassWeapons is keyed by the job's base/parent class, not the job itself (e.g. Paladin -> Gladiator).
     private static JObject? ResolveCurrentWeaponSet(JObject? weapons)
     {
         if (weapons?["ClassWeapons"] is not JObject classWeapons || !Plugin.PlayerState.IsLoaded)
@@ -349,8 +333,7 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         }
     }
 
-    // Deduplicated by directory - the same mod commonly ends up attached to more than one slot with
-    // identical settings (e.g. a dress attached to both Body and Legs), which would otherwise show twice.
+    // Deduped by directory - the same mod often ends up on more than one slot (e.g. a dress on Body+Legs).
     private static void CollectMods(JToken? modConfigsToken, Dictionary<string, CachedMod> mods)
     {
         if (modConfigsToken is not JArray array)
@@ -364,8 +347,6 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
 
             mods[directory] = new CachedMod
             {
-                // SGS has no separate mod display name - DesignAttributionService.ModDisplayName already
-                // falls back to Directory when Name is empty.
                 Name = string.Empty,
                 Directory = directory,
                 State = GlamourerJsonSchema.ReadBool(entry["Enabled"]) ? ModState.Enabled : ModState.Disabled,
@@ -400,11 +381,7 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         var appearance = outfit["Appearance"] as JObject;
         var weaponSet = ResolveCurrentWeaponSet(outfit["Weapons"] as JObject);
 
-        // Mods and Customize+ templates first - so by the time Glamourer's own state push (below) triggers
-        // its automatic redraw, Penumbra/Customize+ already resolve correctly and no follow-up redraw is
-        // needed. SGS itself does this in the opposite order, but only because it explicitly stages both
-        // across several game ticks with a manual redraw at the end - Aetherfit's relay is one synchronous
-        // call, so the safer order for that shape is mods-then-state, not state-then-mods.
+        // Mods/templates before the state push, so Glamourer's own redraw already sees them resolved.
         ApplyMods(equipment, weaponSet, appearance);
         ApplyCustomizePlusTemplates(equipment, appearance, weaponSet);
 
@@ -447,10 +424,8 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         return result;
     }
 
-    // A slot with no Apply (or missing entirely) is passed through as Apply:false rather than defaulting
-    // to "nothing equipped" - SGS itself leaves an unapplied slot completely untouched on the character
-    // (ApplicableEquipment.ApplyToCharacter's `if (!Apply) return;`), unlike Glamaholic's plates which are
-    // always full 12-slot captures.
+    // A slot with no Apply is passed through as false (leave untouched), not defaulted to "nothing" -
+    // unlike Glamaholic's plates, SGS outfits can be partial.
     private static void AddSlotToEquipment(JObject equipment, EquipmentSlot slot, JObject? sgsSlot)
     {
         var apply = GlamourerJsonSchema.ReadBool(sgsSlot?["Apply"]);
@@ -509,9 +484,6 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
             ApplySlotMods(CustomizeKey(i), (appearance?[GlamourerJsonSchema.CustomizeDisplay[i].Key] as JObject)?["ModConfigs"]);
     }
 
-    // Always clears this key first, then re-sets only what the current design needs - simpler than
-    // diffing against whatever a previous SGS-sourced apply left behind, and Penumbra's RemoveAll is a
-    // no-op if nothing was set for that key anyway.
     private void ApplySlotMods(int key, JToken? modConfigsToken)
     {
         penumbra.RemoveAllTemporaryModSettingsPlayer(key);
@@ -535,8 +507,6 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         }
     }
 
-    // Unlike ParseModSettings (which joins values into one display string), Penumbra's temp-settings IPC
-    // needs the raw per-group option list intact.
     private static IReadOnlyDictionary<string, IReadOnlyList<string>> ParseModSettingsForApply(JToken? token)
     {
         var result = new Dictionary<string, IReadOnlyList<string>>();
@@ -549,9 +519,6 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         return result;
     }
 
-    // Clears every key Aetherfit's SGS relay could have used - called by DesignApplyService whenever a
-    // non-SGS design is applied afterward, or on revert, so mod overrides don't bleed into a design that
-    // never asked for them.
     public void ClearAllTemporaryModSettings()
     {
         foreach (var slot in NamedGearSlots.Append(EquipmentSlot.MainHand).Append(EquipmentSlot.OffHand))
@@ -560,9 +527,7 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
             penumbra.RemoveAllTemporaryModSettingsPlayer(CustomizeKey(i));
     }
 
-    // Never assigns/switches the active Customize+ profile itself - only toggles named templates within
-    // whichever profile is already active for the local player, matching SGS's own
-    // CustomizePlus.ApplyTemplateConfig exactly. Silently does nothing if no profile is active.
+    // Only toggles templates within whatever Customize+ profile is already active - never assigns one.
     private void ApplyCustomizePlusTemplates(JObject? equipment, JObject? appearance, JObject? weaponSet)
     {
         var profile = customizePlus.GetActiveProfileOnLocalPlayer();
@@ -612,8 +577,6 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         }
     }
 
-    // Restores every Customize+ template Aetherfit has toggled back to its pre-apply state - called by
-    // DesignApplyService whenever a non-SGS design is applied afterward, or on revert.
     public void RevertCustomizePlusTemplates()
     {
         if (lastKnownTemplateStates.Count == 0)
@@ -624,7 +587,6 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         lastKnownTemplateStates.Clear();
     }
 
-    // No layer/native-UI/revert concept of its own, matching Glamaholic/Glamour Plate.
     public void ApplyLayer(Guid nativeId) { }
     public void OpenInNativeUi(Guid nativeId, string designName) { }
     public void Revert() { }

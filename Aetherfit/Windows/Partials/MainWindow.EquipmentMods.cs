@@ -55,13 +55,14 @@ public partial class MainWindow
         var slotMap = BuildSlotMap(details.Equipment);
         var bonusMap = BuildBonusMap(details.BonusItems);
         var affectedBy = GetAffectedBy(id, details);
+        var raceGender = plugin.GameData.ResolveEffectiveRaceGender(details);
 
         var slotLabelWidth = LabelColumnWidth(details);
 
         foreach (var (slot, label) in DesignDetailView.SlotDisplay)
         {
             slotMap.TryGetValue(slot, out var entry);
-            DrawEquipmentRow(label, slotLabelWidth, entry, affectedBy);
+            DrawEquipmentRow(label, slotLabelWidth, entry, affectedBy, raceGender);
         }
 
         foreach (var (slotKey, label) in DesignDetailView.BonusSlotDisplay)
@@ -255,12 +256,18 @@ public partial class MainWindow
         return affected;
     }
 
-    private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry, AffectedBy affectedBy)
+    private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry, AffectedBy affectedBy,
+        (uint RaceRowId, bool IsFemale)? raceGender)
     {
         var applied = entry?.Apply == true;
         var itemName = entry == null ? null : plugin.GameData.ResolveItemName(entry.ItemId);
+        bool? wearable = entry != null && raceGender is { } rg
+            ? plugin.GameData.IsItemWearableBy(entry.ItemId, rg.RaceRowId, rg.IsFemale)
+            : null;
+        var wearableRacesText = wearable == false ? plugin.GameData.DescribeWearableRaces(entry!.ItemId) : null;
         var modHovered = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
-            entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, applied, affectedBy.Items);
+            entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, applied, affectedBy.Items,
+            wearable, wearableRacesText);
         if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
             HandleAffectedModHover(mod);
     }

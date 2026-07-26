@@ -50,9 +50,6 @@ public sealed class DesignApplyService
             return;
         }
 
-        // Applying anything other than an SGS design must clear any Penumbra mod overrides / Customize+
-        // template toggles a previous SGS-sourced apply left active - neither is tied to Glamourer's own
-        // apply/revert pipeline, so nothing else would ever clean them up (see SimpleGlamourSwitcherService).
         if (outfit.Source != DesignSource.SimpleGlamourSwitcher)
         {
             plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();
@@ -61,6 +58,9 @@ public sealed class DesignApplyService
 
         if (!provider.Apply(outfit.ProviderDesignId, name, layerIds.Select(plugin.Configuration.ResolveDesignName).ToList(), quiet))
             return;
+
+        if (!quiet && plugin.GameData.DesignHasAnyIncompatibleItems(outfit))
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" can only be partially applied on your current character.");
 
         if (layerIds.Count > 0)
         {
