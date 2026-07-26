@@ -35,9 +35,11 @@ internal static class DesignDetailView
 
     // One equipment/bonus row: a label column then the item name, dye swatches and "(affected by mod)" suffix.
     // itemName == null means the slot isn't in the design (greyed "(not in design)"). Bonus rows pass stain 0.
-    // Returns true while the affected-by mod name is hovered.
+    // wearableByCurrentCharacter is null when not checked (or unknown); false draws a warning icon after the
+    // item name. Returns true while the affected-by mod name is hovered.
     public static bool DrawSlotRow(GameDataService gameData, string label, float labelWidth, string? itemName,
-        byte stain, byte stain2, bool applyStain, bool applied, IReadOnlyDictionary<string, string> affected)
+        byte stain, byte stain2, bool applyStain, bool applied, IReadOnlyDictionary<string, string> affected,
+        bool? wearableByCurrentCharacter = null, string? wearableRacesText = null)
     {
         var labelColor = applied ? UiTheme.AppliedText : UiTheme.StateUnset;
 
@@ -53,6 +55,13 @@ internal static class DesignDetailView
         }
 
         ImGui.TextColored(labelColor, itemName);
+        if (wearableByCurrentCharacter == false)
+        {
+            ImGui.SameLine();
+            DrawFontAwesome(FontAwesomeIcon.ExclamationTriangle, UiTheme.ErrorText);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Not wearable by your current race/gender - only {wearableRacesText ?? "some races"}.");
+        }
         DrawStainSwatch(gameData, stain, applyStain && applied);
         DrawStainSwatch(gameData, stain2, applyStain && applied);
         return DrawAffectedSuffix(affected, applied, itemName);

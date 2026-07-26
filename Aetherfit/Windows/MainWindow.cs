@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Aetherfit.Services;
 using Aetherfit.Services.Integrations;
+using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -427,19 +428,23 @@ public partial class MainWindow : Window, IDisposable
             ImGui.SetTooltip("Settings");
     }
 
-    private static float IconTextButtonWidth(FontAwesomeIcon icon, string label, bool dropdown = false)
+    private static float IconTextButtonWidth(FontAwesomeIcon icon, string label, bool dropdown = false, bool warning = false)
     {
         var style = ImGui.GetStyle();
-        float iconW;
+        float iconW, warningW;
         using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+        {
             iconW = ImGui.CalcTextSize(icon.ToIconString()).X;
+            warningW = warning ? style.ItemInnerSpacing.X + ImGui.CalcTextSize(FontAwesomeIcon.ExclamationTriangle.ToIconString()).X : 0f;
+        }
         var caretW = dropdown ? style.ItemInnerSpacing.X + (ImGui.GetFontSize() * 0.5f) : 0f;
-        return (style.FramePadding.X * 2) + iconW + style.ItemInnerSpacing.X + ImGui.CalcTextSize(label).X + caretW;
+        return (style.FramePadding.X * 2) + iconW + style.ItemInnerSpacing.X + ImGui.CalcTextSize(label).X + warningW + caretW;
     }
 
-    // Icon + label button, with a caret when it opens a menu. Drawn by hand because a single
-    // ImGui button can't mix the icon font with the text font.
-    private static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false)
+    // Icon + label button, with a caret when it opens a menu and/or a trailing warning icon+tooltip.
+    // Drawn by hand because a single ImGui button can't mix the icon font with the text font.
+    private static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false,
+        bool warning = false, string? warningTooltip = null)
     {
         var style = ImGui.GetStyle();
         var iconStr = icon.ToIconString();
@@ -449,7 +454,8 @@ public partial class MainWindow : Window, IDisposable
         var textW = ImGui.CalcTextSize(label).X;
         var caretHalf = ImGui.GetFontSize() * 0.25f;
 
-        var clicked = ImGui.Button($"##iconText{label}", new Vector2(IconTextButtonWidth(icon, label, dropdown), 0));
+        var clicked = ImGui.Button($"##iconText{label}", new Vector2(IconTextButtonWidth(icon, label, dropdown, warning), 0));
+        var hovered = ImGui.IsItemHovered();
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
         var dl = ImGui.GetWindowDrawList();
@@ -461,10 +467,18 @@ public partial class MainWindow : Window, IDisposable
             dl.AddText(new Vector2(x, textY), color, iconStr);
         x += iconW + style.ItemInnerSpacing.X;
         dl.AddText(new Vector2(x, textY), color, label);
+        x += textW;
+
+        if (warning)
+        {
+            x += style.ItemInnerSpacing.X;
+            using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+                dl.AddText(new Vector2(x, textY), ImGui.GetColorU32(UiTheme.ErrorText), FontAwesomeIcon.ExclamationTriangle.ToIconString());
+        }
 
         if (dropdown)
         {
-            x += textW + style.ItemInnerSpacing.X;
+            x += style.ItemInnerSpacing.X;
             var centerY = (min.Y + max.Y) * 0.5f;
             dl.AddTriangleFilled(
                 new Vector2(x, centerY - (caretHalf * 0.5f)),
@@ -472,6 +486,9 @@ public partial class MainWindow : Window, IDisposable
                 new Vector2(x + caretHalf, centerY + (caretHalf * 0.75f)),
                 color);
         }
+
+        if (warning && hovered && warningTooltip != null)
+            ImGui.SetTooltip(warningTooltip);
 
         return clicked;
     }
@@ -532,7 +549,12 @@ public partial class MainWindow : Window, IDisposable
         const string randomLabel = "Apply Random";
         const string byTagLabel = "Apply Random By Tag(s)";
 
-        var applyW = IconTextButtonWidth(FontAwesomeIcon.Check, applyLabel);
+        var hasIncompatibleSelection = selectedDesign is { } warnId
+            && plugin.Configuration.CachedOutfits.TryGetValue(warnId, out var warnOutfit)
+            && plugin.GameData.DesignHasAnyIncompatibleItems(warnOutfit);
+        const string incompatibleTooltip = "This design can only be partially applied on your current character.";
+
+        var applyW = IconTextButtonWidth(FontAwesomeIcon.Check, applyLabel, warning: hasIncompatibleSelection);
         var randomW = IconTextButtonWidth(FontAwesomeIcon.Random, randomLabel);
         var byTagW = IconTextButtonWidth(FontAwesomeIcon.Tags, byTagLabel);
         var rightTotal = applyW + randomW + byTagW + 2 * style.ItemSpacing.X;
@@ -549,7 +571,8 @@ public partial class MainWindow : Window, IDisposable
 
         using (ImRaii.Disabled(!hasSelection))
         {
-            if (IconTextButton(FontAwesomeIcon.Check, applyLabel) && selectedDesign is { } id)
+            if (IconTextButton(FontAwesomeIcon.Check, applyLabel, warning: hasIncompatibleSelection, warningTooltip: incompatibleTooltip)
+                && selectedDesign is { } id)
                 ApplyDesignById(id);
         }
         ImGui.SameLine();
