@@ -187,17 +187,23 @@ public class ConfigWindow : Window, IDisposable
         ImGui.TextUnformatted("Optional");
         ImGui.Spacing();
 
-        DrawIntegrationRow("Glamaholic", plugin.Glamaholic.CheckIntegration(), rightAligned: () =>
-            plugin.Configuration.GlamaholicEnabled = DrawRightAlignedCheckbox(
-                "Glamaholic", plugin.Configuration.GlamaholicEnabled, "Source designs from Glamaholic"));
+        DrawIntegrationRow("Glamaholic", plugin.Glamaholic.CheckIntegration(),
+            rightAligned: () => plugin.Configuration.GlamaholicEnabled = DrawRightAlignedCheckbox(
+                "Glamaholic", plugin.Configuration.GlamaholicEnabled, "Source designs from Glamaholic"),
+            extra: plugin.Configuration.GlamaholicEnabled ? () =>
+                plugin.Configuration.GlamaholicResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
+                    "Glamaholic", plugin.Configuration.GlamaholicResetTemporarySettingsBeforeApply) : null);
         ImGui.Spacing();
 
         DrawGlamourPlateIntegrationRow();
         ImGui.Spacing();
 
-        DrawIntegrationRow("Simple Glamour Switcher", plugin.SimpleGlamourSwitcher.CheckIntegration(), rightAligned: () =>
-            plugin.Configuration.SimpleGlamourSwitcherEnabled = DrawRightAlignedCheckbox(
-                "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherEnabled, "Source designs from Simple Glamour Switcher"));
+        DrawIntegrationRow("Simple Glamour Switcher", plugin.SimpleGlamourSwitcher.CheckIntegration(),
+            rightAligned: () => plugin.Configuration.SimpleGlamourSwitcherEnabled = DrawRightAlignedCheckbox(
+                "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherEnabled, "Source designs from Simple Glamour Switcher"),
+            extra: plugin.Configuration.SimpleGlamourSwitcherEnabled ? () =>
+                plugin.Configuration.SimpleGlamourSwitcherResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
+                    "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherResetTemporarySettingsBeforeApply) : null);
     }
 
     // Right-aligned on whatever row it's drawn from, matching DrawFilterHeaderOverlay's "N active"/
@@ -230,9 +236,13 @@ public class ConfigWindow : Window, IDisposable
         DrawIndentedDisabledText(ok
             ? "Glamour Plates loaded."
             : "Not yet loaded this zone — open the Glamour Dresser once.");
+        if (plugin.Configuration.GlamourPlateEnabled)
+            plugin.Configuration.GlamourPlateResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
+                "GlamourPlate", plugin.Configuration.GlamourPlateResetTemporarySettingsBeforeApply);
     }
 
-    private static void DrawIntegrationRow(string label, PluginIntegrationInfo info, (int Major, int Minor)? required = null, Action? rightAligned = null)
+    private static void DrawIntegrationRow(string label, PluginIntegrationInfo info, (int Major, int Minor)? required = null,
+        Action? rightAligned = null, Action? extra = null)
     {
         var ok = info.Status == PluginIntegrationStatus.Ok;
         DesignDetailView.DrawFontAwesome(ok ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, ok ? UiTheme.StateOn : UiTheme.StateOff);
@@ -250,6 +260,20 @@ public class ConfigWindow : Window, IDisposable
             _                                      => $"{label} v{info.PluginVersion} — OK.",
         };
         DrawIndentedDisabledText(status);
+        extra?.Invoke();
+    }
+
+    // Off by default - see Configuration.ResetTemporarySettingsBeforeApply.
+    private bool DrawResetTemporarySettingsToggle(string idSuffix, bool enabled)
+    {
+        ImGui.Indent();
+        if (ImGui.Checkbox($"Reset Penumbra temporary mod settings before applying##resetTemp{idSuffix}", ref enabled))
+            plugin.Configuration.Save();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Clears leftover Penumbra temporary mod settings (including Glamourer's own mod "
+                + "associations) right before applying a design from this source. Doesn't run before additional layers.");
+        ImGui.Unindent();
+        return enabled;
     }
 
     private static void DrawIndentedDisabledText(string text)

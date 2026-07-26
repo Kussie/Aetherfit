@@ -56,6 +56,14 @@ public sealed class DesignApplyService
             plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
         }
 
+        if (plugin.Configuration.ResetTemporarySettingsBeforeApply(outfit.Source))
+        {
+            plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(0);
+            foreach (var key in GlamourerService.TemporarySettingsKeys)
+                plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(key);
+            plugin.Penumbra.RedrawLocalPlayer();
+        }
+
         if (!provider.Apply(outfit.ProviderDesignId, name, layerIds.Select(plugin.Configuration.ResolveDesignName).ToList(), quiet))
             return;
 

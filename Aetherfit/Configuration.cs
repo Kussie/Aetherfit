@@ -62,6 +62,21 @@ public class Configuration : IPluginConfiguration
         _ => true, // Glamourer (and any future required source) has no toggle
     };
 
+    // Off by default - clears whatever's sitting in Penumbra's unlocked temp-settings slot right before
+    // applying a base design from that source (not before additional layers). Glamourer isn't included:
+    // it has its own native "Reset Temporary Settings" design flag already.
+    public bool GlamaholicResetTemporarySettingsBeforeApply { get; set; }
+    public bool GlamourPlateResetTemporarySettingsBeforeApply { get; set; }
+    public bool SimpleGlamourSwitcherResetTemporarySettingsBeforeApply { get; set; }
+
+    public bool ResetTemporarySettingsBeforeApply(DesignSource source) => source switch
+    {
+        DesignSource.Glamaholic => GlamaholicResetTemporarySettingsBeforeApply,
+        DesignSource.GlamourPlate => GlamourPlateResetTemporarySettingsBeforeApply,
+        DesignSource.SimpleGlamourSwitcher => SimpleGlamourSwitcherResetTemporarySettingsBeforeApply,
+        _ => false,
+    };
+
     // Set once the user closes the help blurb in the Additional Design Layers panel.
     public bool AdditionalLayersHelpDismissed { get; set; }
 
