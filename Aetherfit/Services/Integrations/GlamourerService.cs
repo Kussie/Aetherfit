@@ -43,6 +43,14 @@ public sealed class GlamourerService : IDisposable
 
     public static readonly (int Major, int Minor) MinApiVersion = (1, 8);
 
+    // Glamourer's own mod-association temp settings are locked under one of these two keys (confirmed
+    // from its source: github.com/Ottermandias/Glamourer, Interop/Penumbra/PenumbraService.cs -
+    // KeyFixed for automation-triggered applies, KeyManual for everything else). Negative keys are an
+    // "identification lock" - Penumbra lets anyone remove them if they use the same key, they just don't
+    // block other plugins from setting their own. Not a published API, so this could silently break if
+    // Glamourer ever changes these constants.
+    public static readonly int[] TemporarySettingsKeys = { -1610, -6160 };
+
     public PluginIntegrationInfo CheckIntegration()
     {
         var exposed = Plugin.PluginInterface.InstalledPlugins.FirstOrDefault(p => p.InternalName == "Glamourer");

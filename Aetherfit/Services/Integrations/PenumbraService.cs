@@ -15,6 +15,7 @@ public sealed class PenumbraService
     private readonly SetTemporaryModSettingsPlayer setTemporaryModSettingsPlayer;
     private readonly RemoveTemporaryModSettingsPlayer removeTemporaryModSettingsPlayer;
     private readonly RemoveAllTemporaryModSettingsPlayer removeAllTemporaryModSettingsPlayer;
+    private readonly RedrawObject redrawObject;
 
     // A mod changes the same items no matter which design pulls it in, so we look them up once per mod
     // directory and reuse that across every design.
@@ -29,6 +30,7 @@ public sealed class PenumbraService
         setTemporaryModSettingsPlayer = new SetTemporaryModSettingsPlayer(Plugin.PluginInterface);
         removeTemporaryModSettingsPlayer = new RemoveTemporaryModSettingsPlayer(Plugin.PluginInterface);
         removeAllTemporaryModSettingsPlayer = new RemoveAllTemporaryModSettingsPlayer(Plugin.PluginInterface);
+        redrawObject = new RedrawObject(Plugin.PluginInterface);
     }
 
     // Penumbra's own reported ApiVersion (BreakingVersion/FeatureVersion in its PenumbraApi.cs) - confirmed
@@ -111,4 +113,6 @@ public sealed class PenumbraService
 
     public PenumbraApiEc RemoveAllTemporaryModSettingsPlayer(int key)
         => removeAllTemporaryModSettingsPlayer.Invoke(0, key);
+
+    public void RedrawLocalPlayer() => redrawObject.Invoke(0);
 }
