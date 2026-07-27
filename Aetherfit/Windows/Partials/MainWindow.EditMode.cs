@@ -464,7 +464,7 @@ public partial class MainWindow
 
                 DrawJobAssociations(id);
 
-                if (DrawCollapsibleSubheader("Tags", ref tagsPanelOpen))
+                if (Pills.DrawCollapsibleSubheader("Tags", ref tagsPanelOpen))
                 {
                     ImGui.Indent();
                     if (!plugin.Configuration.CompositeTagsHelpDismissed)
@@ -478,7 +478,7 @@ public partial class MainWindow
                     ImGui.Spacing();
                 }
 
-                if (DrawCollapsibleSubheader("Description", ref descriptionPanelOpen))
+                if (Pills.DrawCollapsibleSubheader("Description", ref descriptionPanelOpen))
                 {
                     ImGui.Indent();
                     DrawDescriptionEditor(id, details);
@@ -486,7 +486,7 @@ public partial class MainWindow
                     ImGui.Spacing();
                 }
 
-                if (DrawCollapsibleSubheader("Images", ref imagesPanelOpen, ImageHelpText))
+                if (Pills.DrawCollapsibleSubheader("Images", ref imagesPanelOpen, ImageHelpText))
                 {
                     ImGui.Indent();
                     DrawImagesBlock(id);
@@ -1034,7 +1034,7 @@ public partial class MainWindow
 
     private static void DrawSubheader(string label, string? helpText = null)
     {
-        // Mirrors DrawCollapsibleSubheader's framed look but is static (no chevron, no toggle).
+        // Mirrors Pills.DrawCollapsibleSubheader's framed look but is static (no chevron, no toggle).
         var style = ImGui.GetStyle();
         var draw = ImGui.GetWindowDrawList();
 
@@ -1048,7 +1048,7 @@ public partial class MainWindow
         ImGui.Dummy(new Vector2(avail, rectH));
         draw.AddRectFilled(rectMin, rectMax, ImGui.GetColorU32(ImGuiCol.Header), style.FrameRounding);
 
-        DrawSubheaderChrome(rectMin, rectMax, label, helpText);
+        Pills.DrawSubheaderChrome(rectMin, rectMax, label, helpText);
     }
 
     private static bool DrawImageScaled(string absolutePath, float maxSide, bool clickable = false, string? title = null)

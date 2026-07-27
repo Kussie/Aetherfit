@@ -230,4 +230,71 @@ internal static class Pills
             .Push(ImGuiCol.ButtonActive, UiTheme.PillActive);
         return ImGui.Button($"{label} ×##pill{id}");
     }
+
+    // Custom header to recover CollapsingHeader's framed look while keeping the label near-aligned with the
+    // TextColored subheaders above it, otherwise the spacing looks off. Shared by every window that needs a
+    // toggleable, framed subsection (the design detail panes, and the gallery grids' tag/job groupings).
+    public static bool DrawCollapsibleSubheader(string label, ref bool open, string? helpText = null)
+    {
+        var style = ImGui.GetStyle();
+        var draw = ImGui.GetWindowDrawList();
+
+        var avail = ImGui.GetContentRegionAvail().X;
+        var lineH = ImGui.GetTextLineHeight();
+        var rectH = lineH + style.FramePadding.Y * 2f;
+
+        var rectMin = ImGui.GetCursorScreenPos();
+        var rectMax = new Vector2(rectMin.X + avail, rectMin.Y + rectH);
+
+        if (ImGui.InvisibleButton($"##sub_{label}", new Vector2(avail, rectH)))
+            open = !open;
+
+        var bg = ImGui.IsItemActive() ? ImGuiCol.HeaderActive
+               : ImGui.IsItemHovered() ? ImGuiCol.HeaderHovered
+               : ImGuiCol.Header;
+        draw.AddRectFilled(rectMin, rectMax, ImGui.GetColorU32(bg), style.FrameRounding);
+
+        var chevron = open ? "▼" : "▶";
+        var chevSize = ImGui.CalcTextSize(chevron);
+        var textY = rectMin.Y + (rectH - lineH) * 0.5f;
+        draw.AddText(new Vector2(rectMax.X - chevSize.X - style.FramePadding.X, textY),
+            ImGui.GetColorU32(UiTheme.SectionHeader), chevron);
+
+        // Sit the help marker just left of the chevron.
+        DrawSubheaderChrome(rectMin, rectMax, label, helpText, chevSize.X + style.FramePadding.X);
+
+        return open;
+    }
+
+    // Shared chrome for both subheader variants: background is drawn by the caller (interactive vs.
+    // static), this just places the label and an optional right-aligned "(?)" help marker + tooltip.
+    // rightReserve leaves room for a caller-drawn glyph (the collapsible variant's chevron).
+    public static void DrawSubheaderChrome(Vector2 rectMin, Vector2 rectMax, string label, string? helpText, float rightReserve = 0f)
+    {
+        var style = ImGui.GetStyle();
+        var draw = ImGui.GetWindowDrawList();
+        var lineH = ImGui.GetTextLineHeight();
+        var textY = rectMin.Y + (rectMax.Y - rectMin.Y - lineH) * 0.5f;
+
+        draw.AddText(new Vector2(rectMin.X + style.FramePadding.X, textY),
+            ImGui.GetColorU32(UiTheme.SectionHeader), label);
+
+        if (helpText == null)
+            return;
+
+        const string marker = "(?)";
+        var markerSize = ImGui.CalcTextSize(marker);
+        var markerPos = new Vector2(rectMax.X - rightReserve - markerSize.X - style.FramePadding.X, textY);
+        draw.AddText(markerPos, ImGui.GetColorU32(ImGuiCol.TextDisabled), marker);
+
+        var hoverMax = new Vector2(markerPos.X + markerSize.X, markerPos.Y + markerSize.Y);
+        if (!ImGui.IsMouseHoveringRect(markerPos, hoverMax))
+            return;
+
+        ImGui.BeginTooltip();
+        ImGui.PushTextWrapPos(ImGui.GetFontSize() * 30f);
+        ImGui.TextUnformatted(helpText);
+        ImGui.PopTextWrapPos();
+        ImGui.EndTooltip();
+    }
 }
