@@ -103,11 +103,8 @@ public sealed class ScreenshotCropWindow : Window, IDisposable
             return;
         }
 
-        var scale = Math.Min(area.X / tex.Width, area.Y / tex.Height);
-        var dispSize = new Vector2(tex.Width * scale, tex.Height * scale);
-        var offset = new Vector2(
-            (area.X - dispSize.X) * 0.5f,
-            (area.Y - dispSize.Y) * 0.5f);
+        var (dispSize, offset) = GalleryDraw.ComputeFitSize(area, tex.Width, tex.Height);
+        var scale = dispSize.X / tex.Width;
 
         var cursor = ImGui.GetCursorScreenPos();
         ImGui.SetCursorScreenPos(cursor + offset);

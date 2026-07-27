@@ -7,6 +7,8 @@ using Aetherfit.Services;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
@@ -17,9 +19,6 @@ namespace Aetherfit.Windows;
 // edit, or job button anywhere in here, so someone else's gallery can't be applied or changed by accident.
 public sealed partial class ForeignGalleryWindow : Window, IDisposable
 {
-    private const int CoverColumns = 4;
-    private const float CoverMinThumbSize = 96f;
-    private const float CoverAspectRatio = 3f / 2f;
     private const string AddFilterPopupId = "ForeignAddFilterPopup";
     private const string DetailsPopupId = "ForeignDesignDetails";
 
@@ -37,10 +36,18 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
     private readonly Dictionary<uint, bool> filterJobs = new();
     private readonly Dictionary<string, bool> filterMods = new(StringComparer.OrdinalIgnoreCase);
     private string filterSearchText = string.Empty;
+    // Vanilla = no mods attached, Modded = has mods. Only one can be on at a time, matching the local
+    // gallery's own quick toggles (MainWindow.Filters.cs).
+    private bool filterVanillaOnly;
+    private bool filterModdedOnly;
 
     // Mutually exclusive, matching Cover Mode's own grouping toggles (both can be off).
     private bool groupByTags;
     private bool groupByJob;
+
+    // Only sorting by name is meaningful here - unlike the local gallery, a shared bundle carries no
+    // last-modified/created timestamps to sort by.
+    private bool sortAscending = true;
 
     public ForeignGalleryWindow(Plugin plugin)
         : base("Aetherfit — Shared Gallery##AetherfitForeignGallery", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
@@ -68,8 +75,11 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
         filterJobs.Clear();
         filterMods.Clear();
         filterSearchText = string.Empty;
+        filterVanillaOnly = false;
+        filterModdedOnly = false;
         groupByTags = false;
         groupByJob = false;
+        sortAscending = true;
         tagSectionOpen.Clear();
         jobSectionOpen.Clear();
         IsOpen = true;
@@ -111,11 +121,14 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
         ImGui.Separator();
         ImGui.Spacing();
 
+        var visible = GetVisibleDesigns();
+        DrawSortControls(visible.Count);
+        ImGui.Spacing();
+
         using (var gridChild = ImRaii.Child("ForeignGridScroll", Vector2.Zero, false))
         {
             if (gridChild.Success)
             {
-                var visible = GetVisibleDesigns();
                 if (visible.Count == 0)
                     ImGui.TextDisabled(gallery.Designs.Count == 0
                         ? "This shared gallery is empty."
@@ -153,12 +166,25 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
         if (filterMods.Count > 0)
             query = query.Where(d => filterMods.MatchesFilter<string>(d.Mods.Select(m => m.Name).ToList()));
 
-        return query
-            .OrderBy(d => d.Name, NaturalStringComparer.OrdinalIgnoreCase)
-            .ToList();
+        if (filterVanillaOnly || filterModdedOnly)
+        {
+            query = query.Where(d =>
+            {
+                var hasMods = d.Mods.Count > 0;
+                if (filterVanillaOnly && hasMods) return false;
+                if (filterModdedOnly && !hasMods) return false;
+                return true;
+            });
+        }
+
+        var ordered = sortAscending
+            ? query.OrderBy(d => d.Name, NaturalStringComparer.OrdinalIgnoreCase)
+            : query.OrderByDescending(d => d.Name, NaturalStringComparer.OrdinalIgnoreCase);
+        return ordered.ToList();
     }
 
-    private bool HasAnyFilter => filterName.Length > 0 || filterTags.Count > 0 || filterJobs.Count > 0 || filterMods.Count > 0;
+    private bool HasAnyFilter => filterName.Length > 0 || filterTags.Count > 0 || filterJobs.Count > 0 || filterMods.Count > 0
+                               || filterVanillaOnly || filterModdedOnly;
 
     private void DrawFilters()
     {
@@ -178,6 +204,9 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
         DrawTagJobPopup();
 
         ImGui.Spacing();
+        DrawQuickToggles();
+
+        ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
         DrawGroupByControls();
@@ -190,8 +219,17 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
                 filterTags.Clear();
                 filterJobs.Clear();
                 filterMods.Clear();
+                filterVanillaOnly = false;
+                filterModdedOnly = false;
             }
         }
+    }
+
+    private void DrawQuickToggles()
+    {
+        Pills.DrawVanillaToggle(ref filterVanillaOnly, ref filterModdedOnly, "foreign");
+        ImGui.SameLine();
+        Pills.DrawModdedToggle(ref filterVanillaOnly, ref filterModdedOnly, "foreign");
     }
 
     // Mutually exclusive, matching Cover Mode's own grouping checkboxes (both can be off).
@@ -204,11 +242,29 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
             groupByTags = false;
     }
 
+    // Mirrors Cover Mode's DrawGallerySortControls, minus the sort-field dropdown (a shared bundle carries
+    // no last-modified/created timestamps to offer) and the "pin favourites" toggle (nothing to favourite
+    // in a read-only gallery).
+    private void DrawSortControls(int visibleCount)
+    {
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextDisabled("Sort by: Name");
+
+        ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
+        GalleryDraw.DrawSortDirectionToggle(ref sortAscending);
+
+        var countText = HasAnyFilter
+            ? $"{visibleCount} of {gallery!.Designs.Count} designs"
+            : visibleCount == 1 ? "1 design" : $"{visibleCount} designs";
+        var thumbSize = plugin.Configuration.ForeignGalleryThumbTargetWidth;
+        GalleryDraw.DrawThumbSizeAndCount("##foreignThumbSize", ref thumbSize, countText, () => plugin.Configuration.Save());
+        plugin.Configuration.ForeignGalleryThumbTargetWidth = thumbSize;
+    }
+
     private bool DrawTagJobPickerButton()
     {
         var count = filterTags.Count + filterJobs.Count + filterMods.Count;
-        var label = count == 0 ? "Filter by tag(s), job or mod..." : count == 1 ? "1 tag/job/mod filter active" : $"{count} tag/job/mod filters active";
-        return ImGui.Button(label, new Vector2(-1, 0));
+        return ImGui.Button(Pills.TagJobFilterLabel(count), new Vector2(-1, 0));
     }
 
     // Every tag and job in the shared gallery as its own tri-state checkbox row. Tags/jobs stay listed with
@@ -258,25 +314,19 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
 
     private void DrawGrid(List<ForeignDesign> visible)
     {
-        var (thumbWidth, thumbHeight) = ComputeThumbSize();
-        DrawGridRange(visible, 0, visible.Count, thumbWidth, thumbHeight);
+        var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
+        DrawGridRange(visible, 0, visible.Count, columns, thumbWidth, thumbHeight);
     }
 
-    private (float Width, float Height) ComputeThumbSize()
-    {
-        var spacing = ImGui.GetStyle().ItemSpacing.X;
-        var avail = ImGui.GetContentRegionAvail().X;
-        var thumbWidth = Math.Max(CoverMinThumbSize, (avail - (CoverColumns - 1) * spacing) / CoverColumns);
-        var thumbHeight = thumbWidth * CoverAspectRatio;
-        return (thumbWidth, thumbHeight);
-    }
+    private (int Columns, float ThumbWidth, float ThumbHeight) ComputeGridLayout()
+        => GalleryDraw.ComputeGridLayout(plugin.Configuration.ForeignGalleryThumbTargetWidth);
 
     // Used both for the plain grid and for each section's slice when grouped by tag/job.
-    private void DrawGridRange(List<ForeignDesign> designs, int start, int end, float thumbWidth, float thumbHeight)
+    private void DrawGridRange(List<ForeignDesign> designs, int start, int end, int columns, float thumbWidth, float thumbHeight)
     {
         for (var i = start; i < end; i++)
         {
-            if ((i - start) % CoverColumns != 0)
+            if ((i - start) % columns != 0)
                 ImGui.SameLine();
             DrawCell(designs[i], thumbWidth, thumbHeight);
         }
@@ -357,9 +407,7 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
         }
 
         var label = design.Name;
-        var labelWidth = ImGui.CalcTextSize(label).X;
-        var indent = Math.Max(0f, (thumbWidth - labelWidth) * 0.5f);
-        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
+        GalleryDraw.IndentForCenteredLabel(thumbWidth, label);
         ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + thumbWidth);
         ImGui.TextUnformatted(label);
         ImGui.PopTextWrapPos();

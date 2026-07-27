@@ -46,6 +46,7 @@ public class Configuration : IPluginConfiguration
 
     public bool GalleryPinFavouritesFirst { get; set; } = true;
     public float GalleryThumbTargetWidth { get; set; } = 220f;
+    public float ForeignGalleryThumbTargetWidth { get; set; } = 220f;
 
     // When disabled, the Additional Design Layers panel is hidden and applying a base design never applies layers.
     public bool EnableRandomLayers { get; set; } = false;

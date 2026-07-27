@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Numerics;
+using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 
@@ -58,13 +59,9 @@ public class ImageViewerWindow : Window, IDisposable
         if (avail.X <= 0 || avail.Y <= 0)
             return;
 
-        var scale = Math.Min(avail.X / tex.Width, avail.Y / tex.Height);
-        var size = new Vector2(tex.Width * scale, tex.Height * scale);
-
-        var offsetX = Math.Max(0, (avail.X - size.X) * 0.5f);
-        var offsetY = Math.Max(0, (avail.Y - size.Y) * 0.5f);
+        var (size, offset) = GalleryDraw.ComputeFitSize(avail, tex.Width, tex.Height);
         var cursor = ImGui.GetCursorPos();
-        ImGui.SetCursorPos(new Vector2(cursor.X + offsetX, cursor.Y + offsetY));
+        ImGui.SetCursorPos(cursor + Vector2.Max(offset, Vector2.Zero));
         ImGui.Image(tex.Handle, size);
     }
 }
