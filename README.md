@@ -17,6 +17,7 @@ It adds the following functionality:
 - Source designs from Glamourer, Glamaholic, Simple Glamour Switcher, and the game's own Glamour Plates, all in one gallery
 - Browse designs by tags
 - Add screenshots to designs
+- Get AI-suggested tags for a design based on its own screenshots, powered by a local, on-device image tagger — nothing is ever uploaded anywhere
 - Apply a random design to your character or a random design based on a selection of tags
 - The ability to apply a random design (Or random design based on tags) to a character when logging in.
 - Share your design gallery wiith friends
@@ -24,6 +25,8 @@ It adds the following functionality:
 - Apply multiple layered designs (Including ability to randomly select a design from a pool, useful for having a random weapon appearance as an example)
 
 > **Composite tags:** tags can be written as `category/type`, e.g. `swimsuit/bikini` or `colour/blue`. A design tagged this way matches filters for the full tag *or* either half on its own — so it shows up whether you filter by `swimsuit/bikini`, just `swimsuit`, or just `bikini`, without having to add all three as separate tags. When designs are grouped by tags instead of folders, composite tags also build a nested tree instead of one flat entry — `swimsuit/bikini` shows up as a `swimsuit` branch containing a `bikini` branch, and a design carrying `summer/casual` and `winter/casual` appears under both, keeping same-named subtags (like `casual`) apart under their own parent.
+
+> **AI tag suggestions:** click the "Suggest tags" button in a design's Tags section to have a local image-tagging model look at that design's screenshots and propose tags for it — pick the ones you want and add them with one click. Everything runs on your own PC; no image or tag data is ever sent anywhere. The first time you use it, Aetherfit downloads a one-time model (choose from five, ranging from a few hundred MB up to ~1.2 GB, trading off size/speed against accuracy) plus the ONNX Runtime needed to run it — both configurable from **Settings → Tag Suggestions**, along with the suggestion confidence threshold, an option to also suggest composite tags (see above), and a blacklist for tags you never want suggested again (Shift+right-click a suggestion, or add one manually in Settings).
 
 ---
 
