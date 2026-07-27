@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Numerics;
-using Aetherfit.Services;
+using Aetherfit.Services.Game;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;

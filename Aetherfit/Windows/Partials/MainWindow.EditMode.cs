@@ -8,8 +8,8 @@ using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
-using Aetherfit.Services;
 using Aetherfit.Services.Integrations;
+using Aetherfit.Services.Screenshots;
 using Aetherfit.Ui;
 
 namespace Aetherfit.Windows;
@@ -37,6 +37,7 @@ public partial class MainWindow
     private const string ForceSyncPopupId = "Force Sync to Glamourer?##forceSyncConfirm";
     private const string AddTagPopupId = "AddDesignTagPopup";
     private string addTagSearchText = string.Empty;
+    private bool addTagReclaimFocus;
 
     // Reset whenever the selected design changes so edit mode always starts fresh for the new selection.
     private Guid? descriptionEditId;
@@ -831,6 +832,9 @@ public partial class MainWindow
         if (ImGuiComponents.IconButton("addTag", FontAwesomeIcon.Plus))
         {
             addTagSearchText = string.Empty;
+            // Drop the popup below the button instead of centering on it, so it doesn't cover the tag(s) just added.
+            var popupPos = new Vector2(ImGui.GetItemRectMin().X, ImGui.GetItemRectMax().Y + ImGui.GetStyle().ItemSpacing.Y + (4f * ImGuiHelpers.GlobalScale));
+            ImGui.SetNextWindowPos(popupPos);
             ImGui.OpenPopup(AddTagPopupId);
         }
         if (ImGui.IsItemHovered())
@@ -865,8 +869,12 @@ public partial class MainWindow
         if (!popup.Success)
             return;
 
-        if (ImGui.IsWindowAppearing())
+        // Refocus after each add so Enter can chain straight into the next tag without a re-click.
+        if (ImGui.IsWindowAppearing() || addTagReclaimFocus)
+        {
             ImGui.SetKeyboardFocusHere();
+            addTagReclaimFocus = false;
+        }
 
         ImGui.SetNextItemWidth(220 * ImGuiHelpers.GlobalScale);
         var submitted = ImGui.InputTextWithHint("##addTagSearch", "Type or search a tag...", ref addTagSearchText, 64,
@@ -881,10 +889,19 @@ public partial class MainWindow
             && !details.Tags.Contains(trimmed, StringComparer.OrdinalIgnoreCase)
             && !existingTags.Contains(trimmed, StringComparer.OrdinalIgnoreCase);
 
-        if (submitted && trimmed.Length > 0)
+        if (submitted)
         {
-            plugin.Configuration.AddTag(id, details, trimmed);
-            addTagSearchText = string.Empty;
+            if (trimmed.Length > 0)
+            {
+                plugin.Configuration.AddTag(id, details, trimmed);
+                addTagSearchText = string.Empty;
+                addTagReclaimFocus = true;
+            }
+            else
+            {
+                // A blank Enter is the "I'm done" signal - stop the add-tag loop.
+                ImGui.CloseCurrentPopup();
+            }
         }
 
         ImGui.Separator();
@@ -893,6 +910,7 @@ public partial class MainWindow
         {
             plugin.Configuration.AddTag(id, details, trimmed);
             addTagSearchText = string.Empty;
+            addTagReclaimFocus = true;
         }
 
         if (existingTags.Count == 0)
@@ -917,6 +935,7 @@ public partial class MainWindow
             {
                 plugin.Configuration.AddTag(id, details, tag);
                 addTagSearchText = string.Empty;
+                addTagReclaimFocus = true;
             }
         }
     }

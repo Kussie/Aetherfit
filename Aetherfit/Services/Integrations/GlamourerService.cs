@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Services.Game;
 using Aetherfit.Utils;
 using Glamourer.Api.Enums;
 using Glamourer.Api.Helpers;

@@ -135,9 +135,9 @@ public class Configuration : IPluginConfiguration
     private IDictionary<string, Newtonsoft.Json.Linq.JToken>? ExtensionData { get; set; }
 
     [NonSerialized]
-    private Services.ConfigurationSaver? saver;
+    private Services.Persistence.ConfigurationSaver? saver;
 
-    public void AttachSaver(Services.ConfigurationSaver configSaver) => saver = configSaver;
+    public void AttachSaver(Services.Persistence.ConfigurationSaver configSaver) => saver = configSaver;
 
     public void Save()
     {
@@ -157,7 +157,7 @@ public class Configuration : IPluginConfiguration
     public List<(string Directory, string DisplayName)> DistinctMods()
         => CachedOutfits.Values.SelectMany(o => o.Mods)
             .GroupBy(m => m.Directory, StringComparer.OrdinalIgnoreCase)
-            .Select(g => (g.Key, Services.DesignAttributionService.ModDisplayName(g.First())))
+            .Select(g => (g.Key, Services.Designs.DesignAttributionService.ModDisplayName(g.First())))
             .OrderBy(m => m.Item2, StringComparer.OrdinalIgnoreCase)
             .ToList();
 

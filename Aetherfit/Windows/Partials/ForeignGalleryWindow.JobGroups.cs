@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Aetherfit.Models;
-using Aetherfit.Services;
+using Aetherfit.Services.Game;
 using Dalamud.Bindings.ImGui;
 
 namespace Aetherfit.Windows;

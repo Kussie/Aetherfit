@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Aetherfit.Services;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Tagging;
 using Aetherfit.Ui;

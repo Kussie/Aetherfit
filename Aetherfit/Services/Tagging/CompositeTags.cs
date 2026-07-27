@@ -4,7 +4,7 @@ using System.IO;
 using System.Reflection;
 using Newtonsoft.Json;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Tagging;
 
 // Maps a fired booru tag to a composite "category/type" tag (e.g. "micro bikini" -> "swimsuit/bikini").
 // The map is derived offline from Danbooru's tag-implication graph and embedded as a resource; see
