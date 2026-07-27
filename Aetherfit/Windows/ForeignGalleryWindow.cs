@@ -322,14 +322,33 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
         => GalleryDraw.ComputeGridLayout(plugin.Configuration.ForeignGalleryThumbTargetWidth);
 
     // Used both for the plain grid and for each section's slice when grouped by tag/job.
+    // Row-clipped so a freshly-imported gallery (every image a guaranteed cold texture-cache miss)
+    // doesn't request a decode for every design at once - only rows scrolled into view get drawn.
     private void DrawGridRange(List<ForeignDesign> designs, int start, int end, int columns, float thumbWidth, float thumbHeight)
     {
-        for (var i = start; i < end; i++)
+        var count = end - start;
+        if (count <= 0)
+            return;
+
+        var rowHeight = thumbHeight + ImGui.GetStyle().ItemSpacing.Y * 2 + ImGui.GetTextLineHeight();
+        var rowCount = (count + columns - 1) / columns;
+
+        var clipper = new ImGuiListClipper();
+        clipper.Begin(rowCount, rowHeight);
+        while (clipper.Step())
         {
-            if ((i - start) % columns != 0)
-                ImGui.SameLine();
-            DrawCell(designs[i], thumbWidth, thumbHeight);
+            for (var row = clipper.DisplayStart; row < clipper.DisplayEnd; row++)
+            {
+                for (var col = 0; col < columns; col++)
+                {
+                    var i = start + row * columns + col;
+                    if (i >= end) break;
+                    if (col != 0) ImGui.SameLine();
+                    DrawCell(designs[i], thumbWidth, thumbHeight);
+                }
+            }
         }
+        clipper.End();
     }
 
     // Shared open/closed state for both the tag and job grouping headers - separate dictionaries so a
