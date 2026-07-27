@@ -15,7 +15,7 @@ namespace Aetherfit.Windows;
 
 // Look-but-don't-touch viewer for an imported gallery: just images and the basic info. There's no apply, favourite,
 // edit, or job button anywhere in here, so someone else's gallery can't be applied or changed by accident.
-public sealed class ForeignGalleryWindow : Window, IDisposable
+public sealed partial class ForeignGalleryWindow : Window, IDisposable
 {
     private const int CoverColumns = 4;
     private const float CoverMinThumbSize = 96f;
@@ -32,10 +32,15 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
     private bool openDetailsThisFrame;
 
     private string filterName = string.Empty;
-    // true = must have the tag/job, false = must not have it; a key absent from the map is left alone.
+    // true = must have the tag/job/mod, false = must not have it; a key absent from the map is left alone.
     private readonly Dictionary<string, bool> filterTags = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<uint, bool> filterJobs = new();
+    private readonly Dictionary<string, bool> filterMods = new(StringComparer.OrdinalIgnoreCase);
     private string filterSearchText = string.Empty;
+
+    // Mutually exclusive, matching Cover Mode's own grouping toggles (both can be off).
+    private bool groupByTags;
+    private bool groupByJob;
 
     public ForeignGalleryWindow(Plugin plugin)
         : base("Aetherfit — Shared Gallery##AetherfitForeignGallery", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
@@ -61,7 +66,12 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         filterName = string.Empty;
         filterTags.Clear();
         filterJobs.Clear();
+        filterMods.Clear();
         filterSearchText = string.Empty;
+        groupByTags = false;
+        groupByJob = false;
+        tagSectionOpen.Clear();
+        jobSectionOpen.Clear();
         IsOpen = true;
     }
 
@@ -110,13 +120,15 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
                     ImGui.TextDisabled(gallery.Designs.Count == 0
                         ? "This shared gallery is empty."
                         : "No designs match the current filters.");
+                else if (groupByTags)
+                    DrawGroupedByTags(visible);
+                else if (groupByJob)
+                    DrawGroupedByJob(visible);
                 else
                     DrawGrid(visible);
             }
         }
 
-        // Open and draw the details popup at the window root (not inside the scroll child) so its id and
-        // placement stay stable.
         if (openDetailsThisFrame)
         {
             ImGui.OpenPopup(DetailsPopupId);
@@ -138,12 +150,15 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         if (filterJobs.Count > 0)
             query = query.Where(d => filterJobs.MatchesFilter(d.Jobs));
 
+        if (filterMods.Count > 0)
+            query = query.Where(d => filterMods.MatchesFilter<string>(d.Mods.Select(m => m.Name).ToList()));
+
         return query
             .OrderBy(d => d.Name, NaturalStringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private bool HasAnyFilter => filterName.Length > 0 || filterTags.Count > 0 || filterJobs.Count > 0;
+    private bool HasAnyFilter => filterName.Length > 0 || filterTags.Count > 0 || filterJobs.Count > 0 || filterMods.Count > 0;
 
     private void DrawFilters()
     {
@@ -162,6 +177,11 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
         }
         DrawTagJobPopup();
 
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        DrawGroupByControls();
+
         using (ImRaii.Disabled(!HasAnyFilter))
         {
             if (ImGui.SmallButton("Clear filters"))
@@ -169,14 +189,25 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
                 filterName = string.Empty;
                 filterTags.Clear();
                 filterJobs.Clear();
+                filterMods.Clear();
             }
         }
     }
 
+    // Mutually exclusive, matching Cover Mode's own grouping checkboxes (both can be off).
+    private void DrawGroupByControls()
+    {
+        if (ImGui.Checkbox("Group by tags", ref groupByTags) && groupByTags)
+            groupByJob = false;
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Group by job association", ref groupByJob) && groupByJob)
+            groupByTags = false;
+    }
+
     private bool DrawTagJobPickerButton()
     {
-        var count = filterTags.Count + filterJobs.Count;
-        var label = count == 0 ? "Filter by tag(s) or job..." : count == 1 ? "1 tag/job filter active" : $"{count} tag/job filters active";
+        var count = filterTags.Count + filterJobs.Count + filterMods.Count;
+        var label = count == 0 ? "Filter by tag(s), job or mod..." : count == 1 ? "1 tag/job/mod filter active" : $"{count} tag/job/mod filters active";
         return ImGui.Button(label, new Vector2(-1, 0));
     }
 
@@ -193,42 +224,80 @@ public sealed class ForeignGalleryWindow : Window, IDisposable
             ImGui.SetKeyboardFocusHere();
 
         ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##foreignFilterSearch", "Search tags or jobs...", ref filterSearchText, 64);
+        ImGui.InputTextWithHint("##foreignFilterSearch", "Search tags, jobs or mods...", ref filterSearchText, 64);
         ImGui.Separator();
 
         var availableTags = TagMatching.WithSegments(gallery!.Designs.SelectMany(d => d.Tags))
             .Where(t => filterSearchText.Length == 0 || t.Contains(filterSearchText, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var availableJobs = gallery.Designs
-            .SelectMany(d => d.Jobs)
-            .Distinct()
-            .Select(j => (RowId: j, Name: plugin.GameData.ResolveJobName(j), Role: (JobRole?)null))
+        // Only the jobs actually used in this gallery, but grouped/ordered by role like the local
+        // gallery's own job filter (see MainWindow.Filters.cs) instead of a flat alphabetical list.
+        var usedJobs = new HashSet<uint>(gallery.Designs.SelectMany(d => d.Jobs));
+        var availableJobs = plugin.GameData.GetSelectableJobs()
+            .Where(j => usedJobs.Contains(j.RowId))
             .Where(j => filterSearchText.Length == 0 || j.Name.Contains(filterSearchText, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(j => (j.RowId, j.Name, (JobRole?)j.Role))
             .ToList();
 
-        var emptyMessage = filterSearchText.Length > 0 ? "No matching tags or jobs." : "Nothing to filter by.";
-        // Imported galleries carry no mod attribution, so there's nothing to filter by mod here.
-        Pills.DrawTagJobFilterList(availableTags, availableJobs, Array.Empty<(string, string)>(), filterTags, filterJobs, NoModFilter,
+        // Shared bundles only carry each mod's display name (no directory), so that doubles as the filter key.
+        var availableMods = gallery.Designs
+            .SelectMany(d => d.Mods)
+            .Select(m => m.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(n => filterSearchText.Length == 0 || n.Contains(filterSearchText, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .Select(n => (Directory: n, DisplayName: n))
+            .ToList();
+
+        var emptyMessage = filterSearchText.Length > 0 ? "No matching tags, jobs or mods." : "Nothing to filter by.";
+        Pills.DrawTagJobFilterList(availableTags, availableJobs, availableMods, filterTags, filterJobs, filterMods,
             plugin.GameData.GetJobIcon, "foreign", 260 * ImGuiHelpers.GlobalScale, emptyMessage);
     }
 
-    private static readonly Dictionary<string, bool> NoModFilter = new();
-
     private void DrawGrid(List<ForeignDesign> visible)
+    {
+        var (thumbWidth, thumbHeight) = ComputeThumbSize();
+        DrawGridRange(visible, 0, visible.Count, thumbWidth, thumbHeight);
+    }
+
+    private (float Width, float Height) ComputeThumbSize()
     {
         var spacing = ImGui.GetStyle().ItemSpacing.X;
         var avail = ImGui.GetContentRegionAvail().X;
         var thumbWidth = Math.Max(CoverMinThumbSize, (avail - (CoverColumns - 1) * spacing) / CoverColumns);
         var thumbHeight = thumbWidth * CoverAspectRatio;
+        return (thumbWidth, thumbHeight);
+    }
 
-        for (var i = 0; i < visible.Count; i++)
+    // Used both for the plain grid and for each section's slice when grouped by tag/job.
+    private void DrawGridRange(List<ForeignDesign> designs, int start, int end, float thumbWidth, float thumbHeight)
+    {
+        for (var i = start; i < end; i++)
         {
-            if (i % CoverColumns != 0)
+            if ((i - start) % CoverColumns != 0)
                 ImGui.SameLine();
-            DrawCell(visible[i], thumbWidth, thumbHeight);
+            DrawCell(designs[i], thumbWidth, thumbHeight);
         }
+    }
+
+    // Shared open/closed state for both the tag and job grouping headers - separate dictionaries so a
+    // tag path and a job/role key can never collide (mirrors MainWindow's coverTagSectionOpen/coverJobSectionOpen).
+    private readonly Dictionary<string, bool> tagSectionOpen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> jobSectionOpen = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool DrawTagSectionHeader(string label, string key) => DrawGroupSectionHeader(tagSectionOpen, label, key);
+    private bool DrawJobSectionHeader(string label, string key) => DrawGroupSectionHeader(jobSectionOpen, label, key);
+
+    private static bool DrawGroupSectionHeader(Dictionary<string, bool> state, string label, string key)
+    {
+        if (!state.TryGetValue(key, out var open))
+            open = true;
+        using var id = ImRaii.PushId(key);
+        var result = Pills.DrawCollapsibleSubheader(label, ref open);
+        state[key] = open;
+        return result;
     }
 
     private void DrawCell(ForeignDesign design, float thumbWidth, float thumbHeight)

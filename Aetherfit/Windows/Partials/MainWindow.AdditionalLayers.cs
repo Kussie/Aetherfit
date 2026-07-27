@@ -34,7 +34,7 @@ public partial class MainWindow
 
     private void DrawAdditionalLayersPanel(Guid id)
     {
-        if (!DrawCollapsibleSubheader("Additional Design Layers", ref additionalLayersPanelOpen))
+        if (!Pills.DrawCollapsibleSubheader("Additional Design Layers", ref additionalLayersPanelOpen))
             return;
 
         ImGui.Indent();
