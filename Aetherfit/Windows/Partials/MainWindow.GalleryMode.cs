@@ -341,7 +341,7 @@ public partial class MainWindow
             if (splitIdx > 0)
             {
                 ImGui.Separator();
-                if (DrawCollapsibleSubheader($"Favourites ({splitIdx})", ref favouritesSectionOpen))
+                if (Pills.DrawCollapsibleSubheader($"Favourites ({splitIdx})", ref favouritesSectionOpen))
                 {
                     ImGui.Spacing();
                     DrawCoverGridRange(visible, 0, splitIdx, columns, thumbWidth, thumbHeight);
@@ -351,7 +351,7 @@ public partial class MainWindow
                 if (splitIdx < visible.Count)
                 {
                     ImGui.Separator();
-                    if (DrawCollapsibleSubheader($"All Designs ({visible.Count - splitIdx})", ref otherDesignsSectionOpen))
+                    if (Pills.DrawCollapsibleSubheader($"All Designs ({visible.Count - splitIdx})", ref otherDesignsSectionOpen))
                     {
                         ImGui.Spacing();
                         DrawCoverGridRange(visible, splitIdx, visible.Count, columns, thumbWidth, thumbHeight);
