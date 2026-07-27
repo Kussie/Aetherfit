@@ -132,7 +132,7 @@ public sealed class GlamaholicService : IDesignProvider
 
     public void Dispose() { }
 
-    private static JObject? FindPlate(Guid id)
+    private JObject? FindPlate(Guid id)
     {
         var root = TryReadConfig(out _);
         if (root?["Plates"] is not JArray plates)
@@ -142,15 +142,29 @@ public sealed class GlamaholicService : IDesignProvider
         return node?["Plate"] as JObject;
     }
 
-    // Reads and parses Glamaholic's config JSON fresh off disk - shared by FetchDesignList and FindPlate.
+    private JObject? cachedRoot;
+    private DateTime cachedRootWriteTimeUtc;
+
+    // Reads and parses Glamaholic's config JSON - shared by FetchDesignList and FindPlate, the latter
+    // called once per design during the metadata drain, so caching by the file's own write time avoids
+    // re-parsing the whole (possibly large) plate tree once per design while still picking up live edits.
     // Null means missing or unreadable; error is only set (and only meaningful to the caller) on an
     // actual read/parse failure, not a simply-missing file.
-    private static JObject? TryReadConfig(out string? error)
+    private JObject? TryReadConfig(out string? error)
     {
         error = null;
         try
         {
-            return File.Exists(ConfigPath) ? JObject.Parse(File.ReadAllText(ConfigPath)) : null;
+            if (!File.Exists(ConfigPath))
+                return null;
+
+            var writeTime = File.GetLastWriteTimeUtc(ConfigPath);
+            if (cachedRoot != null && writeTime == cachedRootWriteTimeUtc)
+                return cachedRoot;
+
+            cachedRoot = JObject.Parse(File.ReadAllText(ConfigPath));
+            cachedRootWriteTimeUtc = writeTime;
+            return cachedRoot;
         }
         catch (Exception ex)
         {

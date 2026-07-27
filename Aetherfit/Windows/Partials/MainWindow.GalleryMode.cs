@@ -340,14 +340,34 @@ public partial class MainWindow
     private (int Columns, float ThumbWidth, float ThumbHeight) ComputeGridLayout()
         => GalleryDraw.ComputeGridLayout(plugin.Configuration.GalleryThumbTargetWidth);
 
+    // Row-clipped so a large gallery doesn't request a texture for every design at once - only rows
+    // actually scrolled into view get drawn. Shared by the flat grid, the favourites split, and every
+    // grouped view's per-section draw, so clipping here benefits all of them for free.
     private void DrawCoverGridRange(List<DesignLeaf> visible, int start, int end, int columns, float thumbWidth, float thumbHeight)
     {
-        for (var i = start; i < end; i++)
+        var count = end - start;
+        if (count <= 0)
+            return;
+
+        var rowHeight = thumbHeight + ImGui.GetStyle().ItemSpacing.Y * 2 + ImGui.GetTextLineHeight();
+        var rowCount = (count + columns - 1) / columns;
+
+        var clipper = new ImGuiListClipper();
+        clipper.Begin(rowCount, rowHeight);
+        while (clipper.Step())
         {
-            if ((i - start) % columns != 0)
-                ImGui.SameLine();
-            DrawCoverCell(visible[i], thumbWidth, thumbHeight);
+            for (var row = clipper.DisplayStart; row < clipper.DisplayEnd; row++)
+            {
+                for (var col = 0; col < columns; col++)
+                {
+                    var i = start + row * columns + col;
+                    if (i >= end) break;
+                    if (col != 0) ImGui.SameLine();
+                    DrawCoverCell(visible[i], thumbWidth, thumbHeight);
+                }
+            }
         }
+        clipper.End();
     }
 
     private void SortGalleryDesigns(List<DesignLeaf> designs)
