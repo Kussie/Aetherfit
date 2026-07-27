@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using Aetherfit.Utils;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Screenshots;
 
 public sealed class ImageStorageService
 {

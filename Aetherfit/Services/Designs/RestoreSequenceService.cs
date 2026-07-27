@@ -1,7 +1,7 @@
 using System;
 using Glamourer.Api.Enums;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Designs;
 
 // Owns the "wait for the world to settle, then (re)apply a design" sequences that run after login and
 // after zone changes, plus the grace-window bookkeeping that decides whether a Glamourer finalization

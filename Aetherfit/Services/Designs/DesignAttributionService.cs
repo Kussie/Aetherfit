@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Services.Game;
 using Aetherfit.Services.Integrations;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Designs;
 
 // Works out which enabled mod is responsible for the equipment items and hairstyle a design applies, using
 // Penumbra's changed-item data. Extracted from the main window so the gallery exporter can bake the same

@@ -5,7 +5,8 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using Aetherfit.Models;
-using Aetherfit.Services;
+using Aetherfit.Services.Designs;
+using Aetherfit.Services.Game;
 using Aetherfit.Services.Screenshots;
 using Newtonsoft.Json;
 

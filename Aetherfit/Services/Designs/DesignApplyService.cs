@@ -4,7 +4,7 @@ using System.Linq;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Utils;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Designs;
 
 // Picking and applying designs (including random picks and additional layers) - split out of MainWindow
 // so it's testable independent of ImGui, and callable from both the UI and Plugin's slash commands.

@@ -18,7 +18,7 @@ using Job = Penumbra.GameData.Structs.Job;
 using JobId = Penumbra.GameData.Structs.JobId;
 using Race = Penumbra.GameData.Enums.Race;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Game;
 
 public enum JobRole
 {

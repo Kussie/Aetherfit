@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Aetherfit.Services.Screenshots;
 using Aetherfit.Utils;
 using Glamourer.Api.Enums;
 using Lumina.Excel;
