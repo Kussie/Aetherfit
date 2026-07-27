@@ -48,7 +48,7 @@ public partial class MainWindow
 
     private void DrawEquipmentPanel(Guid id, CachedOutfit details)
     {
-        if (!DrawCollapsibleSubheader("Equipment", ref equipmentPanelOpen))
+        if (!Pills.DrawCollapsibleSubheader("Equipment", ref equipmentPanelOpen))
             return;
 
         ImGui.Indent();
@@ -94,7 +94,7 @@ public partial class MainWindow
         if (details.Customizations.Count == 0)
             return;
 
-        if (!DrawCollapsibleSubheader("Customizations", ref customizationsPanelOpen))
+        if (!Pills.DrawCollapsibleSubheader("Customizations", ref customizationsPanelOpen))
             return;
 
         ImGui.Indent();
@@ -140,71 +140,6 @@ public partial class MainWindow
         ImGui.ColorButton($"##cust_{c.Key}", DesignDetailView.StainColorToVec4(rgb, 1.0f),
             ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoDragDrop | ImGuiColorEditFlags.NoInputs,
             size);
-    }
-
-    private static bool DrawCollapsibleSubheader(string label, ref bool open, string? helpText = null)
-    {
-        // Custom header to recover CollapsingHeader's framed look while keeping the label near-aligned with the TextColored subheaders above it, otherwise the spacing looks off and it really annoys me
-        var style = ImGui.GetStyle();
-        var draw = ImGui.GetWindowDrawList();
-
-        var avail = ImGui.GetContentRegionAvail().X;
-        var lineH = ImGui.GetTextLineHeight();
-        var rectH = lineH + style.FramePadding.Y * 2f;
-
-        var rectMin = ImGui.GetCursorScreenPos();
-        var rectMax = new Vector2(rectMin.X + avail, rectMin.Y + rectH);
-
-        if (ImGui.InvisibleButton($"##sub_{label}", new Vector2(avail, rectH)))
-            open = !open;
-
-        var bg = ImGui.IsItemActive() ? ImGuiCol.HeaderActive
-               : ImGui.IsItemHovered() ? ImGuiCol.HeaderHovered
-               : ImGuiCol.Header;
-        draw.AddRectFilled(rectMin, rectMax, ImGui.GetColorU32(bg), style.FrameRounding);
-
-        var chevron = open ? "▼" : "▶";
-        var chevSize = ImGui.CalcTextSize(chevron);
-        var textY = rectMin.Y + (rectH - lineH) * 0.5f;
-        draw.AddText(new Vector2(rectMax.X - chevSize.X - style.FramePadding.X, textY),
-            ImGui.GetColorU32(SectionHeader), chevron);
-
-        // Sit the help marker just left of the chevron.
-        DrawSubheaderChrome(rectMin, rectMax, label, helpText, chevSize.X + style.FramePadding.X);
-
-        return open;
-    }
-
-    // Shared chrome for both subheader variants: background is drawn by the caller (interactive vs.
-    // static), this just places the label and an optional right-aligned "(?)" help marker + tooltip.
-    // rightReserve leaves room for a caller-drawn glyph (the collapsible variant's chevron).
-    private static void DrawSubheaderChrome(Vector2 rectMin, Vector2 rectMax, string label, string? helpText, float rightReserve = 0f)
-    {
-        var style = ImGui.GetStyle();
-        var draw = ImGui.GetWindowDrawList();
-        var lineH = ImGui.GetTextLineHeight();
-        var textY = rectMin.Y + (rectMax.Y - rectMin.Y - lineH) * 0.5f;
-
-        draw.AddText(new Vector2(rectMin.X + style.FramePadding.X, textY),
-            ImGui.GetColorU32(SectionHeader), label);
-
-        if (helpText == null)
-            return;
-
-        const string marker = "(?)";
-        var markerSize = ImGui.CalcTextSize(marker);
-        var markerPos = new Vector2(rectMax.X - rightReserve - markerSize.X - style.FramePadding.X, textY);
-        draw.AddText(markerPos, ImGui.GetColorU32(ImGuiCol.TextDisabled), marker);
-
-        var hoverMax = new Vector2(markerPos.X + markerSize.X, markerPos.Y + markerSize.Y);
-        if (!ImGui.IsMouseHoveringRect(markerPos, hoverMax))
-            return;
-
-        ImGui.BeginTooltip();
-        ImGui.PushTextWrapPos(ImGui.GetFontSize() * 30f);
-        ImGui.TextUnformatted(helpText);
-        ImGui.PopTextWrapPos();
-        ImGui.EndTooltip();
     }
 
     // The label column width, shared by the Equipment and Customizations panels so their values line up.
@@ -357,7 +292,7 @@ public partial class MainWindow
         if (details.Links.Count == 0)
             return;
 
-        if (!DrawCollapsibleSubheader("Design Links", ref designLinksPanelOpen))
+        if (!Pills.DrawCollapsibleSubheader("Design Links", ref designLinksPanelOpen))
             return;
 
         ImGui.Indent();
@@ -437,7 +372,7 @@ public partial class MainWindow
 
     private void DrawModsPanel(CachedOutfit details)
     {
-        if (!DrawCollapsibleSubheader("Mod Associations", ref modsPanelOpen))
+        if (!Pills.DrawCollapsibleSubheader("Mod Associations", ref modsPanelOpen))
             return;
 
         ImGui.Indent();

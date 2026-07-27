@@ -79,8 +79,11 @@ public sealed class GallerySharingService
             if (onlyIds != null && !onlyIds.Contains(id))
                 continue;
 
-            // Hidden designs are never exported, regardless of which export path was taken.
+            // Hidden designs, and designs from a currently-disabled integration, are never exported,
+            // regardless of which export path was taken.
             if (configuration.HiddenDesigns.Contains(id))
+                continue;
+            if (!configuration.IsProviderEnabled(outfit.Source))
                 continue;
 
             var attributed = attribution.Build(outfit);

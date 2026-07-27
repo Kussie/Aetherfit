@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Aetherfit.Services;
+using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility.Raii;
 
@@ -108,7 +109,7 @@ public partial class MainWindow
         if (!coverJobSectionOpen.TryGetValue(key, out var open))
             open = true;
         using var id = ImRaii.PushId(key);
-        var result = DrawCollapsibleSubheader(label, ref open);
+        var result = Pills.DrawCollapsibleSubheader(label, ref open);
         coverJobSectionOpen[key] = open;
         return result;
     }
