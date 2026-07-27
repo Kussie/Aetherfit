@@ -41,7 +41,7 @@ public sealed partial class ForeignGalleryWindow
             .Where(g => g.Jobs.Count > 0)
             .ToList();
 
-        var (thumbWidth, thumbHeight) = ComputeThumbSize();
+        var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
 
         foreach (var group in groups)
         {
@@ -53,7 +53,7 @@ public sealed partial class ForeignGalleryWindow
             ImGui.Indent();
             ImGui.Spacing();
             foreach (var (job, designs) in group.Jobs)
-                DrawJobGroupNode(job, designs, thumbWidth, thumbHeight);
+                DrawJobGroupNode(job, designs, columns, thumbWidth, thumbHeight);
             ImGui.Unindent();
         }
 
@@ -63,19 +63,19 @@ public sealed partial class ForeignGalleryWindow
             if (DrawJobSectionHeader($"Unassigned ({unassigned.Count})", "unassignedJobs"))
             {
                 ImGui.Spacing();
-                DrawGridRange(unassigned, 0, unassigned.Count, thumbWidth, thumbHeight);
+                DrawGridRange(unassigned, 0, unassigned.Count, columns, thumbWidth, thumbHeight);
                 ImGui.Spacing();
             }
         }
     }
 
-    private void DrawJobGroupNode(JobInfo job, List<ForeignDesign> designs, float thumbWidth, float thumbHeight)
+    private void DrawJobGroupNode(JobInfo job, List<ForeignDesign> designs, int columns, float thumbWidth, float thumbHeight)
     {
         if (!DrawJobSectionHeader($"{job.Name} ({designs.Count})", $"job{job.RowId}"))
             return;
 
         ImGui.Spacing();
-        DrawGridRange(designs, 0, designs.Count, thumbWidth, thumbHeight);
+        DrawGridRange(designs, 0, designs.Count, columns, thumbWidth, thumbHeight);
         ImGui.Spacing();
     }
 }

@@ -45,33 +45,21 @@ public sealed class GlamaholicService : IDesignProvider
 
     public PluginIntegrationInfo CheckIntegration()
     {
-        var exposed = Plugin.PluginInterface.InstalledPlugins.FirstOrDefault(p => p.InternalName == "Glamaholic");
-        if (exposed == null)
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotInstalled, null, null);
-        if (!exposed.IsLoaded)
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+        if (PluginIntegrationCheck.CheckInstalledAndLoaded("Glamaholic", out var exposed) is { } early)
+            return early;
 
         // No IPC/version to check against - installed, loaded, and a readable config file is as far
         // as this can verify.
         return File.Exists(ConfigPath)
-            ? new PluginIntegrationInfo(PluginIntegrationStatus.Ok, exposed.Version, null)
-            : new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+            ? new PluginIntegrationInfo(PluginIntegrationStatus.Ok, exposed!.Version, null)
+            : new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed!.Version, null);
     }
 
     public ProviderDesignListResult FetchDesignList()
     {
-        JObject root;
-        try
-        {
-            if (!File.Exists(ConfigPath))
-                return new ProviderDesignListResult(Array.Empty<ProviderDesignInfo>(), null);
-            root = JObject.Parse(File.ReadAllText(ConfigPath));
-        }
-        catch (Exception ex)
-        {
-            Plugin.Log.Warning(ex, "Failed to read Glamaholic's config");
-            return new ProviderDesignListResult(Array.Empty<ProviderDesignInfo>(), ex.Message);
-        }
+        var root = TryReadConfig(out var error);
+        if (root == null)
+            return new ProviderDesignListResult(Array.Empty<ProviderDesignInfo>(), error);
 
         var designs = new List<ProviderDesignInfo>();
         if (root["Plates"] is JArray plates)
@@ -112,44 +100,24 @@ public sealed class GlamaholicService : IDesignProvider
             return false;
         }
 
-        var (stateResult, state) = glamourer.GetState();
-        if (stateResult != GlamourerApiEc.Success || state == null)
-        {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{designName}\": couldn't read current state ({stateResult}).");
-            return false;
-        }
-
         var items = plate["Items"] as JObject;
-        var equipment = new JObject();
-        foreach (var (glamaholicKey, slot) in SlotMap)
+        return glamourer.RelayApply(nativeId, designName, quiet, "Glamaholic", state =>
         {
-            var item = items?[glamaholicKey] as JObject;
-            equipment[slot.ToString()] = new JObject
+            var equipment = new JObject();
+            foreach (var (glamaholicKey, slot) in SlotMap)
             {
-                ["ItemId"] = item?["ItemId"]?.Value<long>() ?? 0,
-                ["Stain"] = item?["Stain1"]?.Value<int>() ?? 0,
-                ["Stain2"] = item?["Stain2"]?.Value<int>() ?? 0,
-                ["Apply"] = true,
-                ["ApplyStain"] = true,
-            };
-        }
-        state["Equipment"] = equipment;
-
-        var applyResult = glamourer.ApplyEquipmentState(state);
-        if (applyResult != GlamourerApiEc.Success)
-        {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{designName}\": {applyResult}");
-            Plugin.Log.Warning("Failed to apply Glamaholic design {Name} ({Id}): {Result}", designName, nativeId, applyResult);
-            return false;
-        }
-
-        if (!quiet)
-        {
-            SoundService.PlayApply();
-            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"");
-        }
-        Plugin.Log.Info("Applied Glamaholic design {Name} ({Id})", designName, nativeId);
-        return true;
+                var item = items?[glamaholicKey] as JObject;
+                equipment[slot.ToString()] = new JObject
+                {
+                    ["ItemId"] = item?["ItemId"]?.Value<long>() ?? 0,
+                    ["Stain"] = item?["Stain1"]?.Value<int>() ?? 0,
+                    ["Stain2"] = item?["Stain2"]?.Value<int>() ?? 0,
+                    ["Apply"] = true,
+                    ["ApplyStain"] = true,
+                };
+            }
+            state["Equipment"] = equipment;
+        }, s => glamourer.ApplyEquipmentState(s));
     }
 
     // No layer/native-UI/revert concept of its own - Capabilities has no Apply-adjacent flags for
@@ -166,24 +134,30 @@ public sealed class GlamaholicService : IDesignProvider
 
     private static JObject? FindPlate(Guid id)
     {
-        JObject root;
-        try
-        {
-            if (!File.Exists(ConfigPath))
-                return null;
-            root = JObject.Parse(File.ReadAllText(ConfigPath));
-        }
-        catch (Exception ex)
-        {
-            Plugin.Log.Warning(ex, "Failed to read Glamaholic's config for design {Id}", id);
-            return null;
-        }
-
-        if (root["Plates"] is not JArray plates)
+        var root = TryReadConfig(out _);
+        if (root?["Plates"] is not JArray plates)
             return null;
 
         var node = FindPlateNode(plates, id);
         return node?["Plate"] as JObject;
+    }
+
+    // Reads and parses Glamaholic's config JSON fresh off disk - shared by FetchDesignList and FindPlate.
+    // Null means missing or unreadable; error is only set (and only meaningful to the caller) on an
+    // actual read/parse failure, not a simply-missing file.
+    private static JObject? TryReadConfig(out string? error)
+    {
+        error = null;
+        try
+        {
+            return File.Exists(ConfigPath) ? JObject.Parse(File.ReadAllText(ConfigPath)) : null;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to read Glamaholic's config");
+            error = ex.Message;
+            return null;
+        }
     }
 
     private static JObject? FindPlateNode(JArray nodes, Guid id)

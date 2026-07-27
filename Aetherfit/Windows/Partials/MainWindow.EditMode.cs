@@ -1060,8 +1060,8 @@ public partial class MainWindow
             return false;
         }
 
-        var scale = Math.Min(maxSide / tex.Width, maxSide / tex.Height);
-        ImGui.Image(tex.Handle, new Vector2(tex.Width * scale, tex.Height * scale));
+        var (size, _) = GalleryDraw.ComputeFitSize(new Vector2(maxSide, maxSide), tex.Width, tex.Height);
+        ImGui.Image(tex.Handle, size);
 
         if (!clickable)
             return false;
