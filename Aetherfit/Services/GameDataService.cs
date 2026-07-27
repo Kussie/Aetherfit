@@ -1,13 +1,22 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Dalamud.Game.Player;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
+using ImSharp;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
+using Penumbra.GameData.DataContainers;
+using Penumbra.GameData.Enums;
+using Penumbra.GameData.Files;
+using CustomItemId = Penumbra.GameData.Structs.CustomItemId;
+using Job = Penumbra.GameData.Structs.Job;
+using JobId = Penumbra.GameData.Structs.JobId;
+using Race = Penumbra.GameData.Enums.Race;
 
 namespace Aetherfit.Services;
 
@@ -32,36 +41,33 @@ public sealed class GameDataService
     private readonly ExcelSheet<Item>? itemSheet;
     private readonly ExcelSheet<Stain>? stainSheet;
     private readonly ExcelSheet<Glasses>? glassesSheet;
-    private readonly ExcelSheet<ClassJob>? classJobSheet;
     private readonly ExcelSheet<ClassJobCategory>? classJobCategorySheet;
     private readonly ExcelSheet<EquipRaceCategory>? equipRaceCategorySheet;
+    private readonly DictJob dictJob;
 
     private readonly ConcurrentDictionary<ulong, string> itemNameCache = new();
     private readonly ConcurrentDictionary<byte, (string Name, uint Color)> stainCache = new();
     private readonly ConcurrentDictionary<ulong, string> glassesNameCache = new();
-    private readonly ConcurrentDictionary<uint, string> jobNameCache = new();
 
-    // ClassJob RowId -> role, for the jobs we surface as associations. The job list is fixed, so a static table
-    // is more reliable than inferring from sheet columns, and it lets us exclude base classes (Gladiator, etc.).
-    private static readonly IReadOnlyDictionary<uint, JobRole> JobRoles = new Dictionary<uint, JobRole>
+    // ClassJob RowId, for the jobs we surface as associations. The job list is fixed, so a curated set is more
+    // reliable than taking every DictJob entry: that would include pre-job-stone base classes (Gladiator, etc.)
+    // alongside their advanced-job counterparts, doubling up entries with the same derived role.
+    private static readonly IReadOnlySet<uint> SelectableJobIds = new HashSet<uint>
     {
         // Tanks
-        [19] = JobRole.Tank, [21] = JobRole.Tank, [32] = JobRole.Tank, [37] = JobRole.Tank,
+        19, 21, 32, 37,
         // Healers
-        [24] = JobRole.Healer, [28] = JobRole.Healer, [33] = JobRole.Healer, [40] = JobRole.Healer,
+        24, 28, 33, 40,
         // Melee DPS
-        [20] = JobRole.Melee, [22] = JobRole.Melee, [30] = JobRole.Melee,
-        [34] = JobRole.Melee, [39] = JobRole.Melee, [41] = JobRole.Melee, [43] = JobRole.Melee,
+        20, 22, 30, 34, 39, 41, 43,
         // Physical Ranged DPS
-        [23] = JobRole.PhysicalRanged, [31] = JobRole.PhysicalRanged, [38] = JobRole.PhysicalRanged,
+        23, 31, 38,
         // Magical Ranged DPS
-        [25] = JobRole.MagicalRanged, [27] = JobRole.MagicalRanged, [35] = JobRole.MagicalRanged,
-        [36] = JobRole.MagicalRanged, [42] = JobRole.MagicalRanged,
+        25, 27, 35, 36, 42,
         // Crafters (Disciples of the Hand)
-        [8] = JobRole.Crafter, [9] = JobRole.Crafter, [10] = JobRole.Crafter, [11] = JobRole.Crafter,
-        [12] = JobRole.Crafter, [13] = JobRole.Crafter, [14] = JobRole.Crafter, [15] = JobRole.Crafter,
+        8, 9, 10, 11, 12, 13, 14, 15,
         // Gatherers (Disciples of the Land)
-        [16] = JobRole.Gatherer, [17] = JobRole.Gatherer, [18] = JobRole.Gatherer,
+        16, 17, 18,
     };
 
     private List<JobInfo>? selectableJobs;
@@ -71,9 +77,9 @@ public sealed class GameDataService
         itemSheet = TryLoadSheet<Item>();
         stainSheet = TryLoadSheet<Stain>();
         glassesSheet = TryLoadSheet<Glasses>();
-        classJobSheet = TryLoadSheet<ClassJob>();
         classJobCategorySheet = TryLoadSheet<ClassJobCategory>();
         equipRaceCategorySheet = TryLoadSheet<EquipRaceCategory>();
+        dictJob = new DictJob(Plugin.DataManager);
     }
 
     // The name of a Glamourer design-link job condition (a ClassJobCategory, e.g. "All Classes" or "Healer").
@@ -97,19 +103,7 @@ public sealed class GameDataService
         if (!equipRaceCategorySheet.TryGetRow(item.EquipRestriction.RowId, out var category))
             return null;
 
-        var raceOk = raceRowId switch
-        {
-            1 => category.Hyur,
-            2 => category.Elezen,
-            3 => category.Lalafell,
-            4 => category.Miqote,
-            5 => category.Roegadyn,
-            6 => category.AuRa,
-            7 => category.Hrothgar,
-            8 => category.Viera,
-            _ => true,
-        };
-        return raceOk && (isFemale ? category.Female : category.Male);
+        return GetRaceFlag(category, (Race)raceRowId) && (isFemale ? category.Female : category.Male);
     }
 
     public (uint RaceRowId, bool IsFemale)? ResolveEffectiveRaceGender(CachedOutfit details)
@@ -139,13 +133,10 @@ public sealed class GameDataService
             || !equipRaceCategorySheet.TryGetRow(item.EquipRestriction.RowId, out var category))
             return "unknown races";
 
-        var races = new (bool On, string Name)[]
-        {
-            (category.Hyur, "Hyur"), (category.Elezen, "Elezen"), (category.Lalafell, "Lalafell"),
-            (category.Miqote, "Miqo'te"), (category.Roegadyn, "Roegadyn"), (category.AuRa, "Au Ra"),
-            (category.Hrothgar, "Hrothgar"), (category.Viera, "Viera"),
-        };
-        var names = races.Where(r => r.On).Select(r => r.Name).ToList();
+        var names = Enum.GetValues<Race>()
+            .Where(r => r != Race.Unknown && GetRaceFlag(category, r))
+            .Select(r => r.ToName())
+            .ToList();
         var raceText = names.Count == 0 ? "no races" : string.Join(", ", names);
 
         return (category.Male, category.Female) switch
@@ -156,7 +147,20 @@ public sealed class GameDataService
         };
     }
 
-    private static uint ClanToRace(int clan) => (uint)((clan + 1) / 2); // Glamourer clan 1-16 -> Race 1-8
+    private static bool GetRaceFlag(EquipRaceCategory category, Race race) => race switch
+    {
+        Race.Hyur => category.Hyur,
+        Race.Elezen => category.Elezen,
+        Race.Lalafell => category.Lalafell,
+        Race.Miqote => category.Miqote,
+        Race.Roegadyn => category.Roegadyn,
+        Race.AuRa => category.AuRa,
+        Race.Hrothgar => category.Hrothgar,
+        Race.Viera => category.Viera,
+        _ => true,
+    };
+
+    private static uint ClanToRace(int clan) => (uint)((SubRace)clan).ToRace(); // Glamourer clan 1-16 -> Race 1-8
     private static uint? CurrentPlayerRace() => Plugin.PlayerState.IsLoaded ? Plugin.PlayerState.Race.RowId : null;
     private static bool? CurrentPlayerIsFemale() => Plugin.PlayerState.IsLoaded ? Plugin.PlayerState.Sex == Sex.Female : null;
 
@@ -198,33 +202,32 @@ public sealed class GameDataService
     };
 
     public IReadOnlyList<JobInfo> GetSelectableJobs()
-        => selectableJobs ??= JobRoles
-            .Select(kv => new JobInfo(kv.Key, ResolveJobName(kv.Key), kv.Value))
+        => selectableJobs ??= SelectableJobIds
+            .Select(id => dictJob.TryGetValue((JobId)id, out var job) ? (JobInfo?)ToJobInfo(id, job) : null)
+            .Where(j => j != null)
+            .Select(j => j!.Value)
             .OrderBy(j => j.Role)
             .ThenBy(j => j.RowId)
             .ToList();
 
-    public string ResolveJobName(uint rowId) => Resolve(jobNameCache, rowId, LookupJobName);
+    public string ResolveJobName(uint rowId)
+        => dictJob.TryGetValue((JobId)rowId, out var job) ? job.Name.ToString() : $"Job {rowId}";
 
-    // Display names for jobs that may not yet exist in the live ClassJob sheet (e.g. upcoming limited jobs).
-    private static readonly IReadOnlyDictionary<uint, string> JobNameFallbacks = new Dictionary<uint, string>
+    private static JobInfo ToJobInfo(uint rowId, Job job) => new(rowId, job.Name.ToString(), ToAetherfitRole(job.Role));
+
+    private static JobRole ToAetherfitRole(Job.JobRole role) => role switch
     {
-        [43] = "Beastmaster",
+        Job.JobRole.Tank => JobRole.Tank,
+        Job.JobRole.Healer => JobRole.Healer,
+        Job.JobRole.Melee => JobRole.Melee,
+        Job.JobRole.RangedPhysical => JobRole.PhysicalRanged,
+        Job.JobRole.RangedMagical => JobRole.MagicalRanged,
+        Job.JobRole.Crafter => JobRole.Crafter,
+        Job.JobRole.Gatherer => JobRole.Gatherer,
+        _ => JobRole.Melee, // unreachable for the curated SelectableJobIds set
     };
 
-    private string LookupJobName(uint rowId)
-    {
-        // ClassJob.Name is stored lowercase (e.g. "paladin"); title-case it for display.
-        if (classJobSheet != null && classJobSheet.TryGetRow(rowId, out var row))
-        {
-            var text = row.Name.ExtractText();
-            if (!string.IsNullOrWhiteSpace(text))
-                return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(text);
-        }
-        return JobNameFallbacks.TryGetValue(rowId, out var fallback) ? fallback : $"Job {rowId}";
-    }
-
-    public bool IsKnownJob(uint rowId) => JobRoles.ContainsKey(rowId);
+    public bool IsKnownJob(uint rowId) => SelectableJobIds.Contains(rowId);
 
     public IDalamudTextureWrap? GetJobIcon(uint rowId)
     {
@@ -247,7 +250,7 @@ public sealed class GameDataService
 
     private string LookupItemName(ulong itemId)
     {
-        // Glamourer encodes custom weapon models with bits >32 set, and uses random ItemIds for "nothing" that don't map to real Item rows. Either way: if we can't resolve the row to a name, treat it as Nothing.
+        // Glamourer encodes custom weapon models with bits >32 set, and uses random ItemIds for "nothing" that don't map to real Item rows.
         if (itemSheet != null && itemId <= uint.MaxValue
             && itemSheet.TryGetRow((uint)itemId, out var row))
         {
@@ -255,6 +258,12 @@ public sealed class GameDataService
             if (!string.IsNullOrWhiteSpace(text))
                 return text;
         }
+
+        // A hand-built custom weapon (Glamourer's advanced editor) isn't "nothing" - it just has no catalog
+        // name to show. Distinguish it so the slot doesn't read as empty.
+        if (((CustomItemId)itemId) is { IsCustom: true, IsBonusItem: false })
+            return "Custom Item";
+
         return NothingItemName;
     }
 
@@ -288,11 +297,17 @@ public sealed class GameDataService
         return Resolve(glassesNameCache, bonusId, id => LookupBonusItemName(slotKey, id));
     }
 
+    private static BonusItemFlag ParseBonusSlot(string slotKey) => slotKey switch
+    {
+        "Glasses" => BonusItemFlag.Glasses,
+        _ => BonusItemFlag.Unknown,
+    };
+
     private string LookupBonusItemName(string slotKey, ulong bonusId)
     {
         // Glamourer's only published bonus slot is "Glasses"; the BonusId is a row in
         // FFXIV's Glasses excel sheet, not the regular Item sheet.
-        if (slotKey == "Glasses" && glassesSheet != null && bonusId <= uint.MaxValue
+        if (ParseBonusSlot(slotKey) == BonusItemFlag.Glasses && glassesSheet != null && bonusId <= uint.MaxValue
             && glassesSheet.TryGetRow((uint)bonusId, out var row))
         {
             var text = row.Name.ExtractText();
@@ -306,35 +321,11 @@ public sealed class GameDataService
     //
     // Colour customizations (skin, hair, eyes, ...) only store a palette index, not an actual colour, so
     // to draw a swatch we have to read the game's human.cmp colour map. Skin and hair also depend on the
-    // character's clan (subrace) and gender. The offsets below match the CmpData layout from
-    // Penumbra.GameData / Glamourer's ColorParameters; every colour is 4 RGBA bytes.
-    // See https://github.com/Ottermandias/Penumbra.GameData (Files/CmpData.cs).
+    // character's clan (subrace) and gender. Penumbra.GameData's CmpData struct maps directly onto the raw
+    // file bytes, so this reads through that instead of hand-rolled offsets. See
+    // https://github.com/Ottermandias/Penumbra.GameData (Files/CmpData.cs).
 
-    private const int Rgba = 4;
-    private const int FullColors = 256 * Rgba;     // FullColors block: 256 colours
-    private const int TonedColors = 128 * Rgba;    // TonedColors block: 128 colours
-    private const int HairColorsBlock = 256 * 8;   // HairColors block: 256 * (Main + UnusedSheen)
-    private const int ColorParametersSize = 9216;  // size of one ColorParameters block
-
-    private const int ParametersBase = 0;
-    private const int InterfaceBase = ColorParametersSize;        // second ColorParameters block
-    private const int RacesBase = ColorParametersSize * 2;        // start of the 32 race/gender blocks
-    private const int GenderClanSize = FullColors + HairColorsBlock + FullColors + FullColors; // 5120
-
-    // Field offsets within a ColorParameters block.
-    private const int EyesOffset = 0;
-    private const int HairHighlightsOffset = FullColors;                       // 1024
-    private const int LipsDarkOffset = HairHighlightsOffset + FullColors;      // 2048
-    private const int FacePaintDarkOffset = LipsDarkOffset + TonedColors;      // 2560
-    private const int FeaturesOffset = FacePaintDarkOffset + TonedColors;      // 3072
-    private const int LipsLightOffset = FeaturesOffset + FullColors;           // 4096
-    private const int FacePaintLightOffset = LipsLightOffset + TonedColors;    // 4608
-
-    // Field offsets within a GenderClanColorParameters block (Skin, Hair, SkinInterface, HairInterface).
-    private const int SkinInterfaceOffset = FullColors + HairColorsBlock;          // 3072
-    private const int HairInterfaceOffset = SkinInterfaceOffset + FullColors;      // 4096
-
-    private byte[]? cmpData;
+    private byte[]? cmpBytes;
     private bool cmpLoadAttempted;
 
     /// <summary>
@@ -345,98 +336,102 @@ public sealed class GameDataService
     public bool TryResolveCustomizeColor(string key, int value, int clan, int gender, out uint rgb)
     {
         rgb = 0;
-        var data = LoadCmp();
-        if (data == null)
+        if (LoadCmp() is not { } bytes || bytes.Length < Unsafe.SizeOf<CmpData>())
             return false;
 
-        if (!TryGetColorOffset(key, value, clan, gender, out var offset))
-            return false;
-        if (offset < 0 || offset + Rgba > data.Length)
-            return false;
+        ref readonly var data = ref MemoryMarshal.AsRef<CmpData>((ReadOnlySpan<byte>)bytes);
 
-        // The cmp stores RGBA bytes; pack them into 0xRRGGBB so we can reuse the dye swatch helper
-        // (same format as Stain.Color).
-        rgb = (uint)((data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2]);
-        return true;
-    }
-
-    private static bool TryGetColorOffset(string key, int value, int clan, int gender, out int offset)
-    {
-        offset = -1;
+        Rgba32 color;
         switch (key)
         {
             case "EyeColorLeft":
             case "EyeColorRight":
-                return TrySingle(InterfaceBase + EyesOffset, value, out offset);
+                if (!TryFull(data.Interface.Eyes, value, out color)) return false;
+                break;
             case "HighlightsColor":
-                return TrySingle(InterfaceBase + HairHighlightsOffset, value, out offset);
+                if (!TryFull(data.Interface.HairHighlights, value, out color)) return false;
+                break;
             case "TattooColor":
-                return TrySingle(InterfaceBase + FeaturesOffset, value, out offset);
+                if (!TryFull(data.Interface.Features, value, out color)) return false;
+                break;
             case "LipColor":
-                return TryDouble(ParametersBase + LipsDarkOffset, ParametersBase + LipsLightOffset, value, out offset);
+                if (!TryToned(data.Parameters.LipsDark, data.Parameters.LipsLight, value, out color)) return false;
+                break;
             case "FacePaintColor":
-                return TryDouble(ParametersBase + FacePaintDarkOffset, ParametersBase + FacePaintLightOffset, value, out offset);
+                if (!TryToned(data.Parameters.FacePaintDark, data.Parameters.FacePaintLight, value, out color)) return false;
+                break;
             case "SkinColor":
-                return TryRace(clan, gender, SkinInterfaceOffset, value, out offset);
+                if (!TryRaceGender(clan, gender, out var subRace, out var genderEnum)
+                    || !TryFull(data.GetSkin(subRace, genderEnum, ui: true), value, out color)) return false;
+                break;
             case "HairColor":
-                return TryRace(clan, gender, HairInterfaceOffset, value, out offset);
+                if (!TryRaceGender(clan, gender, out var hairSubRace, out var hairGender)
+                    || !TryFull(data.GetHairUi(hairSubRace, hairGender), value, out color)) return false;
+                break;
             default:
                 return false;
         }
+
+        rgb = ((uint)color.R << 16) | ((uint)color.G << 8) | color.B;
+        return true;
     }
 
-    // The plain 192-colour tables that everyone shares (eyes, highlights, features).
-    private static bool TrySingle(int tableBase, int value, out int offset)
+    // The plain 192-colour tables that everyone shares (eyes, highlights, features, skin, hair).
+    private static bool TryFull(in CmpData.FullColors table, int value, out Rgba32 color)
     {
-        offset = -1;
         if ((uint)value >= 192)
+        {
+            color = default;
             return false;
-        offset = tableBase + value * Rgba;
+        }
+        color = table[value];
         return true;
     }
 
     // Lips and face paint are split into 96 "dark" colours (values 0-95) and 96 "light" ones (128-223).
-    private static bool TryDouble(int darkBase, int lightBase, int value, out int offset)
+    private static bool TryToned(in CmpData.TonedColors dark, in CmpData.TonedColors light, int value, out Rgba32 color)
     {
-        offset = -1;
         if (value is >= 0 and < 96)
-            offset = darkBase + value * Rgba;
+            color = dark[value];
         else if (value is >= 128 and < 224)
-            offset = lightBase + (value - 128) * Rgba;
+            color = light[value - 128];
         else
+        {
+            color = default;
             return false;
+        }
         return true;
     }
 
-    // Race/gender-dependent skin & hair palettes.
-    private static bool TryRace(int clan, int gender, int typeOffset, int value, out int offset)
+    // Glamourer's clan (1-16) maps directly onto Penumbra.GameData's SubRace enum, and its gender (0 male,
+    // 1 female) onto Gender.Male/Female.
+    private static bool TryRaceGender(int clan, int gender, out SubRace subRace, out Gender genderEnum)
     {
-        offset = -1;
-        if ((uint)value >= 192 || clan is < 1 or > 16)
+        subRace = default;
+        genderEnum = default;
+        if (clan is < 1 or > 16)
             return false;
-        var index = (clan - 1) * 2 + (gender == 1 ? 1 : 0); // gender: 0 male, 1 female
-        if ((uint)index >= 32)
-            return false;
-        offset = RacesBase + index * GenderClanSize + typeOffset + value * Rgba;
+        subRace = (SubRace)clan;
+        genderEnum = gender == 1 ? Gender.Female : Gender.Male;
         return true;
     }
 
     private byte[]? LoadCmp()
     {
         if (cmpLoadAttempted)
-            return cmpData;
+            return cmpBytes;
 
         cmpLoadAttempted = true;
         try
         {
             var file = Plugin.DataManager.GetFile("chara/xls/charamake/human.cmp");
-            cmpData = file?.Data;
+            cmpBytes = file?.Data;
         }
         catch (Exception ex)
         {
             Plugin.Log.Warning(ex, "Failed to load human.cmp; customization colour previews disabled");
-            cmpData = null;
+            cmpBytes = null;
         }
-        return cmpData;
+        return cmpBytes;
     }
 }
