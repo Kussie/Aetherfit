@@ -329,17 +329,12 @@ public class CachedOutfit
     public List<CachedMod> Mods { get; set; } = new();
     public List<CachedDesignLink> Links { get; set; } = new();
 
-    // The design's clan (subrace, 1-16) and gender (0 male / 1 female). We keep these even when the
-    // design doesn't apply them, since the skin/hair colour palettes in human.cmp are picked by clan + gender.
     public int CustomizeClan { get; set; }
     public int CustomizeGender { get; set; }
 
-    // Whether the design actually applies its clan/gender. When it doesn't, the appearance takes the wearing
-    // character's race/gender instead - which matters for attributing e.g. hairstyles to a mod.
     public bool CustomizeClanApplied { get; set; }
     public bool CustomizeGenderApplied { get; set; }
 
-    // null = the design does not apply this toggle (grey circle). true/false = the design forces the toggle on/off.
     public bool? HatVisible { get; set; }
     public bool? WeaponVisible { get; set; }
     public bool? VisorToggled { get; set; }
