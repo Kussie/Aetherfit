@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
-using Aetherfit.Services;
+using Aetherfit.Services.Game;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;

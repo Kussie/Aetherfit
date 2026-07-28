@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using Aetherfit.Utils;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Screenshots;
 
 public sealed class ImageStorageService
 {
@@ -47,32 +47,24 @@ public sealed class ImageStorageService
     public bool HasCover(Guid id) => configuration.OutfitImages.ContainsKey(id);
 
     public string? GetCoverPath(Guid id)
-    {
-        if (coverPathCache.TryGetValue(id, out var cached))
-            return cached;
+        => Resolve(coverPathCache, id, LookupCoverPath);
 
+    private string? LookupCoverPath(Guid id)
+    {
         if (!configuration.OutfitImages.TryGetValue(id, out var filename) || string.IsNullOrEmpty(filename))
-        {
-            coverPathCache[id] = null;
             return null;
-        }
         var path = Path.Combine(ImagesDirectory, filename);
-        var result = File.Exists(path) ? path : null;
-        coverPathCache[id] = result;
-        return result;
+        return File.Exists(path) ? path : null;
     }
 
     public List<string> GetAdditionalPaths(Guid id)
-    {
-        if (additionalPathsCache.TryGetValue(id, out var cached))
-            return cached;
+        => Resolve(additionalPathsCache, id, LookupAdditionalPaths);
 
+    private List<string> LookupAdditionalPaths(Guid id)
+    {
         var result = new List<string>();
         if (!configuration.OutfitAdditionalImages.TryGetValue(id, out var filenames) || filenames.Count == 0)
-        {
-            additionalPathsCache[id] = result;
             return result;
-        }
 
         var dir = AdditionalImagesDirectory;
         foreach (var name in filenames)
@@ -82,8 +74,20 @@ public sealed class ImageStorageService
             if (File.Exists(path))
                 result.Add(path);
         }
-        additionalPathsCache[id] = result;
         return result;
+    }
+
+    // Shared by the two lookups above: hand back the cached value, or compute it once and remember it.
+    // Mirrors GameDataService.Resolve, but for a plain Dictionary - these caches are only ever touched
+    // from the single UI thread, so no concurrency support is needed.
+    private static TValue Resolve<TKey, TValue>(Dictionary<TKey, TValue> cache, TKey key, Func<TKey, TValue> compute) where TKey : notnull
+    {
+        if (cache.TryGetValue(key, out var cached))
+            return cached;
+
+        var value = compute(key);
+        cache[key] = value;
+        return value;
     }
 
     public void SetCover(Guid id, string sourcePath)

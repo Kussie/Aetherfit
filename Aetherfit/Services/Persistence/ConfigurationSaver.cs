@@ -1,7 +1,7 @@
 using System;
 using Dalamud.Plugin.Services;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Persistence;
 
 public sealed class ConfigurationSaver : IDisposable
 {

@@ -5,10 +5,13 @@ using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
-using Aetherfit.Services;
+using Aetherfit.Services.Designs;
+using Aetherfit.Services.Game;
 using Aetherfit.Services.Integrations;
+using Aetherfit.Services.Persistence;
 using Aetherfit.Services.Screenshots;
 using Aetherfit.Services.Sharing;
+using Aetherfit.Services.Tagging;
 using Aetherfit.Windows;
 using Glamourer.Api.Enums;
 
@@ -50,6 +53,8 @@ public sealed class Plugin : IDalamudPlugin
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
+    public TagModelStore TagModel { get; init; }
+    public TagSuggestionService TagSuggestions { get; init; }
     public GalleryLiveShareService LiveShare { get; init; }
     public RestoreSequenceService Restore { get; init; }
     public DesignApplyService DesignApply { get; init; }
@@ -138,6 +143,8 @@ public sealed class Plugin : IDalamudPlugin
         ImageStorage = new ImageStorageService(Configuration);
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
+        TagModel = new TagModelStore(Configuration);
+        TagSuggestions = new TagSuggestionService(TagModel, Configuration);
         LiveShare = new GalleryLiveShareService(this);
         DesignApply = new DesignApplyService(this);
 
@@ -193,6 +200,8 @@ public sealed class Plugin : IDalamudPlugin
         Glamourer.OnExternalStateFinalized -= OnGlamourerStateFinalized;
         Glamourer.OnAnyStateFinalized -= OnGlamourerAnyStateFinalized;
         Glamourer.Dispose();
+        TagSuggestions.Dispose();
+        TagModel.Dispose();
         foreach (var provider in DesignProviders)
             provider.Dispose();
 

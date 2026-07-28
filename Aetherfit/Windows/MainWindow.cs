@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Aetherfit.Services;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
@@ -446,7 +445,7 @@ public partial class MainWindow : Window, IDisposable
 
     // Icon + label button, with a caret when it opens a menu and/or a trailing warning icon+tooltip.
     // Drawn by hand because a single ImGui button can't mix the icon font with the text font.
-    private static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false,
+    internal static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false,
         bool warning = false, string? warningTooltip = null)
     {
         var style = ImGui.GetStyle();

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Aetherfit.Services;
+using Aetherfit.Services.Game;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
@@ -15,12 +15,18 @@ namespace Aetherfit.Windows;
 
 public partial class MainWindow
 {
-    private const string SlotDragType = "AF_LAYER_SLOT";
-    private const string DesignDragType = "AF_LAYER_DESIGN";
+    private static string SlotDragType(bool isBefore) => isBefore ? "AF_LAYER_SLOT_BEFORE" : "AF_LAYER_SLOT_AFTER";
+    private static string DesignDragType(bool isBefore) => isBefore ? "AF_LAYER_DESIGN_BEFORE" : "AF_LAYER_DESIGN_AFTER";
+
+    private sealed class LayerPickerState
+    {
+        public Guid? Selection;
+        public string Filter = string.Empty;
+    }
 
     private bool additionalLayersPanelOpen = true;
-    private Guid? layerPickerSelection;
-    private string layerPickerFilter = string.Empty;
+    private readonly LayerPickerState beforeLayerPicker = new();
+    private readonly LayerPickerState afterLayerPicker = new();
     private string slotPickerFilter = string.Empty;
 
     // Index state for an in-flight drag; the payload itself is just a marker. Only read while a drop of the
@@ -28,8 +34,8 @@ public partial class MainWindow
     private int draggedSlot = -1;
     private (int Slot, int Design) draggedDesign = (-1, -1);
 
-    // Structural change requested by a row this frame (reorder/move/remove/add), executed after all slots
-    // have drawn so we never mutate the list mid-iteration.
+    // Structural change requested by a row this frame (reorder/move/remove/add), executed after both
+    // sections have drawn so we never mutate a list mid-iteration.
     private Action? pendingLayerEdit;
 
     private void DrawAdditionalLayersPanel(Guid id)
@@ -42,29 +48,39 @@ public partial class MainWindow
         if (!plugin.Configuration.AdditionalLayersHelpDismissed)
             DrawLayersHelpBox();
 
-        var slots = plugin.Configuration.GetLayerSlots(id);
-        DrawLayerPicker(id, slots);
+        var allSlots = plugin.Configuration.GetLayerSlots(id);
+        if (allSlots.Count > 0)
+        {
+            ImGui.TextDisabled("Layers are applied top to bottom within each section, using only designs that match your current job.");
+            ImGui.TextDisabled("When several designs in a layer match, one is picked at random. Drag a layer onto another to reorder it within its section.");
+            ImGui.Spacing();
+        }
+
+        // A design can only be used as one layer per base design - in Before or After, not both.
+        var usedDesignIds = allSlots.SelectMany(s => s.Designs).Select(l => l.DesignId).ToHashSet();
+        var beforeSlots = allSlots.Where(s => s.IsBefore).ToList();
+        var afterSlots = allSlots.Where(s => !s.IsBefore).ToList();
+
+        DrawSubheader("Applied Before");
+        ImGui.Indent();
+        DrawLayerSection(id, true, beforeSlots, afterSlots, usedDesignIds, beforeLayerPicker);
+        ImGui.Unindent();
         ImGui.Spacing();
 
-        if (slots.Count == 0)
-        {
-            ImGui.TextDisabled("No layers yet. Pick a design above and click Add Layer.");
-        }
-        else
-        {
-            ImGui.TextDisabled("Layers are applied top to bottom, using only designs that match your current job.");
-            ImGui.TextDisabled("When several designs in a layer match, one is picked at random. Drag a layer onto another to reorder it.");
-            for (var i = 0; i < slots.Count; i++)
-                DrawLayerSlot(id, slots, i);
-            DrawNewSlotDropZone(slots);
+        DrawSubheader("Applied After");
+        ImGui.Indent();
+        DrawLayerSection(id, false, afterSlots, beforeSlots, usedDesignIds, afterLayerPicker);
+        ImGui.Unindent();
 
-            if (pendingLayerEdit is { } edit)
-            {
-                pendingLayerEdit = null;
-                edit();
-                plugin.Configuration.SetLayerSlots(id, slots);
-                plugin.Configuration.Save();
-            }
+        if (pendingLayerEdit is { } edit)
+        {
+            pendingLayerEdit = null;
+            edit();
+            var merged = new List<DesignLayerSlot>(beforeSlots.Count + afterSlots.Count);
+            merged.AddRange(beforeSlots);
+            merged.AddRange(afterSlots);
+            plugin.Configuration.SetLayerSlots(id, merged);
+            plugin.Configuration.Save();
         }
 
         ImGui.Spacing();
@@ -78,10 +94,11 @@ public partial class MainWindow
     private void DrawLayersHelpBox()
     {
         const string helpText =
-            "Layers apply extra designs on top of this one whenever it is applied, working top to bottom. "
-            + "A layer can hold several designs — only those matching your current job are considered, and "
-            + "when more than one qualifies, a single design is chosen at random each time. "
-            + "Useful for accessories, job variants, or randomised extras.";
+            "Layers apply extra designs whenever this one is applied. Layers Applied Before go on first, so "
+            + "anything this design doesn't touch stays underneath it; layers Applied After go on last, "
+            + "overwriting whatever they touch. Each section works top to bottom, and a layer can hold several "
+            + "designs — only those matching your current job are considered, with one chosen at random when "
+            + "more than one qualifies. Useful for accessories, job variants, or randomised extras.";
 
         var style = ImGui.GetStyle();
         var pad = 8f * ImGuiHelpers.GlobalScale;
@@ -115,10 +132,31 @@ public partial class MainWindow
         ImGui.Spacing();
     }
 
-    private void DrawLayerPicker(Guid id, List<DesignLayerSlot> slots)
+    // One placement's worth of the panel: picker, slot list (or an empty hint), and the new-slot drop zone.
+    // Scoped under its own PushId so the Before/After sections' identically-shaped widgets never collide.
+    private void DrawLayerSection(Guid baseId, bool isBefore, List<DesignLayerSlot> slots,
+        List<DesignLayerSlot> otherSlots, HashSet<Guid> usedDesignIds, LayerPickerState picker)
     {
-        var existing = slots.SelectMany(s => s.Designs).Select(l => l.DesignId).ToHashSet();
-        var preview = layerPickerSelection is { } sel ? ResolveLinkedDesignName(sel) : "Select a design...";
+        using var sectionId = ImRaii.PushId(isBefore ? "LayerSectionBefore" : "LayerSectionAfter");
+
+        DrawLayerPicker(baseId, slots, usedDesignIds, isBefore, picker);
+        ImGui.Spacing();
+
+        if (slots.Count == 0)
+        {
+            ImGui.TextDisabled("No layers yet. Pick a design above and click Add Layer.");
+            return;
+        }
+
+        for (var i = 0; i < slots.Count; i++)
+            DrawLayerSlot(baseId, slots, otherSlots, usedDesignIds, i, isBefore);
+        DrawNewSlotDropZone(slots, isBefore);
+    }
+
+    private void DrawLayerPicker(Guid id, List<DesignLayerSlot> slots, HashSet<Guid> usedDesignIds,
+        bool isBefore, LayerPickerState picker)
+    {
+        var preview = picker.Selection is { } sel ? ResolveLinkedDesignName(sel) : "Select a design...";
 
         var style = ImGui.GetStyle();
         var addWidth = ImGui.CalcTextSize("Add Layer").X + (style.FramePadding.X * 2);
@@ -131,36 +169,39 @@ public partial class MainWindow
                 if (ImGui.IsWindowAppearing())
                     ImGui.SetKeyboardFocusHere();
                 ImGui.SetNextItemWidth(-1);
-                ImGui.InputTextWithHint("##layerFilter", "Filter by name...", ref layerPickerFilter, 64);
+                ImGui.InputTextWithHint("##layerFilter", "Filter by name...", ref picker.Filter, 64);
                 ImGui.Separator();
 
                 foreach (var (designId, name) in AllDesignsSorted())
                 {
-                    if (designId == id || existing.Contains(designId))
+                    if (designId == id || usedDesignIds.Contains(designId))
                         continue;
-                    if (layerPickerFilter.Length > 0 && !name.Contains(layerPickerFilter, StringComparison.OrdinalIgnoreCase))
+                    if (picker.Filter.Length > 0 && !name.Contains(picker.Filter, StringComparison.OrdinalIgnoreCase))
                         continue;
                     if (ImGui.Selectable($"{name}##layer{designId}"))
-                        layerPickerSelection = designId;
+                        picker.Selection = designId;
                 }
             }
         }
 
         ImGui.SameLine();
-        using (ImRaii.Disabled(layerPickerSelection is null))
+        using (ImRaii.Disabled(picker.Selection is null))
         {
-            if (ImGui.Button("Add Layer") && layerPickerSelection is { } pick)
+            if (ImGui.Button("Add Layer") && picker.Selection is { } pick)
             {
-                slots.Add(new DesignLayerSlot { Designs = { new DesignLayer { DesignId = pick } } });
-                plugin.Configuration.SetLayerSlots(id, slots);
-                plugin.Configuration.Save();
-                layerPickerSelection = null;
-                layerPickerFilter = string.Empty;
+                pendingLayerEdit = () => slots.Add(new DesignLayerSlot
+                {
+                    Designs = { new DesignLayer { DesignId = pick } },
+                    IsBefore = isBefore,
+                });
+                picker.Selection = null;
+                picker.Filter = string.Empty;
             }
         }
     }
 
-    private void DrawLayerSlot(Guid baseId, List<DesignLayerSlot> slots, int index)
+    private void DrawLayerSlot(Guid baseId, List<DesignLayerSlot> slots, List<DesignLayerSlot> otherSlots,
+        HashSet<Guid> usedDesignIds, int index, bool isBefore)
     {
         var slot = slots[index];
         using var slotId = ImRaii.PushId(index);
@@ -186,23 +227,26 @@ public partial class MainWindow
         using (ImRaii.PushFont(UiBuilder.IconFont))
             ImGui.TextDisabled(FontAwesomeIcon.GripVertical.ToIconString());
         ImGui.SameLine();
-        ImGui.Selectable(label);
+
+        var moveWidth = ImGui.GetFrameHeight();
+        var labelWidth = Math.Max(0f, ImGui.GetContentRegionAvail().X - moveWidth - ImGui.GetStyle().ItemSpacing.X);
+        ImGui.Selectable(label, false, ImGuiSelectableFlags.None, new Vector2(labelWidth, 0));
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Drag to reorder. Drop a design here to add it to this layer's random pick.\n"
+            ImGui.SetTooltip("Drag to reorder within this section. Drop a design here to add it to this layer's random pick.\n"
                              + "Only designs matching your current job are rolled - if just one matches, it is\n"
                              + "applied outright, and if none match the layer is skipped.");
 
         if (ImGui.BeginDragDropSource())
         {
             draggedSlot = index;
-            ImGui.SetDragDropPayload(SlotDragType, ReadOnlySpan<byte>.Empty);
+            ImGui.SetDragDropPayload(SlotDragType(isBefore), ReadOnlySpan<byte>.Empty);
             ImGui.TextUnformatted(label);
             ImGui.EndDragDropSource();
         }
 
         if (ImGui.BeginDragDropTarget())
         {
-            if (AcceptDragPayload(SlotDragType) && draggedSlot >= 0 && draggedSlot != index)
+            if (AcceptDragPayload(SlotDragType(isBefore)) && draggedSlot >= 0 && draggedSlot != index)
             {
                 var from = draggedSlot;
                 pendingLayerEdit = () =>
@@ -213,7 +257,7 @@ public partial class MainWindow
                 };
             }
 
-            if (AcceptDragPayload(DesignDragType) && draggedDesign.Slot >= 0 && draggedDesign.Slot != index)
+            if (AcceptDragPayload(DesignDragType(isBefore)) && draggedDesign.Slot >= 0 && draggedDesign.Slot != index)
             {
                 var (fromSlot, fromDesign) = draggedDesign;
                 pendingLayerEdit = () =>
@@ -227,15 +271,29 @@ public partial class MainWindow
             ImGui.EndDragDropTarget();
         }
 
+        ImGui.SameLine();
+        if (ImGuiComponents.IconButton(isBefore ? FontAwesomeIcon.ArrowRight : FontAwesomeIcon.ArrowLeft))
+        {
+            var moveToBefore = !isBefore;
+            pendingLayerEdit = () =>
+            {
+                slots.RemoveAt(index);
+                slot.IsBefore = moveToBefore;
+                otherSlots.Add(slot);
+            };
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(isBefore ? "Move this layer to Applied After" : "Move this layer to Applied Before");
+
         ImGui.Indent();
         for (var d = 0; d < slot.Designs.Count; d++)
-            DrawLayerDesignRow(slots, index, d);
-        DrawAddToSlotButton(baseId, slots, slot);
+            DrawLayerDesignRow(slots, index, d, isBefore);
+        DrawAddToSlotButton(baseId, usedDesignIds, slot);
         ImGui.Unindent();
         ImGui.Spacing();
     }
 
-    private void DrawLayerDesignRow(List<DesignLayerSlot> slots, int slotIndex, int designIndex)
+    private void DrawLayerDesignRow(List<DesignLayerSlot> slots, int slotIndex, int designIndex, bool isBefore)
     {
         var slot = slots[slotIndex];
         var layer = slot.Designs[designIndex];
@@ -265,7 +323,7 @@ public partial class MainWindow
         if (ImGui.BeginDragDropSource(ImGuiDragDropFlags.SourceAllowNullId))
         {
             draggedDesign = (slotIndex, designIndex);
-            ImGui.SetDragDropPayload(DesignDragType, ReadOnlySpan<byte>.Empty);
+            ImGui.SetDragDropPayload(DesignDragType(isBefore), ReadOnlySpan<byte>.Empty);
             ImGui.TextUnformatted(name);
             ImGui.EndDragDropSource();
         }
@@ -284,7 +342,7 @@ public partial class MainWindow
         ImGui.Unindent();
     }
 
-    private void DrawAddToSlotButton(Guid baseId, List<DesignLayerSlot> slots, DesignLayerSlot slot)
+    private void DrawAddToSlotButton(Guid baseId, HashSet<Guid> usedDesignIds, DesignLayerSlot slot)
     {
         if (ImGuiComponents.IconButton(FontAwesomeIcon.Plus))
         {
@@ -304,10 +362,9 @@ public partial class MainWindow
         ImGui.InputTextWithHint("##slotFilter", "Filter by name...", ref slotPickerFilter, 64);
         ImGui.Separator();
 
-        var existing = slots.SelectMany(s => s.Designs).Select(l => l.DesignId).ToHashSet();
         foreach (var (designId, name) in AllDesignsSorted())
         {
-            if (designId == baseId || existing.Contains(designId))
+            if (designId == baseId || usedDesignIds.Contains(designId))
                 continue;
             if (slotPickerFilter.Length > 0 && !name.Contains(slotPickerFilter, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -321,7 +378,7 @@ public partial class MainWindow
 
     // A drop target below the last slot: dropping a design here splits it out into its own new layer, and
     // dropping a layer here moves it to the bottom of the stack.
-    private void DrawNewSlotDropZone(List<DesignLayerSlot> slots)
+    private void DrawNewSlotDropZone(List<DesignLayerSlot> slots, bool isBefore)
     {
         using (ImRaii.PushColor(ImGuiCol.Text, ImGui.GetColorU32(ImGuiCol.TextDisabled)))
             ImGui.Selectable("Drop a design here to move it into its own new layer##newSlotZone");
@@ -329,7 +386,7 @@ public partial class MainWindow
         if (!ImGui.BeginDragDropTarget())
             return;
 
-        if (AcceptDragPayload(SlotDragType) && draggedSlot >= 0 && draggedSlot != slots.Count - 1)
+        if (AcceptDragPayload(SlotDragType(isBefore)) && draggedSlot >= 0 && draggedSlot != slots.Count - 1)
         {
             var from = draggedSlot;
             pendingLayerEdit = () =>
@@ -340,14 +397,14 @@ public partial class MainWindow
             };
         }
 
-        if (AcceptDragPayload(DesignDragType) && draggedDesign.Slot >= 0)
+        if (AcceptDragPayload(DesignDragType(isBefore)) && draggedDesign.Slot >= 0)
         {
             var (fromSlot, fromDesign) = draggedDesign;
             pendingLayerEdit = () =>
             {
                 var moved = slots[fromSlot].Designs[fromDesign];
                 slots[fromSlot].Designs.RemoveAt(fromDesign);
-                slots.Add(new DesignLayerSlot { Designs = { moved } });
+                slots.Add(new DesignLayerSlot { Designs = { moved }, IsBefore = isBefore });
             };
         }
 

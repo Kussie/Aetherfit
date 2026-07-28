@@ -54,10 +54,10 @@ public sealed partial class ForeignGalleryWindow
             }
         }
 
-        var (thumbWidth, thumbHeight) = ComputeThumbSize();
+        var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
 
         foreach (var (name, child) in tagRoot.Children)
-            DrawTagGroupNode(name, name, child, thumbWidth, thumbHeight);
+            DrawTagGroupNode(name, name, child, columns, thumbWidth, thumbHeight);
 
         if (untagged.Count > 0)
         {
@@ -65,13 +65,13 @@ public sealed partial class ForeignGalleryWindow
             if (DrawTagSectionHeader($"Untagged ({untagged.Count})", "untagged"))
             {
                 ImGui.Spacing();
-                DrawGridRange(untagged, 0, untagged.Count, thumbWidth, thumbHeight);
+                DrawGridRange(untagged, 0, untagged.Count, columns, thumbWidth, thumbHeight);
                 ImGui.Spacing();
             }
         }
     }
 
-    private void DrawTagGroupNode(string name, string path, ForeignTagNode node, float thumbWidth, float thumbHeight)
+    private void DrawTagGroupNode(string name, string path, ForeignTagNode node, int columns, float thumbWidth, float thumbHeight)
     {
         ImGui.Separator();
         var label = $"{name} ({CountTagNodeDesigns(node)})";
@@ -82,11 +82,11 @@ public sealed partial class ForeignGalleryWindow
         ImGui.Spacing();
 
         foreach (var (childName, child) in node.Children)
-            DrawTagGroupNode(childName, $"{path}/{childName}", child, thumbWidth, thumbHeight);
+            DrawTagGroupNode(childName, $"{path}/{childName}", child, columns, thumbWidth, thumbHeight);
 
         if (node.Designs.Count > 0)
         {
-            DrawGridRange(node.Designs, 0, node.Designs.Count, thumbWidth, thumbHeight);
+            DrawGridRange(node.Designs, 0, node.Designs.Count, columns, thumbWidth, thumbHeight);
             ImGui.Spacing();
         }
 

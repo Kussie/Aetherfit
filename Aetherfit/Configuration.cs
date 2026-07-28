@@ -46,6 +46,7 @@ public class Configuration : IPluginConfiguration
 
     public bool GalleryPinFavouritesFirst { get; set; } = true;
     public float GalleryThumbTargetWidth { get; set; } = 220f;
+    public float ForeignGalleryThumbTargetWidth { get; set; } = 220f;
 
     // When disabled, the Additional Design Layers panel is hidden and applying a base design never applies layers.
     public bool EnableRandomLayers { get; set; } = false;
@@ -62,9 +63,6 @@ public class Configuration : IPluginConfiguration
         _ => true, // Glamourer (and any future required source) has no toggle
     };
 
-    // Off by default - clears whatever's sitting in Penumbra's unlocked temp-settings slot right before
-    // applying a base design from that source (not before additional layers). Glamourer isn't included:
-    // it has its own native "Reset Temporary Settings" design flag already.
     public bool GlamaholicResetTemporarySettingsBeforeApply { get; set; }
     public bool GlamourPlateResetTemporarySettingsBeforeApply { get; set; }
     public bool SimpleGlamourSwitcherResetTemporarySettingsBeforeApply { get; set; }
@@ -108,6 +106,21 @@ public class Configuration : IPluginConfiguration
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
 
+    public bool TagSuggestionEnabled { get; set; } = true;
+
+    public float TagSuggestionThreshold { get; set; } = 0.35f;
+
+    // Which tagger model to use, by TagModelStore.Models id. Unknown values fall back to the first entry.
+    public string TagSuggestionModel { get; set; } = "wd-vit-tagger-v3";
+
+    // Also suggest composite "category/type" tags (e.g. swimsuit/bikini) derived from Danbooru's
+    // tag-implication graph, alongside the flat tags the model fired.
+    public bool TagSuggestionComposites { get; set; } = true;
+
+    public List<string> TagSuggestionBlacklist { get; set; } = new() { "1girl", "1boy", "solo", "looking at viewer" };
+
+    public Dictionary<string, string> TagSuggestionRenames { get; set; } = new() { ["pantyhose"] = "stockings" };
+
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
@@ -115,15 +128,13 @@ public class Configuration : IPluginConfiguration
 
     public string LiveShareInstallId { get; set; } = string.Empty;
 
-    // Round-trips config fields this build doesn't know about (e.g. settings written by an
-    // experimental branch), so switching builds doesn't silently wipe them on the next save.
     [Newtonsoft.Json.JsonExtensionData]
     private IDictionary<string, Newtonsoft.Json.Linq.JToken>? ExtensionData { get; set; }
 
     [NonSerialized]
-    private Services.ConfigurationSaver? saver;
+    private Services.Persistence.ConfigurationSaver? saver;
 
-    public void AttachSaver(Services.ConfigurationSaver configSaver) => saver = configSaver;
+    public void AttachSaver(Services.Persistence.ConfigurationSaver configSaver) => saver = configSaver;
 
     public void Save()
     {
@@ -143,7 +154,7 @@ public class Configuration : IPluginConfiguration
     public List<(string Directory, string DisplayName)> DistinctMods()
         => CachedOutfits.Values.SelectMany(o => o.Mods)
             .GroupBy(m => m.Directory, StringComparer.OrdinalIgnoreCase)
-            .Select(g => (g.Key, Services.DesignAttributionService.ModDisplayName(g.First())))
+            .Select(g => (g.Key, Services.Designs.DesignAttributionService.ModDisplayName(g.First())))
             .OrderBy(m => m.Item2, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -163,9 +174,6 @@ public class Configuration : IPluginConfiguration
             DesignJobAssociations[id] = jobs;
     }
 
-    // Returns the design's locally-owned Tags/Description, seeding it from Glamourer's current value the
-    // first time this design is seen. Once seeded, Glamourer's value is only pulled in again via an
-    // explicit sync action - this never silently overwrites an existing local entry.
     public LocalDesignMeta GetOrSeedDesignMeta(Guid id, string? glamDescription, IReadOnlyList<string> glamTags)
     {
         if (DesignMeta.TryGetValue(id, out var existing))
@@ -180,8 +188,6 @@ public class Configuration : IPluginConfiguration
         return seeded;
     }
 
-    // Additive only: adds any tag present on the Glamourer design that isn't already in the local list.
-    // Returns how many were actually added, so the caller can show "+N tags added".
     public int MergeTagsFromGlamourer(Guid id, CachedOutfit outfit)
     {
         var meta = GetOrSeedDesignMeta(id, outfit.GlamourerDescription, outfit.GlamourerTags);
@@ -202,8 +208,6 @@ public class Configuration : IPluginConfiguration
         return added;
     }
 
-    // Full overwrite: replaces the local description with Glamourer's current one. Callers must confirm
-    // with the user first - this is destructive to any local edit.
     public void PullDescriptionFromGlamourer(Guid id, CachedOutfit outfit)
     {
         var meta = GetOrSeedDesignMeta(id, outfit.GlamourerDescription, outfit.GlamourerTags);
@@ -282,13 +286,9 @@ public class CharacterLoginSettings
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
-    // Most recent design (+ exact layer combo) applied through Aetherfit on this character.
-    // Cleared on revert. Used by LoginAction.ReapplyLast.
     public Guid? LastWornDesign { get; set; }
     public List<Guid> LastWornLayers { get; set; } = new();
-
-    // Recently applied base designs, most recent first, capped. Random picks avoid the head
-    // outright and down-weight the rest so the same design doesn't come up in quick succession.
+    public List<Guid> LastWornBeforeLayers { get; set; } = new();
     public List<Guid> RecentDesignHistory { get; set; } = new();
     public bool ReapplyOnZoneChange { get; set; } = false;
 }
@@ -329,17 +329,12 @@ public class CachedOutfit
     public List<CachedMod> Mods { get; set; } = new();
     public List<CachedDesignLink> Links { get; set; } = new();
 
-    // The design's clan (subrace, 1-16) and gender (0 male / 1 female). We keep these even when the
-    // design doesn't apply them, since the skin/hair colour palettes in human.cmp are picked by clan + gender.
     public int CustomizeClan { get; set; }
     public int CustomizeGender { get; set; }
 
-    // Whether the design actually applies its clan/gender. When it doesn't, the appearance takes the wearing
-    // character's race/gender instead - which matters for attributing e.g. hairstyles to a mod.
     public bool CustomizeClanApplied { get; set; }
     public bool CustomizeGenderApplied { get; set; }
 
-    // null = the design does not apply this toggle (grey circle). true/false = the design forces the toggle on/off.
     public bool? HatVisible { get; set; }
     public bool? WeaponVisible { get; set; }
     public bool? VisorToggled { get; set; }
@@ -418,8 +413,6 @@ public class CachedMod
     public Dictionary<string, string> Settings { get; set; } = new();
 }
 
-// A Glamourer design link: another design applied before/after this one, gated by a job/gearset condition,
-// and limited to a subset of application aspects (the LinkType flags).
 [Serializable]
 public class CachedDesignLink
 {
@@ -444,16 +437,13 @@ public enum DesignLinkApplication
     Accessories = 16,
 }
 
-// One slot in a base design's additional-layer stack. Slots are applied top-down; when a slot holds several
-// designs, one job-matching design is picked at random before continuing to the next slot.
 [Serializable]
 public class DesignLayerSlot
 {
     public List<DesignLayer> Designs { get; set; } = new();
+    public bool IsBefore { get; set; }
 }
 
-// An additional design layer: a design applied on top of the base design. AllJobs applies regardless of the
-// wearer's job; otherwise it only applies for the listed jobs.
 [Serializable]
 public class DesignLayer
 {
