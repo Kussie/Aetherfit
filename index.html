@@ -13,7 +13,7 @@
 <header class="hero">
   <img class="hero-icon" src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Data/icon-light.png" alt="Aetherfit icon">
   <h1>Aetherfit</h1>
-  <p class="punchline">An alternative simple frontend for Glamourer, because glamour is the real endgame.</p>
+  <p class="punchline">Your Virtual Atelier awaits — because glamour is the real endgame!</p>
   <div class="hero-links">
     <a class="button" href="#installation">Install</a>
     <a class="button button-ghost" href="https://github.com/Kussie/Aetherfit">View on GitHub</a>
@@ -24,16 +24,28 @@
 
   <section id="about">
     <h2>About</h2>
-    <p class="requires">
-      <strong>Requires:</strong>
-      <a href="https://github.com/xivdev/Penumbra">Penumbra</a> and
-      <a href="https://github.com/Ottermandias/Glamourer">Glamourer</a>
+    <div class="requirements">
+      <span class="req-badge req-badge--required">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.8 8.4 7 10.6 11.2 5.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <strong>Requires</strong> <a href="https://github.com/xivdev/Penumbra">Penumbra</a> + <a href="https://github.com/Ottermandias/Glamourer">Glamourer</a>
+      </span>
+      <span class="req-badge">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.8v6.4M4.8 8h6.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <strong>Optional</strong> <a href="https://github.com/caitlyn-gg/Glamaholic">Glamaholic</a>
+      </span>
+      <span class="req-badge">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.8v6.4M4.8 8h6.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <strong>Optional</strong> <a href="https://github.com/Caraxi/SimpleGlamourSwitcher">Simple Glamour Switcher</a>
+      </span>
+    </div>
+    <p class="requires-note">
+      Glamaholic plates, Simple Glamour Switcher designs, and the game's own Glamour Plates are all optional extra
+      sources — install any of them and Aetherfit pulls their designs into the same gallery, toggleable per source
+      from the Integrations tab.
     </p>
-    <p class="requires">
-      <strong>Optional:</strong>
-      <a href="https://github.com/caitlyn-gg/Glamaholic">Glamaholic</a> — if installed, Aetherfit can also browse
-      and apply your Glamaholic plates. The game's own native Glamour Plates are supported too, no extra plugin
-      required. Both sources can be toggled on or off independently from the Integrations tab.
+    <p class="hook">
+      Stop juggling folders and separate plugin windows to find the right fit — Aetherfit brings your whole
+      wardrobe into one browsable, taggable, screenshot-rich gallery.
     </p>
     <p>
       Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV.
@@ -48,7 +60,7 @@
       Aetherfit is meant to be a lightweight, easy-to-use alternative to the default Glamourer interface — making
       it much easier to quickly find and apply the perfect design for any occasion. You'll still use Glamourer
       itself (or Glamaholic, or the game's own Glamour Dresser) to create, edit, and manage your actual designs;
-      Aetherfit is focused purely on making it quick and easy to choose which one to switch to.
+      Aetherfit is focused purely on making it quick and easy to choose which design to switch to quickly.
     </p>
     <p>
       It also provides a quick and easy way to preview your designs with screenshots and images that can be added
@@ -70,15 +82,17 @@
 
   <section id="features">
     <h2>Features</h2>
-    <ul class="feature-list">
-      <li>Source designs from Glamourer, Glamaholic, Simple Glamour Switcher, and the game's own Glamour Plates, all in one gallery</li>
-      <li>Browse designs by tags</li>
-      <li>Add screenshots to designs</li>
-      <li>Apply a random design to your character, or a random design based on a selection of tags</li>
-      <li>Apply a random design (or random design based on tags) to a character automatically when logging in</li>
-      <li>Share your design gallery with friends</li>
-      <li>Associate designs with specific jobs</li>
-      <li>Apply multiple layered designs, including randomly selecting a design from a pool — useful for a random weapon appearance, for example</li>
+    <p class="features-intro">Everything you need to find, tag, and nail the perfect fit:</p>
+    <ul class="feature-grid">
+      <li>Source designs from Glamourer, Glamaholic, Simple Glamour Switcher, and the game's own Glamour Plates — all in one location</li>
+      <li>Browse and filter your whole wardrobe by tags in seconds</li>
+      <li>Add screenshots so you always know exactly what a design looks like before you commit</li>
+      <li>Get AI-suggested tags for a design from its own screenshots, powered by a local, on-device image tagger — nothing is ever uploaded anywhere</li>
+      <li>Feeling lucky? Apply a random design, or narrow it down to a random pick from a set of tags</li>
+      <li>Auto-dress on login — apply a random (or tag-matched) design the moment you log in</li>
+      <li>Share your whole (Or partial) gallery with friend</li>
+      <li>Tie designs to specific jobs, so the right fit is always one click away</li>
+      <li>Stack multiple layered designs, including a random pick from a pool — great for a surprise weapon appearance</li>
     </ul>
     <p class="note">
       <strong>Composite tags:</strong> tags can be written as <code>category/type</code>, e.g.
@@ -91,11 +105,21 @@
       <code>summer/casual</code> and <code>winter/casual</code> appears under both, keeping same-named subtags
       (like <code>casual</code>) apart under their own parent.
     </p>
+    <p class="note">
+      <strong>AI tag suggestions:</strong> click the "Suggest tags" button in a design's Tags section to have a
+      local image-tagging model look at that design's screenshots and propose tags for it — pick the ones you
+      want and add them with one click. Everything runs on your own PC; no image or tag data is ever sent
+      anywhere. The first time you use it, Aetherfit downloads a one-time model (choose from five, ranging from
+      a few hundred MB up to ~1.2 GB, trading off size/speed against accuracy) plus the ONNX Runtime needed to
+      run it — both configurable from <strong>Settings → Tag Suggestions</strong>, along with the suggestion
+      confidence threshold, an option to also suggest composite tags (see above), and a blacklist for tags you
+      never want suggested again (Shift+right-click a suggestion, or add one manually in Settings).
+    </p>
   </section>
 
   <section id="screenshots">
     <h2>Screenshots</h2>
-    <p class="hint">Click a screenshot to view it full size.</p>
+    <p class="hint">See it in action — click any screenshot to view it full size.</p>
     <div class="gallery">
       <figure>
         <a href="#lb-main-1"><img src="https://raw.githubusercontent.com/Kussie/Aetherfit/master/Screenshots/Main-Interface-1.png" alt="Main interface" loading="lazy"></a>
@@ -159,6 +183,7 @@
 
   <section id="installation">
     <h2>Installation</h2>
+    <p class="lead-in">Getting started takes less than a minute:</p>
     <p>
       Open the Dalamud Settings menu in game and follow the steps below. This can be done through the
       button at the bottom of the plugin installer or by typing <code>/xlsettings</code> in the chat.
@@ -186,6 +211,7 @@
 
   <section id="commands">
     <h2>Command usage</h2>
+    <p class="lead-in">Prefer the keyboard? Every core action is available as a slash command too:</p>
     <dl class="commands">
       <dt><code>/aetherfit</code></dt>
       <dd>Opens the main interface.</dd>

@@ -57,8 +57,36 @@ pre code {
 }
 
 .hero {
+  position: relative;
   text-align: center;
   padding: 4rem 1.5rem 3rem;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, rgba(255, 217, 102, 0.16), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 1rem 0 0;
 }
 
 .hero-icon {
@@ -131,8 +159,50 @@ section h2 {
   margin-bottom: 1.25rem;
 }
 
-.requires {
+.requirements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.req-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.4em 0.9em;
+  font-size: 0.9rem;
   color: var(--text-muted);
+}
+
+.req-badge svg {
+  width: 0.9em;
+  height: 0.9em;
+  flex-shrink: 0;
+}
+
+.req-badge strong {
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 0.3em;
+}
+
+.req-badge--required {
+  border-color: var(--accent);
+}
+
+.requires-note {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.hook {
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin: 1.25rem 0;
 }
 
 .note {
@@ -142,12 +212,36 @@ section h2 {
   padding-left: 1rem;
 }
 
-.feature-list {
-  padding-left: 1.25rem;
+.features-intro {
+  color: var(--text-muted);
+  margin-bottom: 1rem;
 }
 
-.feature-list li {
-  margin-bottom: 0.5rem;
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem 1.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+}
+
+.feature-grid li {
+  position: relative;
+  padding-left: 1.6rem;
+}
+
+.feature-grid li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.lead-in {
+  color: var(--text-muted);
+  margin-bottom: 1rem;
 }
 
 .hint {
@@ -295,6 +389,10 @@ footer {
 
 @media (max-width: 640px) {
   .gallery {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-grid {
     grid-template-columns: 1fr;
   }
 
