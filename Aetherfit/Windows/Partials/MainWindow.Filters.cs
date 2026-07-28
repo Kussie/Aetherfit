@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Aetherfit.Services;
+using Aetherfit.Services.Game;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
@@ -227,30 +227,9 @@ public partial class MainWindow
             ImGui.SetTooltip("Show only favourite designs");
     }
 
-    // Vanilla and Modded are mutually exclusive - turning one on turns the other off (both can be off).
-    private void DrawVanillaToggle()
-    {
-        if (Pills.DrawToggle(VanillaToggleLabel, "vanillaFilter", filterVanillaOnly))
-        {
-            filterVanillaOnly = !filterVanillaOnly;
-            if (filterVanillaOnly)
-                filterModdedOnly = false;
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Show only designs with no mod associations");
-    }
+    private void DrawVanillaToggle() => Pills.DrawVanillaToggle(ref filterVanillaOnly, ref filterModdedOnly, "");
 
-    private void DrawModdedToggle()
-    {
-        if (Pills.DrawToggle(ModdedToggleLabel, "moddedFilter", filterModdedOnly))
-        {
-            filterModdedOnly = !filterModdedOnly;
-            if (filterModdedOnly)
-                filterVanillaOnly = false;
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Show only designs with mod associations");
-    }
+    private void DrawModdedToggle() => Pills.DrawModdedToggle(ref filterVanillaOnly, ref filterModdedOnly, "");
 
     // Compact letter toggle (D/M/E) standing in for a long checkbox label; the full meaning lives in the tooltip.
     private static void DrawSearchScopeToggle(string letter, string tooltip, ref bool enabled)
@@ -282,7 +261,7 @@ public partial class MainWindow
     private bool DrawTagJobPickerButton(float width)
     {
         var count = filterTags.Count + filterJobs.Count + filterMods.Count;
-        var label = count == 0 ? "Filter by tag(s), job or mod..." : count == 1 ? "1 tag/job/mod filter active" : $"{count} tag/job/mod filters active";
+        var label = Pills.TagJobFilterLabel(count);
 
         bool clicked;
         using (ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f)))

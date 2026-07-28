@@ -142,42 +142,22 @@ public sealed class GlamourPlateService : IDesignProvider
             return false;
         }
 
-        var (stateResult, state) = glamourer.GetState();
-        if (stateResult != GlamourerApiEc.Success || state == null)
+        return glamourer.RelayApply(nativeId, designName, quiet, "Glamour Plate", state =>
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{designName}\": couldn't read current state ({stateResult}).");
-            return false;
-        }
-
-        var equipment = new JObject();
-        for (var slot = 0; slot < SlotCount; slot++)
-        {
-            equipment[SlotMap[slot].ToString()] = new JObject
+            var equipment = new JObject();
+            for (var slot = 0; slot < SlotCount; slot++)
             {
-                ["ItemId"] = plate.ItemIds[slot],
-                ["Stain"] = plate.Stain0Ids[slot],
-                ["Stain2"] = plate.Stain1Ids[slot],
-                ["Apply"] = true,
-                ["ApplyStain"] = true,
-            };
-        }
-        state["Equipment"] = equipment;
-
-        var applyResult = glamourer.ApplyEquipmentState(state);
-        if (applyResult != GlamourerApiEc.Success)
-        {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{designName}\": {applyResult}");
-            Plugin.Log.Warning("Failed to apply Glamour Plate design {Name} ({Id}): {Result}", designName, nativeId, applyResult);
-            return false;
-        }
-
-        if (!quiet)
-        {
-            SoundService.PlayApply();
-            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"");
-        }
-        Plugin.Log.Info("Applied Glamour Plate design {Name} ({Id})", designName, nativeId);
-        return true;
+                equipment[SlotMap[slot].ToString()] = new JObject
+                {
+                    ["ItemId"] = plate.ItemIds[slot],
+                    ["Stain"] = plate.Stain0Ids[slot],
+                    ["Stain2"] = plate.Stain1Ids[slot],
+                    ["Apply"] = true,
+                    ["ApplyStain"] = true,
+                };
+            }
+            state["Equipment"] = equipment;
+        }, s => glamourer.ApplyEquipmentState(s));
     }
 
     // Fresh in-session data first, falling back to whatever was last persisted to CachedOutfits -

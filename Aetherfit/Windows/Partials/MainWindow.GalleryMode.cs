@@ -18,13 +18,6 @@ public partial class MainWindow
 {
     private enum GallerySortField { Name, LastModified, Created }
 
-    private const float CoverMinThumbSize = 96f;
-    // Portrait aspect to suit character screenshots.
-    private const float CoverAspectRatio = 3f / 2f;
-    // Thumbnail-size slider bounds, unscaled.
-    private const float CoverThumbSliderMin = 140f;
-    private const float CoverThumbSliderMax = 360f;
-
     private bool coverMode;
     private readonly Dictionary<Guid, int> galleryImageIndex = new();
     // Ellipsized cell labels, cached because truncation re-measures per character.
@@ -169,10 +162,7 @@ public partial class MainWindow
             gallerySortField = (GallerySortField)fieldIdx;
 
         ImGui.SameLine(0, style.ItemInnerSpacing.X);
-        if (ImGuiComponents.IconButton(gallerySortAscending ? FontAwesomeIcon.SortAmountUp : FontAwesomeIcon.SortAmountDown))
-            gallerySortAscending = !gallerySortAscending;
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(gallerySortAscending ? "Ascending — click to switch to descending" : "Descending — click to switch to ascending");
+        GalleryDraw.DrawSortDirectionToggle(ref gallerySortAscending);
 
         ImGui.SameLine();
         var pinFavs = plugin.Configuration.GalleryPinFavouritesFirst;
@@ -187,28 +177,9 @@ public partial class MainWindow
         var countText = HasAnyFilter
             ? $"{cachedVisible.Count} of {designsCount} designs"
             : cachedVisible.Count == 1 ? "1 design" : $"{cachedVisible.Count} designs";
-        const string sizeLabel = "Size:";
-        var sliderW = 120f * scale;
-        var rightW = ImGui.CalcTextSize(sizeLabel).X + style.ItemInnerSpacing.X + sliderW
-                   + style.ItemSpacing.X + ImGui.CalcTextSize(countText).X;
-
-        ImGui.SameLine(Math.Max(ImGui.GetCursorPosX() + style.ItemSpacing.X,
-            ImGui.GetContentRegionMax().X - rightW));
-        ImGui.AlignTextToFramePadding();
-        ImGui.TextDisabled(sizeLabel);
-        ImGui.SameLine(0, style.ItemInnerSpacing.X);
-        ImGui.SetNextItemWidth(sliderW);
         var thumbSize = plugin.Configuration.GalleryThumbTargetWidth;
-        if (ImGui.SliderFloat("##galleryThumbSize", ref thumbSize, CoverThumbSliderMin, CoverThumbSliderMax, ""))
-            plugin.Configuration.GalleryThumbTargetWidth = thumbSize;
-        if (ImGui.IsItemDeactivatedAfterEdit())
-            plugin.Configuration.Save();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Thumbnail size");
-
-        ImGui.SameLine();
-        ImGui.AlignTextToFramePadding();
-        ImGui.TextDisabled(countText);
+        GalleryDraw.DrawThumbSizeAndCount("##galleryThumbSize", ref thumbSize, countText, () => plugin.Configuration.Save());
+        plugin.Configuration.GalleryThumbTargetWidth = thumbSize;
     }
 
     private static bool FiltersEqual<TKey>(Dictionary<TKey, bool> a, Dictionary<TKey, bool> b) where TKey : notnull
@@ -367,25 +338,36 @@ public partial class MainWindow
     // Recomputed fresh wherever it's needed (rather than once per grid) - grouped/nested sections
     // shrink the available width via ImGui.Indent(), so column count has to be reevaluated per section.
     private (int Columns, float ThumbWidth, float ThumbHeight) ComputeGridLayout()
-    {
-        var spacing = ImGui.GetStyle().ItemSpacing.X;
-        var avail = ImGui.GetContentRegionAvail().X;
-        // As many columns as the target thumbnail width allows.
-        var target = Math.Max(CoverMinThumbSize, plugin.Configuration.GalleryThumbTargetWidth) * ImGuiHelpers.GlobalScale;
-        var columns = Math.Max(1, (int)((avail + spacing) / (target + spacing)));
-        var thumbWidth = Math.Max(CoverMinThumbSize, (avail - (columns - 1) * spacing) / columns);
-        var thumbHeight = thumbWidth * CoverAspectRatio;
-        return (columns, thumbWidth, thumbHeight);
-    }
+        => GalleryDraw.ComputeGridLayout(plugin.Configuration.GalleryThumbTargetWidth);
 
+    // Row-clipped so a large gallery doesn't request a texture for every design at once - only rows
+    // actually scrolled into view get drawn. Shared by the flat grid, the favourites split, and every
+    // grouped view's per-section draw, so clipping here benefits all of them for free.
     private void DrawCoverGridRange(List<DesignLeaf> visible, int start, int end, int columns, float thumbWidth, float thumbHeight)
     {
-        for (var i = start; i < end; i++)
+        var count = end - start;
+        if (count <= 0)
+            return;
+
+        var rowHeight = thumbHeight + ImGui.GetStyle().ItemSpacing.Y * 2 + ImGui.GetTextLineHeight();
+        var rowCount = (count + columns - 1) / columns;
+
+        var clipper = new ImGuiListClipper();
+        clipper.Begin(rowCount, rowHeight);
+        while (clipper.Step())
         {
-            if ((i - start) % columns != 0)
-                ImGui.SameLine();
-            DrawCoverCell(visible[i], thumbWidth, thumbHeight);
+            for (var row = clipper.DisplayStart; row < clipper.DisplayEnd; row++)
+            {
+                for (var col = 0; col < columns; col++)
+                {
+                    var i = start + row * columns + col;
+                    if (i >= end) break;
+                    if (col != 0) ImGui.SameLine();
+                    DrawCoverCell(visible[i], thumbWidth, thumbHeight);
+                }
+            }
         }
+        clipper.End();
     }
 
     private void SortGalleryDesigns(List<DesignLeaf> designs)
@@ -605,9 +587,7 @@ public partial class MainWindow
         // One label line per cell so rows stay even; long names get an ellipsis and a tooltip.
         var fullName = design.DisplayName;
         var label = FitCellLabel(design.Id, fullName, thumbWidth);
-        var labelWidth = ImGui.CalcTextSize(label).X;
-        var indent = Math.Max(0f, (thumbWidth - labelWidth) * 0.5f);
-        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + indent);
+        GalleryDraw.IndentForCenteredLabel(thumbWidth, label);
 
         var hasColor = design.Color != 0;
         using (ImRaii.PushColor(ImGuiCol.Text, design.Color, hasColor))

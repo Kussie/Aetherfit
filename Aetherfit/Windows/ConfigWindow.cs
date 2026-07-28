@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Aetherfit.Services;
 using Aetherfit.Services.Integrations;
+using Aetherfit.Services.Tagging;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
@@ -47,6 +47,7 @@ public class ConfigWindow : Window, IDisposable
 
         DrawTab("General", DrawGeneralTab);
         DrawTab("Login & Zoning", DrawLoginSection);
+        DrawTab("Tag Suggestions", DrawTagSuggestionsSection);
         DrawTab("Commands", DrawCommandsSection);
         DrawTab("Integrations", DrawIntegrationsTab);
     }
@@ -105,7 +106,7 @@ public class ConfigWindow : Window, IDisposable
         ImGui.PopItemWidth();
 
         var enableLayers = cfg.EnableRandomLayers;
-        if (ImGui.Checkbox("Enable Additional Design Layers feature (Glamourer Designs only)", ref enableLayers))
+        if (ImGui.Checkbox("Enable Additional Design Layers feature", ref enableLayers))
         {
             cfg.EnableRandomLayers = enableLayers;
             cfg.Save();
@@ -141,6 +142,204 @@ public class ConfigWindow : Window, IDisposable
         ImGui.Spacing();
         ImGui.TextDisabled($"Aetherfit v{Plugin.Version}");
     }
+
+    private void DrawTagSuggestionsSection()
+    {
+        var cfg = plugin.Configuration;
+        var store = plugin.TagModel;
+
+        var enabled = cfg.TagSuggestionEnabled;
+        if (ImGui.Checkbox("Enable Tag Suggestion Feature", ref enabled))
+        {
+            cfg.TagSuggestionEnabled = enabled;
+            cfg.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("When off, the Suggest Tags button is hidden on designs and the options below are collapsed.");
+        ImGui.Spacing();
+
+        if (enabled)
+        {
+            ImGui.TextDisabled("Suggests tags for a design from its screenshots. Everything runs locally on your CPU;\nno images ever leave your machine.");
+            ImGui.Spacing();
+
+            DrawTagModelPicker(store);
+            ImGui.Spacing();
+
+            switch (store.CurrentState)
+            {
+                case TagModelStore.State.NotDownloaded:
+                    ImGui.TextWrapped($"Requires a one-time download of ~{FormatMb(store.RemainingDownloadBytes)}.");
+                    if (ImGui.Button("Download model"))
+                        store.StartDownload();
+                    break;
+
+                case TagModelStore.State.Downloading:
+                    var label = store.CurrentFile ?? "Preparing...";
+                    ImGui.ProgressBar(store.Progress, new Vector2(-80 * ImGuiHelpers.GlobalScale, 0), label);
+                    ImGui.SameLine();
+                    if (ImGui.Button("Cancel"))
+                        store.CancelDownload();
+                    break;
+
+                case TagModelStore.State.Ready:
+                    ImGui.TextDisabled($"Model ready — {FormatMb(store.TotalBytesOnDisk)} on disk in total.");
+
+                    var threshold = cfg.TagSuggestionThreshold;
+                    ImGui.PushItemWidth(200 * ImGuiHelpers.GlobalScale);
+                    if (ImGui.SliderFloat("Suggestion confidence", ref threshold, 0.15f, 0.60f, "%.2f"))
+                    {
+                        cfg.TagSuggestionThreshold = threshold;
+                        cfg.Save();
+                    }
+                    ImGui.PopItemWidth();
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Lower values produce more (but noisier) suggestions.");
+
+                    var composites = cfg.TagSuggestionComposites;
+                    if (ImGui.Checkbox("Suggest composite tags", ref composites))
+                    {
+                        cfg.TagSuggestionComposites = composites;
+                        cfg.Save();
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Also suggests grouped \"category/type\" tags such as swimsuit/bikini\n"
+                                       + "or japanese clothes/kimono, plus colour/... tags for coloured\n"
+                                       + "garments (e.g. blue bikini also suggests colour/blue).");
+                    break;
+
+                case TagModelStore.State.Failed:
+                    ImGui.PushTextWrapPos(0);
+                    ImGui.TextColored(UiTheme.ErrorText, store.LastError ?? "The download failed.");
+                    ImGui.PopTextWrapPos();
+                    if (ImGui.Button("Retry download"))
+                        store.StartDownload();
+                    break;
+            }
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+
+            DrawTagBlacklistEditor();
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+        }
+
+        if (store.CurrentState == TagModelStore.State.Ready)
+        {
+            var busy = plugin.TagSuggestions.IsBusy;
+            using (ImRaii.Disabled(busy))
+            {
+                if (MainWindow.IconTextButton(FontAwesomeIcon.Trash, "Delete model files") && ImGui.GetIO().KeyShift)
+                    store.DeleteAll();
+            }
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip(busy
+                    ? "A suggestion is currently running."
+                    : "Hold Shift and click to delete all downloaded models and the runtime.");
+            ImGui.SameLine();
+        }
+
+        if (enabled)
+            ImGui.TextDisabled("Models by SmilingWolf.");
+    }
+
+    private string blacklistAddText = string.Empty;
+
+    private void DrawTagBlacklistEditor()
+    {
+        var cfg = plugin.Configuration;
+
+        ImGui.TextDisabled("Never suggest these tags:");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("You can also Shift+right-click a suggested tag on a design to add it here.");
+
+        if (cfg.TagSuggestionBlacklist.Count > 0)
+        {
+            void DrawPills() => Pills.DrawRemovableRow(
+                cfg.TagSuggestionBlacklist.OrderBy(t => t, StringComparer.OrdinalIgnoreCase),
+                tag => tag,
+                tag =>
+                {
+                    cfg.TagSuggestionBlacklist.RemoveAll(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase));
+                    cfg.Save();
+                });
+
+            // Long lists scroll inside a fixed-height box instead of stretching the whole tab.
+            if (cfg.TagSuggestionBlacklist.Count > 10)
+            {
+                var boxHeight = 5 * ImGui.GetFrameHeightWithSpacing() + ImGui.GetStyle().WindowPadding.Y;
+                using var scroll = ImRaii.Child("##blacklistScroll", new Vector2(-1, boxHeight), true);
+                if (scroll.Success)
+                    DrawPills();
+            }
+            else
+            {
+                DrawPills();
+            }
+        }
+
+        ImGui.PushItemWidth(180 * ImGuiHelpers.GlobalScale);
+        var submitted = ImGui.InputTextWithHint("##blacklistAdd", "Add a tag to ignore...",
+            ref blacklistAddText, 64, ImGuiInputTextFlags.EnterReturnsTrue);
+        ImGui.PopItemWidth();
+        ImGui.SameLine();
+        submitted |= ImGui.SmallButton("Add##blacklist");
+
+        if (submitted)
+        {
+            var tag = blacklistAddText.Trim();
+            if (tag.Length > 0 && !cfg.TagSuggestionBlacklist.Contains(tag, StringComparer.OrdinalIgnoreCase))
+            {
+                cfg.TagSuggestionBlacklist.Add(tag);
+                cfg.Save();
+            }
+            blacklistAddText = string.Empty;
+        }
+    }
+
+    private static void DrawTagModelPicker(TagModelStore store)
+    {
+        var selected = store.SelectedModel;
+
+        ImGui.TextDisabled("Model:");
+        ImGui.SameLine();
+        // Switching mid-download would leave the progress UI pointing at the wrong model's state.
+        using (ImRaii.Disabled(store.CurrentState == TagModelStore.State.Downloading))
+        {
+            ImGui.PushItemWidth(280 * ImGuiHelpers.GlobalScale);
+            using (var combo = ImRaii.Combo("##tagModelPicker", ModelComboLabel(store, selected)))
+            {
+                if (combo.Success)
+                {
+                    foreach (var model in TagModelStore.Models)
+                    {
+                        if (ImGui.Selectable(ModelComboLabel(store, model), model.Id == selected.Id))
+                            store.SelectModel(model.Id);
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip(model.Description);
+                    }
+                }
+            }
+            ImGui.PopItemWidth();
+        }
+
+        ImGui.TextDisabled(selected.Description);
+    }
+
+    private static string ModelComboLabel(TagModelStore store, TagModelStore.ModelInfo model)
+    {
+        var label = $"{model.DisplayName} — {FormatMb(model.ModelBytes)}";
+        return store.IsModelDownloaded(model) ? $"{label} (downloaded)" : label;
+    }
+
+    private static string FormatMb(long bytes)
+        => bytes >= 1000L * 1024 * 1024
+            ? $"{bytes / (1024.0 * 1024.0 * 1024.0):0.0} GB"
+            : $"{bytes / (1024.0 * 1024.0):0} MB";
 
     private static void DrawCommandsSection()
     {

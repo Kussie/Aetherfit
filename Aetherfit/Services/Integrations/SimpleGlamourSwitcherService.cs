@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Aetherfit.Services.Screenshots;
 using Aetherfit.Utils;
 using Glamourer.Api.Enums;
 using Lumina.Excel;
@@ -20,6 +21,7 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
     private readonly CustomizePlusService customizePlus;
 
     private readonly Dictionary<Guid, string> lastKnownOutfitCharacters = new();
+    private readonly Dictionary<Guid, JObject> lastKnownOutfitJson = new();
 
     // Template id -> (profile, prior state), so a later revert can restore it.
     private readonly Dictionary<Guid, (Guid Profile, bool PreviousState)> lastKnownTemplateStates = new();
@@ -57,15 +59,12 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
 
     public PluginIntegrationInfo CheckIntegration()
     {
-        var exposed = Plugin.PluginInterface.InstalledPlugins.FirstOrDefault(p => p.InternalName == "SimpleGlamourSwitcher");
-        if (exposed == null)
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotInstalled, null, null);
-        if (!exposed.IsLoaded)
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+        if (PluginIntegrationCheck.CheckInstalledAndLoaded("SimpleGlamourSwitcher", out var exposed) is { } early)
+            return early;
 
         return Directory.Exists(ConfigDir)
-            ? new PluginIntegrationInfo(PluginIntegrationStatus.Ok, exposed.Version, null)
-            : new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+            ? new PluginIntegrationInfo(PluginIntegrationStatus.Ok, exposed!.Version, null)
+            : new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed!.Version, null);
     }
 
     private sealed record CharacterInfo(string Name, Dictionary<Guid, (string Name, Guid Parent)> Folders);
@@ -78,6 +77,7 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
 
         var designs = new List<ProviderDesignInfo>();
         lastKnownOutfitCharacters.Clear();
+        lastKnownOutfitJson.Clear();
 
         foreach (var characterDir in Directory.GetDirectories(charactersDir))
         {
@@ -115,6 +115,7 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
                     var fullPath = folderPath.Length == 0 ? $"{character.Name}/{name}" : $"{character.Name}/{folderPath}/{name}";
 
                     lastKnownOutfitCharacters[nativeId] = characterDir;
+                    lastKnownOutfitJson[nativeId] = outfit;
                     designs.Add(new ProviderDesignInfo(nativeId, name, fullPath, Color: 0, SourceSubGroup: character.Name));
                 }
                 catch (Exception ex)
@@ -169,6 +170,11 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
 
     public CachedOutfit? FetchDesignMetadata(Guid nativeId)
     {
+        // Reuse what FetchDesignList already parsed rather than reading the same file a second time -
+        // falls back to a fresh read if metadata is requested without a preceding list refresh this session.
+        if (lastKnownOutfitJson.TryGetValue(nativeId, out var cached))
+            return ParseOutfit(cached);
+
         var outfitPath = FindOutfitFile(nativeId);
         if (outfitPath == null)
             return null;
@@ -385,32 +391,12 @@ public sealed class SimpleGlamourSwitcherService : IDesignProvider
         ApplyMods(equipment, weaponSet, appearance);
         ApplyCustomizePlusTemplates(equipment, appearance, weaponSet);
 
-        var (stateResult, state) = glamourer.GetState();
-        if (stateResult != GlamourerApiEc.Success || state == null)
+        return glamourer.RelayApply(nativeId, designName, quiet, "SGS", state =>
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{designName}\": couldn't read current state ({stateResult}).");
-            return false;
-        }
-
-        state["Equipment"] = BuildEquipmentJObject(equipment, weaponSet);
-        state["Bonus"] = BuildBonusJObject(equipment);
-        state["Customize"] = BuildCustomizeJObject(appearance);
-
-        var applyResult = glamourer.ApplyEquipmentAndCustomizeState(state);
-        if (applyResult != GlamourerApiEc.Success)
-        {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{designName}\": {applyResult}");
-            Plugin.Log.Warning("Failed to apply SGS outfit {Name} ({Id}): {Result}", designName, nativeId, applyResult);
-            return false;
-        }
-
-        if (!quiet)
-        {
-            SoundService.PlayApply();
-            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"");
-        }
-        Plugin.Log.Info("Applied SGS outfit {Name} ({Id})", designName, nativeId);
-        return true;
+            state["Equipment"] = BuildEquipmentJObject(equipment, weaponSet);
+            state["Bonus"] = BuildBonusJObject(equipment);
+            state["Customize"] = BuildCustomizeJObject(appearance);
+        }, s => glamourer.ApplyEquipmentAndCustomizeState(s));
     }
 
     private static JObject BuildEquipmentJObject(JObject? equipment, JObject? weaponSet)

@@ -1,0 +1,9 @@
+<Project>
+    <!-- Presence of this file suppresses DalamudPackager's own built-in default packaging targets
+         (see DalamudPackager.targets in the NuGet package) - this is the sole packaging step. MakeZip
+         is off because nothing consumes the self-hosting zip it would produce; the release workflow
+         builds its own zip directly from the output directory. -->
+    <Target Name="PackagePlugin" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+        <DalamudPackager ProjectDir="$(ProjectDir)" OutputPath="$(OutputPath)" AssemblyName="$(AssemblyName)" MakeZip="false" />
+    </Target>
+</Project>

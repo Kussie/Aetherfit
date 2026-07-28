@@ -5,7 +5,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Persistence;
 
 // Remote kill-switches, so a feature can be turned off for everyone without shipping a new build.
 // Source of truth is flags.json on the repo's master branch; we keep a local copy so the plugin has a

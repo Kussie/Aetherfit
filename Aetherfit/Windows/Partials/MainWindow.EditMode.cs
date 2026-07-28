@@ -8,8 +8,8 @@ using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
-using Aetherfit.Services;
 using Aetherfit.Services.Integrations;
+using Aetherfit.Services.Screenshots;
 using Aetherfit.Ui;
 
 namespace Aetherfit.Windows;
@@ -37,6 +37,7 @@ public partial class MainWindow
     private const string ForceSyncPopupId = "Force Sync to Glamourer?##forceSyncConfirm";
     private const string AddTagPopupId = "AddDesignTagPopup";
     private string addTagSearchText = string.Empty;
+    private bool addTagReclaimFocus;
 
     // Reset whenever the selected design changes so edit mode always starts fresh for the new selection.
     private Guid? descriptionEditId;
@@ -469,9 +470,11 @@ public partial class MainWindow
                     ImGui.Indent();
                     if (!plugin.Configuration.CompositeTagsHelpDismissed)
                         DrawCompositeTagsHelpNote();
-                    DrawTagsRow(id, details);
                     if (details.Tags.Count == 0)
                         ImGui.TextDisabled("This design has no tags set.");
+                    DrawTagsRow(id, details);
+                    ImGui.Spacing();
+                    DrawTagSuggestionsBlock(id, details);
                     ImGui.Unindent();
                     ImGui.Spacing();
                 }
@@ -579,12 +582,6 @@ public partial class MainWindow
             }
         }
         var coverSize = ImGui.GetItemRectSize();
-
-        // Fill the space to the right of the cover with a compact grid of thumbnails (the two add tiles
-        // trailing the images). Beside the cover the cells flow top-to-bottom down to about the cover's
-        // height before starting a new column, so the wall stays as narrow as possible; when the pane is
-        // too narrow to sit beside the cover, the grid drops below it and wraps by width instead. Cells are
-        // positioned absolutely so each row/column lines up with the grid rather than the window margin.
         var availRight = fullAvail - coverSize.X - style.ItemSpacing.X;
         var placeRight = availRight >= thumb;
         if (placeRight)
@@ -835,6 +832,9 @@ public partial class MainWindow
         if (ImGuiComponents.IconButton("addTag", FontAwesomeIcon.Plus))
         {
             addTagSearchText = string.Empty;
+            // Drop the popup below the button instead of centering on it, so it doesn't cover the tag(s) just added.
+            var popupPos = new Vector2(ImGui.GetItemRectMin().X, ImGui.GetItemRectMax().Y + ImGui.GetStyle().ItemSpacing.Y + (4f * ImGuiHelpers.GlobalScale));
+            ImGui.SetNextWindowPos(popupPos);
             ImGui.OpenPopup(AddTagPopupId);
         }
         if (ImGui.IsItemHovered())
@@ -869,8 +869,12 @@ public partial class MainWindow
         if (!popup.Success)
             return;
 
-        if (ImGui.IsWindowAppearing())
+        // Refocus after each add so Enter can chain straight into the next tag without a re-click.
+        if (ImGui.IsWindowAppearing() || addTagReclaimFocus)
+        {
             ImGui.SetKeyboardFocusHere();
+            addTagReclaimFocus = false;
+        }
 
         ImGui.SetNextItemWidth(220 * ImGuiHelpers.GlobalScale);
         var submitted = ImGui.InputTextWithHint("##addTagSearch", "Type or search a tag...", ref addTagSearchText, 64,
@@ -885,10 +889,19 @@ public partial class MainWindow
             && !details.Tags.Contains(trimmed, StringComparer.OrdinalIgnoreCase)
             && !existingTags.Contains(trimmed, StringComparer.OrdinalIgnoreCase);
 
-        if (submitted && trimmed.Length > 0)
+        if (submitted)
         {
-            plugin.Configuration.AddTag(id, details, trimmed);
-            addTagSearchText = string.Empty;
+            if (trimmed.Length > 0)
+            {
+                plugin.Configuration.AddTag(id, details, trimmed);
+                addTagSearchText = string.Empty;
+                addTagReclaimFocus = true;
+            }
+            else
+            {
+                // A blank Enter is the "I'm done" signal - stop the add-tag loop.
+                ImGui.CloseCurrentPopup();
+            }
         }
 
         ImGui.Separator();
@@ -897,6 +910,7 @@ public partial class MainWindow
         {
             plugin.Configuration.AddTag(id, details, trimmed);
             addTagSearchText = string.Empty;
+            addTagReclaimFocus = true;
         }
 
         if (existingTags.Count == 0)
@@ -921,6 +935,7 @@ public partial class MainWindow
             {
                 plugin.Configuration.AddTag(id, details, tag);
                 addTagSearchText = string.Empty;
+                addTagReclaimFocus = true;
             }
         }
     }
@@ -1064,8 +1079,8 @@ public partial class MainWindow
             return false;
         }
 
-        var scale = Math.Min(maxSide / tex.Width, maxSide / tex.Height);
-        ImGui.Image(tex.Handle, new Vector2(tex.Width * scale, tex.Height * scale));
+        var (size, _) = GalleryDraw.ComputeFitSize(new Vector2(maxSide, maxSide), tex.Width, tex.Height);
+        ImGui.Image(tex.Handle, size);
 
         if (!clickable)
             return false;

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Aetherfit.Services;
+using Aetherfit.Services.Game;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -14,6 +14,10 @@ namespace Aetherfit.Ui;
 // The little tag/job chips shared across the windows.
 internal static class Pills
 {
+    // The tag/job/mod picker button's label, shared by the local and shared galleries' filter rows.
+    public static string TagJobFilterLabel(int count)
+        => count == 0 ? "Filter by tag(s), job or mod..." : count == 1 ? "1 tag/job/mod filter active" : $"{count} tag/job/mod filters active";
+
     public static void DrawTagJobFilterList(
         IReadOnlyList<string> availableTags,
         IReadOnlyList<(uint RowId, string Name, JobRole? Role)> availableJobs,
@@ -219,6 +223,34 @@ internal static class Pills
             .Push(ImGuiCol.ButtonActive, UiTheme.PillActive)
             .Push(ImGuiCol.Text, selected ? UiTheme.GoldAccent : UiTheme.PlaceholderText);
         return ImGui.Button($"{label}##pillToggle{id}");
+    }
+
+    // Vanilla/Modded are mutually exclusive - turning one on turns the other off (both can be off). Shared
+    // by the local and shared galleries' own filter rows; each still places these however it needs
+    // (SameLine-adjacent, or wrapped via PlaceItem), so the two toggles stay separately callable rather
+    // than being bundled into one "draw both" function.
+    public static void DrawVanillaToggle(ref bool vanillaOnly, ref bool moddedOnly, string idPrefix)
+    {
+        if (DrawToggle("Vanilla", $"{idPrefix}vanillaFilter", vanillaOnly))
+        {
+            vanillaOnly = !vanillaOnly;
+            if (vanillaOnly)
+                moddedOnly = false;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show only designs with no mod associations");
+    }
+
+    public static void DrawModdedToggle(ref bool vanillaOnly, ref bool moddedOnly, string idPrefix)
+    {
+        if (DrawToggle("Modded", $"{idPrefix}moddedFilter", moddedOnly))
+        {
+            moddedOnly = !moddedOnly;
+            if (moddedOnly)
+                vanillaOnly = false;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show only designs with mod associations");
     }
 
     // A chip that reads "label ×". Returns true when clicked, i.e. the user wants it gone. id just keeps ImGui happy.

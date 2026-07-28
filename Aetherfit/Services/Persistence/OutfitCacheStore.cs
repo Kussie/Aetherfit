@@ -4,7 +4,7 @@ using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Persistence;
 
 // Persists CachedOutfits in its own file instead of the plugin config. The cache is derived data
 // (rebuildable from Glamourer over IPC) and by far the largest thing we store, so keeping it out of

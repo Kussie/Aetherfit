@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Aetherfit.Services.Game;
 using Aetherfit.Utils;
 using Glamourer.Api.Enums;
 using Glamourer.Api.Helpers;
@@ -53,22 +54,19 @@ public sealed class GlamourerService : IDisposable
 
     public PluginIntegrationInfo CheckIntegration()
     {
-        var exposed = Plugin.PluginInterface.InstalledPlugins.FirstOrDefault(p => p.InternalName == "Glamourer");
-        if (exposed == null)
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotInstalled, null, null);
-        if (!exposed.IsLoaded)
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+        if (PluginIntegrationCheck.CheckInstalledAndLoaded("Glamourer", out var exposed) is { } early)
+            return early;
 
         try
         {
             var version = new ApiVersion(Plugin.PluginInterface).Invoke();
             var ok = version.Major == MinApiVersion.Major && version.Minor >= MinApiVersion.Minor;
-            return new PluginIntegrationInfo(ok ? PluginIntegrationStatus.Ok : PluginIntegrationStatus.VersionTooLow, exposed.Version, version);
+            return new PluginIntegrationInfo(ok ? PluginIntegrationStatus.Ok : PluginIntegrationStatus.VersionTooLow, exposed!.Version, version);
         }
         catch (Exception ex)
         {
             Plugin.Log.Warning(ex, "Failed to query Glamourer API version");
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed!.Version, null);
         }
     }
 
@@ -244,6 +242,38 @@ public sealed class GlamourerService : IDisposable
     // the only relay source whose designs carry customize values as well as equipment.
     public GlamourerApiEc ApplyEquipmentAndCustomizeState(JObject state, int objectIndex = 0)
         => InvokeOwnChange(() => applyState.Invoke(state, objectIndex, 0, ApplyFlag.Equipment | ApplyFlag.Customization));
+
+    // Shared by every relay-through-Glamourer provider (Glamaholic, Glamour Plate, Simple Glamour Switcher):
+    // fetch current state, let the caller mutate the section(s) it owns, apply via whichever of the two
+    // methods above the caller needs, and handle the common success/failure chat+log+sound side effects.
+    public bool RelayApply(Guid nativeId, string designName, bool quiet, string providerLabel,
+        Action<JObject> mutateState, Func<JObject, GlamourerApiEc> applyFn)
+    {
+        var (stateResult, state) = GetState();
+        if (stateResult != GlamourerApiEc.Success || state == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{designName}\": couldn't read current state ({stateResult}).");
+            return false;
+        }
+
+        mutateState(state);
+
+        var applyResult = applyFn(state);
+        if (applyResult != GlamourerApiEc.Success)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply \"{designName}\": {applyResult}");
+            Plugin.Log.Warning("Failed to apply {Provider} design {Name} ({Id}): {Result}", providerLabel, designName, nativeId, applyResult);
+            return false;
+        }
+
+        if (!quiet)
+        {
+            SoundService.PlayApply();
+            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Applied \"{designName}\"");
+        }
+        Plugin.Log.Info("Applied {Provider} design {Name} ({Id})", providerLabel, designName, nativeId);
+        return true;
+    }
 
     private static CachedOutfit ParseOutfit(JObject j)
     {

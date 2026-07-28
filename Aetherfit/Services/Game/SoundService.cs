@@ -2,7 +2,7 @@ using System;
 using System.Runtime.Versioning;
 using FFXIVClientStructs.FFXIV.Client.UI;
 
-namespace Aetherfit.Services;
+namespace Aetherfit.Services.Game;
 
 [SupportedOSPlatform("windows")]
 internal static class SoundService

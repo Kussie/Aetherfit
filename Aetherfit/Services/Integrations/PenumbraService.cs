@@ -41,22 +41,19 @@ public sealed class PenumbraService
 
     public PluginIntegrationInfo CheckIntegration()
     {
-        var exposed = Plugin.PluginInterface.InstalledPlugins.FirstOrDefault(p => p.InternalName == "Penumbra");
-        if (exposed == null)
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotInstalled, null, null);
-        if (!exposed.IsLoaded)
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+        if (PluginIntegrationCheck.CheckInstalledAndLoaded("Penumbra", out var exposed) is { } early)
+            return early;
 
         try
         {
             var (breaking, features) = new ApiVersion(Plugin.PluginInterface).Invoke();
             var ok = breaking == MinApiVersion.Major && features >= MinApiVersion.Minor;
-            return new PluginIntegrationInfo(ok ? PluginIntegrationStatus.Ok : PluginIntegrationStatus.VersionTooLow, exposed.Version, (breaking, features));
+            return new PluginIntegrationInfo(ok ? PluginIntegrationStatus.Ok : PluginIntegrationStatus.VersionTooLow, exposed!.Version, (breaking, features));
         }
         catch (Exception ex)
         {
             Plugin.Log.Warning(ex, "Failed to query Penumbra API version");
-            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed.Version, null);
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed!.Version, null);
         }
     }
 
