@@ -26,9 +26,11 @@ public sealed class DesignApplyService
     }
 
     public void ApplyDesignById(Guid id)
-        => ApplyDesignCore(id, applyingLayer ? new List<Guid>() : PickLayers(id));
+        => ApplyDesignCore(id,
+            applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: true),
+            applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false));
 
-    private void ApplyDesignCore(Guid id, List<Guid> layerIds, bool quiet = false)
+    private void ApplyDesignCore(Guid id, List<Guid> beforeLayerIds, List<Guid> afterLayerIds, bool quiet = false)
     {
         var name = plugin.Configuration.ResolveDesignName(id);
         if (!plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit))
@@ -64,38 +66,50 @@ public sealed class DesignApplyService
             plugin.Penumbra.RedrawLocalPlayer();
         }
 
-        if (!provider.Apply(outfit.ProviderDesignId, name, layerIds.Select(plugin.Configuration.ResolveDesignName).ToList(), quiet))
+        // Applied before the base so anything it doesn't explicitly manage survives underneath it.
+        ApplyLayers(beforeLayerIds);
+
+        var layerNames = beforeLayerIds.Concat(afterLayerIds).Select(plugin.Configuration.ResolveDesignName).ToList();
+        if (!provider.Apply(outfit.ProviderDesignId, name, layerNames, quiet))
             return;
 
         if (!quiet && plugin.GameData.DesignHasAnyIncompatibleItems(outfit))
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" can only be partially applied on your current character.");
 
-        if (layerIds.Count > 0)
-        {
-            applyingLayer = true;
-            try
-            {
-                foreach (var layerId in layerIds)
-                {
-                    if (plugin.Configuration.CachedOutfits.TryGetValue(layerId, out var layerOutfit)
-                        && plugin.DesignProviders.FirstOrDefault(p => p.Source == layerOutfit.Source) is { } layerProvider)
-                        layerProvider.ApplyLayer(layerOutfit.ProviderDesignId);
-                }
-            }
-            finally { applyingLayer = false; }
-        }
+        ApplyLayers(afterLayerIds);
 
-        RecordLastWorn(id, layerIds);
+        RecordLastWorn(id, beforeLayerIds, afterLayerIds);
     }
 
-    private void RecordLastWorn(Guid baseId, List<Guid> layerIds)
+    // Applies each layer id (in order) via its provider's ApplyLayer IPC. Used for both the before- and
+    // after-base layer passes - only the order relative to the base's own Apply call differs.
+    private void ApplyLayers(List<Guid> layerIds)
+    {
+        if (layerIds.Count == 0)
+            return;
+
+        applyingLayer = true;
+        try
+        {
+            foreach (var layerId in layerIds)
+            {
+                if (plugin.Configuration.CachedOutfits.TryGetValue(layerId, out var layerOutfit)
+                    && plugin.DesignProviders.FirstOrDefault(p => p.Source == layerOutfit.Source) is { } layerProvider)
+                    layerProvider.ApplyLayer(layerOutfit.ProviderDesignId);
+            }
+        }
+        finally { applyingLayer = false; }
+    }
+
+    private void RecordLastWorn(Guid baseId, List<Guid> beforeLayerIds, List<Guid> afterLayerIds)
     {
         if (!Plugin.PlayerState.IsLoaded)
             return;
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
         settings.LastWornDesign = baseId;
-        settings.LastWornLayers = new List<Guid>(layerIds);
+        settings.LastWornBeforeLayers = new List<Guid>(beforeLayerIds);
+        settings.LastWornLayers = new List<Guid>(afterLayerIds);
 
         settings.RecentDesignHistory.Remove(baseId);
         settings.RecentDesignHistory.Insert(0, baseId);
@@ -159,25 +173,32 @@ public sealed class DesignApplyService
         if (!plugin.Configuration.CachedOutfits.ContainsKey(baseId))
             return ApplyResult.Fail("Your previously worn design no longer exists in Glamourer — nothing reapplied.");
 
-        var layers = plugin.Configuration.EnableRandomLayers
-            ? settings.LastWornLayers.Where(l => plugin.Configuration.CachedOutfits.ContainsKey(l)).ToList()
+        List<Guid> FilterExisting(List<Guid> layers) => plugin.Configuration.EnableRandomLayers
+            ? layers.Where(l => plugin.Configuration.CachedOutfits.ContainsKey(l)).ToList()
             : new List<Guid>();
-        if (layers.Count < settings.LastWornLayers.Count && plugin.Configuration.EnableRandomLayers)
-            Plugin.Log.Info($"Skipped {settings.LastWornLayers.Count - layers.Count} previously worn layer(s) that no longer exist in Glamourer.");
 
-        ApplyDesignCore(baseId, layers, quiet);
+        var beforeLayers = FilterExisting(settings.LastWornBeforeLayers);
+        var afterLayers = FilterExisting(settings.LastWornLayers);
+
+        var skipped = (settings.LastWornBeforeLayers.Count - beforeLayers.Count)
+            + (settings.LastWornLayers.Count - afterLayers.Count);
+        if (skipped > 0 && plugin.Configuration.EnableRandomLayers)
+            Plugin.Log.Info($"Skipped {skipped} previously worn layer(s) that no longer exist in Glamourer.");
+
+        ApplyDesignCore(baseId, beforeLayers, afterLayers, quiet);
         return ApplyResult.Ok(baseId);
     }
 
-    // Walks the base design's layer slots top-down, picking one job-matching design per slot (at random when the slot holds several). Returns the layers to apply, in application order.
-    private List<Guid> PickLayers(Guid baseId)
+    // Walks the base design's layer slots for the given placement, top-down, picking one job-matching
+    // design per slot (at random when the slot holds several). Returns the layers to apply, in order.
+    private List<Guid> PickLayers(Guid baseId, bool isBefore)
     {
         var picks = new List<Guid>();
         if (!plugin.Configuration.EnableRandomLayers || !Plugin.PlayerState.IsLoaded)
             return picks;
 
         var jobId = Plugin.PlayerState.ClassJob.RowId;
-        foreach (var slot in plugin.Configuration.GetLayerSlots(baseId))
+        foreach (var slot in plugin.Configuration.GetLayerSlots(baseId).Where(s => s.IsBefore == isBefore))
         {
             var candidates = slot.Designs
                 .Where(l => (l.AllJobs || l.Jobs.Contains(jobId)) && SupportsLayers(l.DesignId))
@@ -329,6 +350,7 @@ public sealed class DesignApplyService
         {
             settings.LastWornDesign = null;
             settings.LastWornLayers.Clear();
+            settings.LastWornBeforeLayers.Clear();
             plugin.Configuration.Save();
         }
     }

@@ -63,9 +63,6 @@ public class Configuration : IPluginConfiguration
         _ => true, // Glamourer (and any future required source) has no toggle
     };
 
-    // Off by default - clears whatever's sitting in Penumbra's unlocked temp-settings slot right before
-    // applying a base design from that source (not before additional layers). Glamourer isn't included:
-    // it has its own native "Reset Temporary Settings" design flag already.
     public bool GlamaholicResetTemporarySettingsBeforeApply { get; set; }
     public bool GlamourPlateResetTemporarySettingsBeforeApply { get; set; }
     public bool SimpleGlamourSwitcherResetTemporarySettingsBeforeApply { get; set; }
@@ -177,9 +174,6 @@ public class Configuration : IPluginConfiguration
             DesignJobAssociations[id] = jobs;
     }
 
-    // Returns the design's locally-owned Tags/Description, seeding it from Glamourer's current value the
-    // first time this design is seen. Once seeded, Glamourer's value is only pulled in again via an
-    // explicit sync action - this never silently overwrites an existing local entry.
     public LocalDesignMeta GetOrSeedDesignMeta(Guid id, string? glamDescription, IReadOnlyList<string> glamTags)
     {
         if (DesignMeta.TryGetValue(id, out var existing))
@@ -194,8 +188,6 @@ public class Configuration : IPluginConfiguration
         return seeded;
     }
 
-    // Additive only: adds any tag present on the Glamourer design that isn't already in the local list.
-    // Returns how many were actually added, so the caller can show "+N tags added".
     public int MergeTagsFromGlamourer(Guid id, CachedOutfit outfit)
     {
         var meta = GetOrSeedDesignMeta(id, outfit.GlamourerDescription, outfit.GlamourerTags);
@@ -216,8 +208,6 @@ public class Configuration : IPluginConfiguration
         return added;
     }
 
-    // Full overwrite: replaces the local description with Glamourer's current one. Callers must confirm
-    // with the user first - this is destructive to any local edit.
     public void PullDescriptionFromGlamourer(Guid id, CachedOutfit outfit)
     {
         var meta = GetOrSeedDesignMeta(id, outfit.GlamourerDescription, outfit.GlamourerTags);
@@ -296,13 +286,9 @@ public class CharacterLoginSettings
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
 
-    // Most recent design (+ exact layer combo) applied through Aetherfit on this character.
-    // Cleared on revert. Used by LoginAction.ReapplyLast.
     public Guid? LastWornDesign { get; set; }
     public List<Guid> LastWornLayers { get; set; } = new();
-
-    // Recently applied base designs, most recent first, capped. Random picks avoid the head
-    // outright and down-weight the rest so the same design doesn't come up in quick succession.
+    public List<Guid> LastWornBeforeLayers { get; set; } = new();
     public List<Guid> RecentDesignHistory { get; set; } = new();
     public bool ReapplyOnZoneChange { get; set; } = false;
 }
@@ -432,8 +418,6 @@ public class CachedMod
     public Dictionary<string, string> Settings { get; set; } = new();
 }
 
-// A Glamourer design link: another design applied before/after this one, gated by a job/gearset condition,
-// and limited to a subset of application aspects (the LinkType flags).
 [Serializable]
 public class CachedDesignLink
 {
@@ -458,16 +442,13 @@ public enum DesignLinkApplication
     Accessories = 16,
 }
 
-// One slot in a base design's additional-layer stack. Slots are applied top-down; when a slot holds several
-// designs, one job-matching design is picked at random before continuing to the next slot.
 [Serializable]
 public class DesignLayerSlot
 {
     public List<DesignLayer> Designs { get; set; } = new();
+    public bool IsBefore { get; set; }
 }
 
-// An additional design layer: a design applied on top of the base design. AllJobs applies regardless of the
-// wearer's job; otherwise it only applies for the listed jobs.
 [Serializable]
 public class DesignLayer
 {
