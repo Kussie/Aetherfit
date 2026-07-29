@@ -17,6 +17,7 @@ public partial class MainWindow
 {
     private static string SlotDragType(bool isBefore) => isBefore ? "AF_LAYER_SLOT_BEFORE" : "AF_LAYER_SLOT_AFTER";
     private static string DesignDragType(bool isBefore) => isBefore ? "AF_LAYER_DESIGN_BEFORE" : "AF_LAYER_DESIGN_AFTER";
+    private const int MaxVisibleDesignRows = 15;
 
     private sealed class LayerPickerState
     {
@@ -172,14 +173,24 @@ public partial class MainWindow
                 ImGui.InputTextWithHint("##layerFilter", "Filter by name...", ref picker.Filter, 64);
                 ImGui.Separator();
 
-                foreach (var (designId, name) in AllDesignsSorted())
+                var matches = AllDesignsSorted()
+                    .Where(d => d.Id != id && !usedDesignIds.Contains(d.Id)
+                                && (picker.Filter.Length == 0 || d.Name.Contains(picker.Filter, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+
+                if (matches.Count == 0)
                 {
-                    if (designId == id || usedDesignIds.Contains(designId))
-                        continue;
-                    if (picker.Filter.Length > 0 && !name.Contains(picker.Filter, StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    if (ImGui.Selectable($"{name}##layer{designId}"))
-                        picker.Selection = designId;
+                    ImGui.TextDisabled("No matching designs.");
+                }
+                else
+                {
+                    // Capped so a long design list scrolls in place instead of growing the popup tall enough
+                    // that ImGui has to reposition it away from the combo to keep it on screen.
+                    var listHeight = Math.Min(matches.Count, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
+                    using var scroll = ImRaii.Child("##layerPickerList", new Vector2(-1, listHeight), false);
+                    foreach (var (designId, name) in matches)
+                        if (ImGui.Selectable($"{name}##layer{designId}"))
+                            picker.Selection = designId;
                 }
             }
         }
@@ -362,12 +373,23 @@ public partial class MainWindow
         ImGui.InputTextWithHint("##slotFilter", "Filter by name...", ref slotPickerFilter, 64);
         ImGui.Separator();
 
-        foreach (var (designId, name) in AllDesignsSorted())
+        var matches = AllDesignsSorted()
+            .Where(d => d.Id != baseId && !usedDesignIds.Contains(d.Id)
+                        && (slotPickerFilter.Length == 0 || d.Name.Contains(slotPickerFilter, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (matches.Count == 0)
         {
-            if (designId == baseId || usedDesignIds.Contains(designId))
-                continue;
-            if (slotPickerFilter.Length > 0 && !name.Contains(slotPickerFilter, StringComparison.OrdinalIgnoreCase))
-                continue;
+            ImGui.TextDisabled("No matching designs.");
+            return;
+        }
+
+        // Capped so a long design list scrolls in place instead of growing the popup tall enough that
+        // ImGui has to reposition it away from the "+" button (and this layer) to keep it on screen.
+        var listHeight = Math.Min(matches.Count, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
+        using var scroll = ImRaii.Child("##addToSlotList", new Vector2(250 * ImGuiHelpers.GlobalScale, listHeight), false);
+        foreach (var (designId, name) in matches)
+        {
             if (ImGui.Selectable($"{name}##slotAdd{designId}"))
             {
                 pendingLayerEdit = () => slot.Designs.Add(new DesignLayer { DesignId = designId });
