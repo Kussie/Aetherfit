@@ -60,10 +60,7 @@
         "IsHide": false,
         "IsTestingExclusive": false,
         "DownloadLinkInstall": "https://github.com/Kussie/FFXIVAnimationLog/releases/latest/download/latest-stable.zip",
-        "DownloadCount": [
-            235,
-            0
-        ],
+        "DownloadCount": 1,
         "LastUpdate": 1785297903,
         "Punchline": "Shows the animation currently playing and a session log of recent ones.",
         "AcceptsFeedback": true,
