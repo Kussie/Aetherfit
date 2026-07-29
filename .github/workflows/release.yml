@@ -93,8 +93,8 @@ jobs:
               shell: pwsh
               run: |
                   $manifest = Get-Content "Aetherfit\bin\Release\win-x64\Aetherfit.json" -Raw | ConvertFrom-Json
-                  $entry = Get-Content "repo.json" -Raw | ConvertFrom-Json
-                  while ($entry -is [Array]) { $entry = $entry[0] }
+                  $entries = @(Get-Content "repo.json" -Raw | ConvertFrom-Json)
+                  $entry = $entries | Where-Object { $_.InternalName -eq 'Aetherfit' }
                   $existingNames = @($entry.PSObject.Properties.Name)
                   foreach ($prop in $manifest.PSObject.Properties) {
                       if ($existingNames -contains $prop.Name) {
@@ -102,7 +102,7 @@ jobs:
                       }
                   }
                   $entry.LastUpdate = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
-                  $json = (ConvertTo-Json -InputObject $entry -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
+                  $json = (ConvertTo-Json -InputObject $entries -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 
             - name: Update repo.json (testing)
@@ -111,10 +111,10 @@ jobs:
               run: |
                   git fetch origin master
                   git checkout -B master origin/master
-                  $entry = Get-Content "repo.json" -Raw | ConvertFrom-Json
-                  while ($entry -is [Array]) { $entry = $entry[0] }
+                  $entries = @(Get-Content "repo.json" -Raw | ConvertFrom-Json)
+                  $entry = $entries | Where-Object { $_.InternalName -eq 'Aetherfit' }
                   $entry.TestingAssemblyVersion = "${{ steps.version.outputs.version }}"
-                  $json = (ConvertTo-Json -InputObject $entry -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
+                  $json = (ConvertTo-Json -InputObject $entries -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 
             - name: Update download count
@@ -125,10 +125,10 @@ jobs:
                   $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'User-Agent' = 'Aetherfit-release-workflow' }
                   $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/Kussie/Aetherfit/releases?per_page=100" -Headers $headers
                   $downloadCount = ($releases | ForEach-Object { $_.assets } | Measure-Object -Property download_count -Sum).Sum
-                  $entry = Get-Content "repo.json" -Raw | ConvertFrom-Json
-                  while ($entry -is [Array]) { $entry = $entry[0] }
+                  $entries = @(Get-Content "repo.json" -Raw | ConvertFrom-Json)
+                  $entry = $entries | Where-Object { $_.InternalName -eq 'Aetherfit' }
                   $entry.DownloadCount = [int64]$downloadCount
-                  $json = (ConvertTo-Json -InputObject $entry -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
+                  $json = (ConvertTo-Json -InputObject $entries -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 
             - name: Commit repo.json
