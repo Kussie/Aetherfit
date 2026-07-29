@@ -102,7 +102,7 @@ jobs:
                       }
                   }
                   $entry.LastUpdate = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
-                  $json = (ConvertTo-Json -InputObject $entries -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
+                  $json = (ConvertTo-Json -InputObject $entries -Depth 10) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 
             - name: Update repo.json (testing)
@@ -114,7 +114,7 @@ jobs:
                   $entries = @(Get-Content "repo.json" -Raw | ConvertFrom-Json)
                   $entry = $entries | Where-Object { $_.InternalName -eq 'Aetherfit' }
                   $entry.TestingAssemblyVersion = "${{ steps.version.outputs.version }}"
-                  $json = (ConvertTo-Json -InputObject $entries -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
+                  $json = (ConvertTo-Json -InputObject $entries -Depth 10) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 
             - name: Update download count
@@ -128,7 +128,7 @@ jobs:
                   $entries = @(Get-Content "repo.json" -Raw | ConvertFrom-Json)
                   $entry = $entries | Where-Object { $_.InternalName -eq 'Aetherfit' }
                   $entry.DownloadCount = [int64]$downloadCount
-                  $json = (ConvertTo-Json -InputObject $entries -Depth 10 -AsArray) -replace '(?m)^(\s+)', '$1$1'
+                  $json = (ConvertTo-Json -InputObject $entries -Depth 10) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 
             - name: Commit repo.json
