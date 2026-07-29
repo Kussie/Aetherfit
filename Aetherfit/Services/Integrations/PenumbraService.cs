@@ -103,13 +103,53 @@ public sealed class PenumbraService
     // activate a design's mods, since Glamourer's own apply never touches Penumbra mod state at all.
     public PenumbraApiEc SetTemporaryModSettingsPlayer(string modDirectory, bool enabled, int priority,
         IReadOnlyDictionary<string, IReadOnlyList<string>> settings, string source, int key)
-        => setTemporaryModSettingsPlayer.Invoke(0, modDirectory, false, enabled, priority, settings, source, key);
+    {
+        try
+        {
+            return setTemporaryModSettingsPlayer.Invoke(0, modDirectory, false, enabled, priority, settings, source, key);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to set temporary mod settings for {Dir} ({Key})", modDirectory, key);
+            return PenumbraApiEc.UnknownError;
+        }
+    }
 
     public PenumbraApiEc RemoveTemporaryModSettingsPlayer(string modDirectory, int key)
-        => removeTemporaryModSettingsPlayer.Invoke(0, modDirectory, key);
+    {
+        try
+        {
+            return removeTemporaryModSettingsPlayer.Invoke(0, modDirectory, key);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to remove temporary mod settings for {Dir} ({Key})", modDirectory, key);
+            return PenumbraApiEc.UnknownError;
+        }
+    }
 
     public PenumbraApiEc RemoveAllTemporaryModSettingsPlayer(int key)
-        => removeAllTemporaryModSettingsPlayer.Invoke(0, key);
+    {
+        try
+        {
+            return removeAllTemporaryModSettingsPlayer.Invoke(0, key);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to remove all temporary mod settings for key {Key}", key);
+            return PenumbraApiEc.UnknownError;
+        }
+    }
 
-    public void RedrawLocalPlayer() => redrawObject.Invoke(0);
+    public void RedrawLocalPlayer()
+    {
+        try
+        {
+            redrawObject.Invoke(0);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to redraw local player");
+        }
+    }
 }

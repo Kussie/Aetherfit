@@ -52,7 +52,8 @@ public sealed class DesignApplyService
             return;
         }
 
-        if (outfit.Source != DesignSource.SimpleGlamourSwitcher)
+        if (outfit.Source != DesignSource.SimpleGlamourSwitcher
+            && plugin.Configuration.IsProviderEnabled(DesignSource.SimpleGlamourSwitcher))
         {
             plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();
             plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
@@ -340,8 +341,11 @@ public sealed class DesignApplyService
     public void RevertAppearance()
     {
         plugin.Glamourer.Revert();
-        plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();
-        plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
+        if (plugin.Configuration.IsProviderEnabled(DesignSource.SimpleGlamourSwitcher))
+        {
+            plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();
+            plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
+        }
 
         // A deliberate revert means "I want my real gear" — forget the last-worn record so LoginAction.ReapplyLast doesn't re-dress the character on the next login.
         if (Plugin.PlayerState.IsLoaded
