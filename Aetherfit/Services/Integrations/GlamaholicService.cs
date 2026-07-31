@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Aetherfit.Utils;
 using Glamourer.Api.Enums;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Aetherfit.Services.Integrations;
@@ -118,6 +119,64 @@ public sealed class GlamaholicService : IDesignProvider
             }
             state["Equipment"] = equipment;
         }, s => glamourer.ApplyEquipmentState(s));
+    }
+
+    public sealed record PushTagsResult(bool Success, string? Error);
+
+    // Same direct-file-edit approach as GlamourerDesignFileService - Glamaholic exposes no IPC to
+    // write its own Tags. Only the target plate's Tags array is touched; everything else in the
+    // config (other plates, folders, favourites) is round-tripped as-is.
+    public PushTagsResult PushTagsToGlamaholic(Guid nativeId, IReadOnlyList<string> tags)
+    {
+        if (!File.Exists(ConfigPath))
+            return new PushTagsResult(false, "Glamaholic config file not found.");
+
+        try
+        {
+            var text = File.ReadAllText(ConfigPath);
+
+            JObject root;
+            using (var stringReader = new StringReader(text))
+            using (var jsonReader = new JsonTextReader(stringReader) { DateParseHandling = DateParseHandling.None })
+                root = JObject.Load(jsonReader);
+
+            if (root["Plates"] is not JArray plates)
+                return new PushTagsResult(false, "Glamaholic config has no plates.");
+
+            var node = FindPlateNode(plates, nativeId);
+            if (node?["Plate"] is not JObject plate)
+                return new PushTagsResult(false, "Plate not found in Glamaholic — was it deleted?");
+
+            plate["Tags"] = new JArray(tags);
+
+            var usesCrlf = text.Contains("\r\n");
+            string output;
+            using (var stringWriter = new StringWriter { NewLine = usesCrlf ? "\r\n" : "\n" })
+            {
+                using (var jsonWriter = new JsonTextWriter(stringWriter) { Formatting = Formatting.Indented, IndentChar = ' ', Indentation = 2 })
+                    root.WriteTo(jsonWriter);
+                output = stringWriter.ToString();
+            }
+
+            var tempPath = ConfigPath + ".aetherfit-tmp";
+            File.WriteAllText(tempPath, output);
+            File.Move(tempPath, ConfigPath, overwrite: true);
+
+            // Drop the cached parse so the next list/metadata read picks up this write instead of
+            // trusting a copy that's now stale relative to what's on disk.
+            cachedRoot = null;
+            return new PushTagsResult(true, null);
+        }
+        catch (IOException ex)
+        {
+            Plugin.Log.Warning(ex, "Glamaholic config locked while pushing tags for {Id}", nativeId);
+            return new PushTagsResult(false, "Couldn't write Glamaholic's config file — it may be open or in use. Try again.");
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to push tags to Glamaholic plate {Id}", nativeId);
+            return new PushTagsResult(false, $"Failed to update Glamaholic's config file: {ex.Message}");
+        }
     }
 
     // No layer/native-UI/revert concept of its own - Capabilities has no Apply-adjacent flags for
