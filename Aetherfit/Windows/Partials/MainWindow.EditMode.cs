@@ -34,7 +34,7 @@ public partial class MainWindow
     private int draggedImageIndex = -1;
 
     private const string PullDescriptionPopupId = "Pull Description from Glamourer?##pullDescConfirm";
-    private const string ForceSyncPopupId = "Force Sync to Glamourer?##forceSyncConfirm";
+    private const string ForceSyncPopupId = "Force Sync?##forceSyncConfirm";
     private const string AddTagPopupId = "AddDesignTagPopup";
     private string addTagSearchText = string.Empty;
     private bool addTagReclaimFocus;
@@ -364,6 +364,8 @@ public partial class MainWindow
                 var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(id);
                 var isHidden = plugin.Configuration.HiddenDesigns.Contains(id);
                 var isGlamourer = details.Source == DesignSource.Glamourer;
+                var isGlamaholic = details.Source == DesignSource.Glamaholic;
+                var showForceSync = isGlamourer || isGlamaholic;
                 var style = ImGui.GetStyle();
                 var inner = style.ItemInnerSpacing.X;
 
@@ -381,7 +383,10 @@ public partial class MainWindow
                     syncW = ImGui.CalcTextSize(FontAwesomeIcon.CloudUploadAlt.ToIconString()).X
                           + (style.FramePadding.X * 2);
                 }
-                var actionsW = starW + eyeW + (inner * 2) + (isGlamourer ? linkW + syncW + (inner * 2) : 0f);
+                // Glamourer gets both the open-in-native-UI link and the sync button; Glamaholic (no native UI
+                // concept - see GlamaholicService.OpenInNativeUi) only gets the sync button.
+                var actionsW = starW + eyeW + (inner * 2)
+                    + (isGlamourer ? linkW + syncW + (inner * 2) : showForceSync ? syncW + inner : 0f);
 
                 var rowTopY = ImGui.GetCursorPosY();
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (6f * ImGuiHelpers.GlobalScale));
@@ -438,26 +443,45 @@ public partial class MainWindow
                         plugin.Glamourer.OpenInGlamourer(id, details.Name);
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Open in Glamourer");
+                }
 
+                if (showForceSync)
+                {
                     ImGui.SameLine(0, inner);
                     ImGui.SetCursorPosY(actionY);
                     if (HeaderIconButton("forceSync", FontAwesomeIcon.CloudUploadAlt, null, new Vector2(syncW, frameH)))
                         ConfirmDialog.Open(ForceSyncPopupId);
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Force sync Tags and Description to the Glamourer design file");
+                        ImGui.SetTooltip(isGlamourer
+                            ? "Force sync Tags and Description to the Glamourer design file"
+                            : "Force sync Tags to the Glamaholic config file");
 
-                    if (ConfirmDialog.Draw(ForceSyncPopupId,
-                            $"This will overwrite the Description and Tags stored in the Glamourer design file for \"{details.Name}\" "
-                            + "with what's shown here in Aetherfit, without touching anything else in the file.\n\n"
-                            + "If this design is currently open in Glamourer's own editor, Glamourer may discard this change "
-                            + "the moment you touch it there or on its next autosave. Close the design in Glamourer first.",
-                            "Force Sync"))
+                    var forceSyncMessage = isGlamourer
+                        ? $"This will overwrite the Description and Tags stored in the Glamourer design file for \"{details.Name}\" "
+                          + "with what's shown here in Aetherfit, without touching anything else in the file.\n\n"
+                          + "If this design is currently open in Glamourer's own editor, Glamourer may discard this change "
+                          + "the moment you touch it there or on its next autosave. Close the design in Glamourer first."
+                        : $"This will overwrite the Tags stored in the Glamaholic config file for \"{details.Name}\" "
+                          + "with what's shown here in Aetherfit, without touching anything else in the file.";
+
+                    if (ConfirmDialog.Draw(ForceSyncPopupId, forceSyncMessage, "Force Sync"))
                     {
-                        var result = plugin.GlamourerDesignFile.PushMetadataToGlamourer(id, details.Description, details.Tags);
-                        if (result.Success)
-                            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Pushed Tags and Description to Glamourer for \"{details.Name}\"");
+                        if (isGlamourer)
+                        {
+                            var result = plugin.GlamourerDesignFile.PushMetadataToGlamourer(id, details.Description, details.Tags);
+                            if (result.Success)
+                                Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Pushed Tags and Description to Glamourer for \"{details.Name}\"");
+                            else
+                                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
+                        }
                         else
-                            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
+                        {
+                            var result = plugin.Glamaholic.PushTagsToGlamaholic(details.ProviderDesignId, details.Tags);
+                            if (result.Success)
+                                Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Pushed Tags to Glamaholic for \"{details.Name}\"");
+                            else
+                                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
+                        }
                     }
                 }
 
@@ -840,7 +864,7 @@ public partial class MainWindow
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Add tag");
 
-        if (details.Source == DesignSource.Glamourer)
+        if (details.Source is DesignSource.Glamourer or DesignSource.Glamaholic)
         {
             var newTagCount = details.GlamourerTags.Count(t => !details.Tags.Contains(t, StringComparer.OrdinalIgnoreCase));
             var refreshWidth = ImGui.GetFrameHeight();
@@ -849,12 +873,12 @@ public partial class MainWindow
             {
                 var added = plugin.Configuration.MergeTagsFromGlamourer(id, details);
                 if (added > 0)
-                    Plugin.ChatGui.Print($"{Plugin.ChatPrefix}+{added} tag{(added == 1 ? "" : "s")} added from Glamourer");
+                    Plugin.ChatGui.Print($"{Plugin.ChatPrefix}+{added} tag{(added == 1 ? "" : "s")} added from {details.Source}");
             }
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip(newTagCount > 0
-                    ? $"Merge {newTagCount} tag{(newTagCount == 1 ? "" : "s")} in from Glamourer"
-                    : "No new tags to merge from Glamourer");
+                    ? $"Merge {newTagCount} tag{(newTagCount == 1 ? "" : "s")} in from {details.Source}"
+                    : $"No new tags to merge from {details.Source}");
         }
 
         DrawAddTagPopup(id, details);
