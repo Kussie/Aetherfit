@@ -8,6 +8,8 @@ using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
+using Glamourer.Api.Enums;
+using Newtonsoft.Json.Linq;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Screenshots;
 using Aetherfit.Ui;
@@ -35,8 +37,12 @@ public partial class MainWindow
 
     private const string PullDescriptionPopupId = "Pull Description from Glamourer?##pullDescConfirm";
     private const string ForceSyncPopupId = "Force Sync?##forceSyncConfirm";
+    private const string ImportToGlamourerPopupId = "Import into Glamourer?##importGlamourerConfirm";
     private const string AddTagPopupId = "AddDesignTagPopup";
     private string addTagSearchText = string.Empty;
+    private string importDesignName = string.Empty;
+    private bool importReclaimFocus;
+    private bool importDeleteFromGlamaholic;
     private bool addTagReclaimFocus;
 
     // Reset whenever the selected design changes so edit mode always starts fresh for the new selection.
@@ -365,13 +371,15 @@ public partial class MainWindow
                 var isHidden = plugin.Configuration.HiddenDesigns.Contains(id);
                 var isGlamourer = details.Source == DesignSource.Glamourer;
                 var isGlamaholic = details.Source == DesignSource.Glamaholic;
+                var isGlamourPlate = details.Source == DesignSource.GlamourPlate;
                 var showForceSync = isGlamourer || isGlamaholic;
+                var showImport = isGlamaholic || isGlamourPlate;
                 var style = ImGui.GetStyle();
                 var inner = style.ItemInnerSpacing.X;
 
                 // Measure the action cluster first so the title can be ellipsized to the space that remains.
                 var frameH = ImGui.GetFrameHeight();
-                float starW, eyeW, linkW, syncW;
+                float starW, eyeW, linkW, syncW, importW;
                 using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
                 {
                     starW = ImGui.CalcTextSize(FontAwesomeIcon.Star.ToIconString()).X
@@ -382,11 +390,15 @@ public partial class MainWindow
                           + (style.FramePadding.X * 2);
                     syncW = ImGui.CalcTextSize(FontAwesomeIcon.CloudUploadAlt.ToIconString()).X
                           + (style.FramePadding.X * 2);
+                    importW = ImGui.CalcTextSize(FontAwesomeIcon.FileImport.ToIconString()).X
+                          + (style.FramePadding.X * 2);
                 }
                 // Glamourer gets both the open-in-native-UI link and the sync button; Glamaholic (no native UI
-                // concept - see GlamaholicService.OpenInNativeUi) only gets the sync button.
+                // concept - see GlamaholicService.OpenInNativeUi) only gets the sync button. Glamaholic and
+                // Glamour Plate both get the import-into-Glamourer button.
                 var actionsW = starW + eyeW + (inner * 2)
-                    + (isGlamourer ? linkW + syncW + (inner * 2) : showForceSync ? syncW + inner : 0f);
+                    + (isGlamourer ? linkW + syncW + (inner * 2) : showForceSync ? syncW + inner : 0f)
+                    + (showImport ? importW + inner : 0f);
 
                 var rowTopY = ImGui.GetCursorPosY();
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (6f * ImGuiHelpers.GlobalScale));
@@ -484,6 +496,23 @@ public partial class MainWindow
                         }
                     }
                 }
+
+                if (showImport)
+                {
+                    ImGui.SameLine(0, inner);
+                    ImGui.SetCursorPosY(actionY);
+                    if (HeaderIconButton("importGlamourer", FontAwesomeIcon.FileImport, null, new Vector2(importW, frameH)))
+                    {
+                        importDesignName = isGlamaholic ? details.Name : string.Empty;
+                        importDeleteFromGlamaholic = false;
+                        importReclaimFocus = true;
+                        ImGui.OpenPopup(ImportToGlamourerPopupId);
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Import into Glamourer");
+                }
+
+                DrawImportToGlamourerPopup(details, isGlamaholic);
 
                 ImGui.Spacing();
 
@@ -885,6 +914,98 @@ public partial class MainWindow
 
         if (tagToRemove != null)
             plugin.Configuration.RemoveTag(id, details, tagToRemove);
+    }
+
+    private void DrawImportToGlamourerPopup(CachedOutfit details, bool isGlamaholic)
+    {
+        ImGui.SetNextWindowSize(new Vector2(420, 0) * ImGuiHelpers.GlobalScale, ImGuiCond.Appearing);
+        using var modal = ImRaii.PopupModal(ImportToGlamourerPopupId, ImGuiWindowFlags.NoResize);
+        if (!modal.Success)
+            return;
+
+        ImGui.TextWrapped($"This will create a new design in Glamourer from \"{details.Name}\"'s equipment. "
+            + "The wearer's current face/body won't be included - only gear.");
+        ImGui.Spacing();
+
+        ImGui.TextUnformatted("Design name");
+        if (ImGui.IsWindowAppearing() || importReclaimFocus)
+        {
+            ImGui.SetKeyboardFocusHere();
+            importReclaimFocus = false;
+        }
+        ImGui.SetNextItemWidth(-1);
+        var submitted = ImGui.InputTextWithHint("##importDesignName", "Design name (required)", ref importDesignName, 128,
+            ImGuiInputTextFlags.EnterReturnsTrue);
+        var trimmed = importDesignName.Trim();
+
+        if (isGlamaholic)
+        {
+            ImGui.Spacing();
+            ImGui.Checkbox("Remove this design from Glamaholic after import", ref importDeleteFromGlamaholic);
+            if (importDeleteFromGlamaholic)
+            {
+                ImGui.TextColored(UiTheme.ErrorText,
+                    "Glamaholic won't see this removal until it's restarted or you relog - it keeps its own "
+                    + "plate list in memory and won't notice the change to its file until then.");
+            }
+        }
+
+        ImGui.Spacing();
+
+        var canConfirm = trimmed.Length > 0;
+        using (ImRaii.Disabled(!canConfirm))
+        {
+            if (ImGui.Button("Import") || (submitted && canConfirm))
+            {
+                ImGui.CloseCurrentPopup();
+                DoImportToGlamourer(details, trimmed, isGlamaholic && importDeleteFromGlamaholic);
+            }
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel"))
+            ImGui.CloseCurrentPopup();
+    }
+
+    private void DoImportToGlamourer(CachedOutfit details, string name, bool deleteFromGlamaholic)
+    {
+        var equipment = details.Source == DesignSource.Glamaholic
+            ? plugin.Glamaholic.BuildImportPayload(details.ProviderDesignId)?.Equipment
+            : plugin.GlamourPlate.BuildImportPayload(details.ProviderDesignId);
+
+        if (equipment == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Import failed: design data not currently available - try refreshing.");
+            return;
+        }
+
+        var (stateResult, state) = plugin.Glamourer.GetState();
+        if (stateResult != GlamourerApiEc.Success || state == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Import failed: couldn't read current Glamourer state ({stateResult}).");
+            return;
+        }
+
+        var designJson = GlamourerJsonSchema.BuildEquipmentOnlyDesign(state, equipment);
+        var (addResult, newId) = plugin.Glamourer.AddDesign(designJson, name);
+        if (addResult != GlamourerApiEc.Success)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Import failed: {addResult}");
+            return;
+        }
+
+        Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Imported \"{name}\" into Glamourer.");
+
+        if (deleteFromGlamaholic)
+        {
+            var deleteResult = plugin.Glamaholic.DeletePlate(details.ProviderDesignId);
+            if (!deleteResult.Success)
+                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Import succeeded, but couldn't remove \"{details.Name}\" from Glamaholic: {deleteResult.Error}");
+            else
+                Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Removed \"{details.Name}\" from Glamaholic.");
+        }
+
+        selectedDesign = newId;
+        RefreshDesigns();
     }
 
     private void DrawAddTagPopup(Guid id, CachedOutfit details)

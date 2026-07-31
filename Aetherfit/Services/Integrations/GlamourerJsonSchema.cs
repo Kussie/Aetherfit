@@ -148,6 +148,30 @@ internal static class GlamourerJsonSchema
         return result;
     }
 
+    // Builds a design-shaped JObject for Glamourer's AddDesign IPC from a live GetState() snapshot -
+    // clones it (state and design JObjects share the same Customize/Equipment/Bonus shape, see
+    // GlamourerService.GetState), swaps in the caller's own Equipment, and zeroes every Customize/Bonus
+    // Apply flag so the resulting design only ever changes gear. Glamaholic/Glamour Plate have no
+    // face/body concept of their own - carrying the importer's current customize into a saved (and
+    // possibly later shared) design would be surprising.
+    public static JObject BuildEquipmentOnlyDesign(JObject baseState, JObject equipment)
+    {
+        var design = (JObject)baseState.DeepClone();
+        design["Equipment"] = equipment;
+        ZeroApplyFlags(design["Customize"] as JObject);
+        ZeroApplyFlags(design["Bonus"] as JObject);
+        return design;
+    }
+
+    private static void ZeroApplyFlags(JObject? section)
+    {
+        if (section == null)
+            return;
+        foreach (var prop in section.Properties())
+            if (prop.Value is JObject entry && entry["Apply"] != null)
+                entry["Apply"] = false;
+    }
+
     public static bool ReadBool(JToken? token)
     {
         if (token is not JValue v || v.Value is null)

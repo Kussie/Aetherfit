@@ -10,12 +10,6 @@ using Newtonsoft.Json.Linq;
 
 namespace Aetherfit.Services.Integrations;
 
-// Reads the game's own 20-slot Glamour Plate system via MirageManager - a persistent Client.Game
-// singleton (unlike the Mirage Prism Plate UI's own Agent, this holds all 20 plates regardless of
-// whether any window is open), confirmed by decompiling FFXIVClientStructs.dll directly. Its own doc
-// comment says "Data is cleared when switching zones" with no way to force a reload, so this service
-// never assumes it's populated - see TryGetPlate's two-tier fallback. Applies by relaying through
-// GlamourerService.ApplyEquipmentState, same as GlamaholicService.
 [SupportedOSPlatform("windows")]
 public sealed class GlamourPlateService : IDesignProvider
 {
@@ -25,9 +19,6 @@ public sealed class GlamourPlateService : IDesignProvider
     private readonly GlamourerService glamourer;
     private readonly Configuration configuration;
 
-    // Populated by the most recent successful FetchDesignList. FetchDesignMetadata/Apply read from
-    // this rather than the live struct - Apply in particular has to keep working after the live data
-    // is cleared by a zone change, or before it's ever been loaded this session (see TryGetPlate).
     private readonly Dictionary<Guid, PlateSnapshot> lastKnownPlates = new();
 
     public GlamourPlateService(GlamourerService glamourer, Configuration configuration)
@@ -42,9 +33,6 @@ public sealed class GlamourPlateService : IDesignProvider
 
     private readonly record struct PlateSnapshot(string Name, uint[] ItemIds, byte[] Stain0Ids, byte[] Stain1Ids);
 
-    // Fixed positional order for MirageManager's ItemIds/Stain0Ids/Stain1Ids arrays - the same
-    // MainHand/OffHand/.../RFinger/LFinger convention already used by Aetherfit's own EquipmentSlot
-    // and Glamaholic's PlateSlot. Unconfirmed without a live dump - see the plan's Risks section.
     private static readonly EquipmentSlot[] SlotMap =
     {
         EquipmentSlot.MainHand,
@@ -144,25 +132,31 @@ public sealed class GlamourPlateService : IDesignProvider
 
         return glamourer.RelayApply(nativeId, designName, quiet, "Glamour Plate", state =>
         {
-            var equipment = new JObject();
-            for (var slot = 0; slot < SlotCount; slot++)
-            {
-                equipment[SlotMap[slot].ToString()] = new JObject
-                {
-                    ["ItemId"] = plate.ItemIds[slot],
-                    ["Stain"] = plate.Stain0Ids[slot],
-                    ["Stain2"] = plate.Stain1Ids[slot],
-                    ["Apply"] = true,
-                    ["ApplyStain"] = true,
-                };
-            }
-            state["Equipment"] = equipment;
+            state["Equipment"] = BuildEquipmentJObject(plate);
         }, s => glamourer.ApplyEquipmentState(s));
     }
 
-    // Fresh in-session data first, falling back to whatever was last persisted to CachedOutfits -
-    // covers a plugin reload or post-zone-change refresh where MirageManager's live data isn't
-    // available yet but a prior session already cached this plate.
+    private static JObject BuildEquipmentJObject(PlateSnapshot plate, bool skipEmptySlots = false)
+    {
+        var equipment = new JObject();
+        for (var slot = 0; slot < SlotCount; slot++)
+        {
+            var apply = !skipEmptySlots || plate.ItemIds[slot] != 0;
+            equipment[SlotMap[slot].ToString()] = new JObject
+            {
+                ["ItemId"] = plate.ItemIds[slot],
+                ["Stain"] = plate.Stain0Ids[slot],
+                ["Stain2"] = plate.Stain1Ids[slot],
+                ["Apply"] = apply,
+                ["ApplyStain"] = apply,
+            };
+        }
+        return equipment;
+    }
+
+    public JObject? BuildImportPayload(Guid nativeId)
+        => TryGetPlate(nativeId, out var plate) ? BuildEquipmentJObject(plate, skipEmptySlots: true) : null;
+
     private bool TryGetPlate(Guid nativeId, out PlateSnapshot plate)
     {
         if (lastKnownPlates.TryGetValue(nativeId, out plate))
