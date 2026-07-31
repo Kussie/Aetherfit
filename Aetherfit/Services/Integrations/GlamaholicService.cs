@@ -104,21 +104,41 @@ public sealed class GlamaholicService : IDesignProvider
         var items = plate["Items"] as JObject;
         return glamourer.RelayApply(nativeId, designName, quiet, "Glamaholic", state =>
         {
-            var equipment = new JObject();
-            foreach (var (glamaholicKey, slot) in SlotMap)
-            {
-                var item = items?[glamaholicKey] as JObject;
-                equipment[slot.ToString()] = new JObject
-                {
-                    ["ItemId"] = item?["ItemId"]?.Value<long>() ?? 0,
-                    ["Stain"] = item?["Stain1"]?.Value<int>() ?? 0,
-                    ["Stain2"] = item?["Stain2"]?.Value<int>() ?? 0,
-                    ["Apply"] = true,
-                    ["ApplyStain"] = true,
-                };
-            }
-            state["Equipment"] = equipment;
+            state["Equipment"] = BuildEquipmentJObject(items);
         }, s => glamourer.ApplyEquipmentState(s));
+    }
+
+    private static JObject BuildEquipmentJObject(JObject? items, bool skipEmptySlots = false)
+    {
+        var equipment = new JObject();
+        foreach (var (glamaholicKey, slot) in SlotMap)
+        {
+            var item = items?[glamaholicKey] as JObject;
+            var itemId = item?["ItemId"]?.Value<long>() ?? 0;
+            var apply = !skipEmptySlots || itemId != 0;
+            equipment[slot.ToString()] = new JObject
+            {
+                ["ItemId"] = itemId,
+                ["Stain"] = item?["Stain1"]?.Value<int>() ?? 0,
+                ["Stain2"] = item?["Stain2"]?.Value<int>() ?? 0,
+                ["Apply"] = apply,
+                ["ApplyStain"] = apply,
+            };
+        }
+        return equipment;
+    }
+
+    // Feeds the "Import into Glamourer" flow (MainWindow.EditMode.cs) - the plate's own name (used to
+    // prefill the import dialog) alongside the same equipment shape Apply already builds, minus any
+    // slot the plate leaves empty.
+    public (string Name, JObject Equipment)? BuildImportPayload(Guid nativeId)
+    {
+        var plate = FindPlate(nativeId);
+        if (plate == null)
+            return null;
+
+        var name = plate["Name"]?.ToString() ?? string.Empty;
+        return (name, BuildEquipmentJObject(plate["Items"] as JObject, skipEmptySlots: true));
     }
 
     public sealed record PushTagsResult(bool Success, string? Error);
@@ -144,7 +164,7 @@ public sealed class GlamaholicService : IDesignProvider
                 return new PushTagsResult(false, "Glamaholic config has no plates.");
 
             var node = FindPlateNode(plates, nativeId);
-            if (node?["Plate"] is not JObject plate)
+            if (node?.Node["Plate"] is not JObject plate)
                 return new PushTagsResult(false, "Plate not found in Glamaholic — was it deleted?");
 
             plate["Tags"] = new JArray(tags);
@@ -179,6 +199,64 @@ public sealed class GlamaholicService : IDesignProvider
         }
     }
 
+    public sealed record DeletePlateResult(bool Success, string? Error);
+
+    // Same skeleton as PushTagsToGlamaholic, removing the plate node from its containing array
+    // instead of editing a field. Glamaholic keeps its own plate list in memory and has no reason to
+    // notice this external edit mid-session - its own UI (and Aetherfit's cache, until this class's
+    // cachedRoot is invalidated below) won't reflect the removal until Glamaholic reloads its config,
+    // i.e. a relog or plugin reload. The caller surfaces that caveat to the user up front.
+    public DeletePlateResult DeletePlate(Guid nativeId)
+    {
+        if (!File.Exists(ConfigPath))
+            return new DeletePlateResult(false, "Glamaholic config file not found.");
+
+        try
+        {
+            var text = File.ReadAllText(ConfigPath);
+
+            JObject root;
+            using (var stringReader = new StringReader(text))
+            using (var jsonReader = new JsonTextReader(stringReader) { DateParseHandling = DateParseHandling.None })
+                root = JObject.Load(jsonReader);
+
+            if (root["Plates"] is not JArray plates)
+                return new DeletePlateResult(false, "Glamaholic config has no plates.");
+
+            var found = FindPlateNode(plates, nativeId);
+            if (found == null)
+                return new DeletePlateResult(false, "Plate not found in Glamaholic — was it already removed?");
+
+            found.Value.Container.Remove(found.Value.Node);
+
+            var usesCrlf = text.Contains("\r\n");
+            string output;
+            using (var stringWriter = new StringWriter { NewLine = usesCrlf ? "\r\n" : "\n" })
+            {
+                using (var jsonWriter = new JsonTextWriter(stringWriter) { Formatting = Formatting.Indented, IndentChar = ' ', Indentation = 2 })
+                    root.WriteTo(jsonWriter);
+                output = stringWriter.ToString();
+            }
+
+            var tempPath = ConfigPath + ".aetherfit-tmp";
+            File.WriteAllText(tempPath, output);
+            File.Move(tempPath, ConfigPath, overwrite: true);
+
+            cachedRoot = null;
+            return new DeletePlateResult(true, null);
+        }
+        catch (IOException ex)
+        {
+            Plugin.Log.Warning(ex, "Glamaholic config locked while deleting plate {Id}", nativeId);
+            return new DeletePlateResult(false, "Couldn't write Glamaholic's config file — it may be open or in use. Try again.");
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to delete Glamaholic plate {Id}", nativeId);
+            return new DeletePlateResult(false, $"Failed to update Glamaholic's config file: {ex.Message}");
+        }
+    }
+
     // No layer/native-UI/revert concept of its own - Capabilities has no Apply-adjacent flags for
     // these, so the UI never calls them, but IDesignProvider still requires an implementation.
     public void ApplyLayer(Guid nativeId) { }
@@ -198,7 +276,7 @@ public sealed class GlamaholicService : IDesignProvider
             return null;
 
         var node = FindPlateNode(plates, id);
-        return node?["Plate"] as JObject;
+        return node?.Node["Plate"] as JObject;
     }
 
     private JObject? cachedRoot;
@@ -233,13 +311,15 @@ public sealed class GlamaholicService : IDesignProvider
         }
     }
 
-    private static JObject? FindPlateNode(JArray nodes, Guid id)
+    // Returns the matched node alongside the array it lives in - PushTagsToGlamaholic only needs the
+    // node, but DeletePlate needs the container too, to remove the node from it.
+    private static (JArray Container, JObject Node)? FindPlateNode(JArray nodes, Guid id)
     {
         foreach (var node in nodes.OfType<JObject>())
         {
             var nodeType = node["NodeType"]?.ToString();
             if (nodeType == "Plate" && Guid.TryParse(node["Id"]?.ToString(), out var nodeId) && nodeId == id)
-                return node;
+                return (nodes, node);
             if (nodeType == "Folder" && node["Children"] is JArray children
                 && FindPlateNode(children, id) is { } found)
                 return found;

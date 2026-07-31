@@ -6,6 +6,7 @@ using Aetherfit.Utils;
 using Glamourer.Api.Enums;
 using Glamourer.Api.Helpers;
 using Glamourer.Api.IpcSubscribers;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Aetherfit.Services.Integrations;
@@ -19,6 +20,8 @@ public sealed class GlamourerService : IDisposable
     private readonly OpenDesign openDesign;
     private readonly GetState getState;
     private readonly ApplyState applyState;
+    private readonly AddDesign addDesign;
+    private readonly DeleteDesign deleteDesign;
     private readonly EventSubscriber<nint, StateFinalizationType> stateFinalized;
 
     private bool invokingOwnChange;
@@ -37,6 +40,8 @@ public sealed class GlamourerService : IDisposable
         openDesign = new OpenDesign(Plugin.PluginInterface);
         getState = new GetState(Plugin.PluginInterface);
         applyState = new ApplyState(Plugin.PluginInterface);
+        addDesign = new AddDesign(Plugin.PluginInterface);
+        deleteDesign = new DeleteDesign(Plugin.PluginInterface);
         stateFinalized = StateFinalized.Subscriber(Plugin.PluginInterface, OnStateFinalized);
     }
 
@@ -242,6 +247,28 @@ public sealed class GlamourerService : IDisposable
     // the only relay source whose designs carry customize values as well as equipment.
     public GlamourerApiEc ApplyEquipmentAndCustomizeState(JObject state, int objectIndex = 0)
         => InvokeOwnChange(() => applyState.Invoke(state, objectIndex, 0, ApplyFlag.Equipment | ApplyFlag.Customization));
+
+    // Writes a new saved design to Glamourer's own design list from an arbitrary design-shaped JObject -
+    // used to import a Glamaholic/Glamour Plate outfit as a real Glamourer design. Unlike Apply/Revert/
+    // ApplyState, this never touches a live character's state, so there's nothing for InvokeOwnChange's
+    // StateFinalized-suppression to guard against.
+    public (GlamourerApiEc Result, Guid NewId) AddDesign(JObject designJson, string name)
+    {
+        var result = addDesign.Invoke(designJson.ToString(Formatting.None), name, out var newId);
+        if (result != GlamourerApiEc.Success)
+            Plugin.Log.Warning("Failed to add Glamourer design {Name}: {Result}", name, result);
+        else
+            Plugin.Log.Info("Added Glamourer design {Name} ({Id})", name, newId);
+        return (result, newId);
+    }
+
+    public GlamourerApiEc DeleteDesign(Guid id)
+    {
+        var result = deleteDesign.Invoke(id);
+        if (result != GlamourerApiEc.Success)
+            Plugin.Log.Warning("Failed to delete Glamourer design {Id}: {Result}", id, result);
+        return result;
+    }
 
     // Shared by every relay-through-Glamourer provider (Glamaholic, Glamour Plate, Simple Glamour Switcher):
     // fetch current state, let the caller mutate the section(s) it owns, apply via whichever of the two
