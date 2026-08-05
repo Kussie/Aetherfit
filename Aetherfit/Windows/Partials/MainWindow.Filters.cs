@@ -30,6 +30,8 @@ public partial class MainWindow
     // Vanilla = no mods attached, Modded = has mods. Only one can be on at a time (see DrawVanillaToggle/DrawModdedToggle).
     private bool filterVanillaOnly;
     private bool filterModdedOnly;
+    private bool filterNeverWorn;
+    private bool filterMissingModAssociation;
     private List<string> availableTagsForFilter = new();
     private List<(string Directory, string DisplayName)> availableModsForFilter = new();
     private int cachedAvailableTagsGeneration = -1;
@@ -42,7 +44,9 @@ public partial class MainWindow
                               || filterImage != ImageFilterMode.All
                               || filterFavourites
                               || filterVanillaOnly
-                              || filterModdedOnly;
+                              || filterModdedOnly
+                              || filterNeverWorn
+                              || filterMissingModAssociation;
 
     private int ActiveFilterCount => (filterName.Length > 0 ? 1 : 0)
                                    + filterTags.Count
@@ -51,7 +55,9 @@ public partial class MainWindow
                                    + (filterImage != ImageFilterMode.All ? 1 : 0)
                                    + (filterFavourites ? 1 : 0)
                                    + (filterVanillaOnly ? 1 : 0)
-                                   + (filterModdedOnly ? 1 : 0);
+                                   + (filterModdedOnly ? 1 : 0)
+                                   + (filterNeverWorn ? 1 : 0)
+                                   + (filterMissingModAssociation ? 1 : 0);
 
 
     private readonly record struct FilterSnapshot(
@@ -62,11 +68,14 @@ public partial class MainWindow
         ImageFilterMode Image,
         bool Favourites,
         bool VanillaOnly,
-        bool ModdedOnly);
+        bool ModdedOnly,
+        bool NeverWorn,
+        bool MissingModAssociation);
 
     private FilterSnapshot CaptureFilterSnapshot() => new(
         filterName, searchDesignName, searchModName, searchEquipmentName,
-        filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly);
+        filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly,
+        filterNeverWorn, filterMissingModAssociation);
 
     // extraControls renders view-specific rows (e.g. the "Group by..." checkboxes) inside the same
     // collapsible Filters panel, after the shared controls - each view owns its own grouping state,
@@ -136,6 +145,8 @@ public partial class MainWindow
         filterFavourites = false;
         filterVanillaOnly = false;
         filterModdedOnly = false;
+        filterNeverWorn = false;
+        filterMissingModAssociation = false;
     }
 
     // Narrow (design tree pane): one control per row. Wide (gallery): two rows -
@@ -187,9 +198,11 @@ public partial class MainWindow
     private const string FavouritesToggleLabel = "★ Favourites";
     private const string VanillaToggleLabel = "Vanilla";
     private const string ModdedToggleLabel = "Modded";
+    private const string NeverWornToggleLabel = "Never Worn";
+    private const string MissingModToggleLabel = "⚠ Broken Mods";
 
-    // Favourites / Vanilla / Modded as pill toggles, matching the D/M/E scope style. In the narrow
-    // pane they wrap instead of overflowing.
+    // Favourites / Vanilla / Modded / Never Worn / Broken Mods as pill toggles, matching the D/M/E
+    // scope style. In the narrow pane they wrap instead of overflowing.
     private void DrawQuickToggles(bool wide)
     {
         if (!wide)
@@ -209,6 +222,10 @@ public partial class MainWindow
             DrawVanillaToggle();
             Pills.PlaceItem(PillWidth(ModdedToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
             DrawModdedToggle();
+            Pills.PlaceItem(PillWidth(NeverWornToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
+            DrawNeverWornToggle();
+            Pills.PlaceItem(PillWidth(MissingModToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
+            DrawMissingModAssociationToggle();
             return;
         }
 
@@ -217,6 +234,10 @@ public partial class MainWindow
         DrawVanillaToggle();
         ImGui.SameLine();
         DrawModdedToggle();
+        ImGui.SameLine();
+        DrawNeverWornToggle();
+        ImGui.SameLine();
+        DrawMissingModAssociationToggle();
     }
 
     private void DrawFavouritesToggle()
@@ -230,6 +251,22 @@ public partial class MainWindow
     private void DrawVanillaToggle() => Pills.DrawVanillaToggle(ref filterVanillaOnly, ref filterModdedOnly, "");
 
     private void DrawModdedToggle() => Pills.DrawModdedToggle(ref filterVanillaOnly, ref filterModdedOnly, "");
+
+    private void DrawNeverWornToggle()
+    {
+        if (Pills.DrawToggle(NeverWornToggleLabel, "neverWornFilter", filterNeverWorn))
+            filterNeverWorn = !filterNeverWorn;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show only designs that have never been applied");
+    }
+
+    private void DrawMissingModAssociationToggle()
+    {
+        if (Pills.DrawToggle(MissingModToggleLabel, "missingModFilter", filterMissingModAssociation))
+            filterMissingModAssociation = !filterMissingModAssociation;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show only designs whose mod associations reference an uninstalled mod");
+    }
 
     // Compact letter toggle (D/M/E) standing in for a long checkbox label; the full meaning lives in the tooltip.
     private static void DrawSearchScopeToggle(string letter, string tooltip, ref bool enabled)
@@ -389,6 +426,12 @@ public partial class MainWindow
             if (filterVanillaOnly && hasMods) return false;
             if (filterModdedOnly && !hasMods) return false;
         }
+
+        if (filterNeverWorn && cached?.LastAppliedAt != null)
+            return false;
+
+        if (filterMissingModAssociation && (cached == null || !plugin.Attribution.HasMissingModAssociation(cached)))
+            return false;
 
         return true;
     }

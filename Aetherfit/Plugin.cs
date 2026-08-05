@@ -50,6 +50,7 @@ public sealed class Plugin : IDalamudPlugin
     public CustomizePlusService CustomizePlus { get; init; }
     public GameDataService GameData { get; init; }
     public DesignAttributionService Attribution { get; init; }
+    public HealthReportService HealthReport { get; init; }
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
@@ -61,6 +62,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
+    private HealthReportWindow HealthReportWindow { get; init; }
     internal MainWindow MainWindow { get; init; }
     public ImageViewerWindow ImageViewer { get; init; }
     public ScreenshotSetupWindow ScreenshotSetup { get; init; }
@@ -140,6 +142,7 @@ public sealed class Plugin : IDalamudPlugin
         DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer), Glamaholic, GlamourPlate, SimpleGlamourSwitcher };
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);
+        HealthReport = new HealthReportService(Configuration, GameData, Attribution);
         ImageStorage = new ImageStorageService(Configuration);
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
@@ -155,6 +158,7 @@ public sealed class Plugin : IDalamudPlugin
         GalleryLiveShareService.ClearAllTemp();
 
         ConfigWindow = new ConfigWindow(this);
+        HealthReportWindow = new HealthReportWindow(this);
         MainWindow = new MainWindow(this);
         ImageViewer = new ImageViewerWindow();
         ScreenshotSetup = new ScreenshotSetupWindow(this);
@@ -163,6 +167,7 @@ public sealed class Plugin : IDalamudPlugin
         ShareLiveWindow = new ShareLiveWindow(this);
         ReceiveLiveWindow = new ReceiveLiveWindow(this);
         WindowSystem.AddWindow(ConfigWindow);
+        WindowSystem.AddWindow(HealthReportWindow);
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ImageViewer);
         WindowSystem.AddWindow(ScreenshotSetup);
@@ -208,6 +213,7 @@ public sealed class Plugin : IDalamudPlugin
         WindowSystem.RemoveAllWindows();
 
         ConfigWindow.Dispose();
+        HealthReportWindow.Dispose();
         MainWindow.Dispose();
         ImageViewer.Dispose();
         ScreenshotSetup.Dispose();
@@ -343,6 +349,7 @@ public sealed class Plugin : IDalamudPlugin
         => Restore.HandleExternalStateFinalized(actor, type);
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();
+    public void ToggleHealthReportUi() => HealthReportWindow.Toggle();
     public void ToggleMainUi() => MainWindow.Toggle();
     public void OpenDesignInMain(Guid id) => MainWindow.OpenDesign(id);
 

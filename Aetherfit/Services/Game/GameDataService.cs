@@ -248,6 +248,45 @@ public sealed class GameDataService
         return Resolve(itemNameCache, itemId, LookupItemName);
     }
 
+    // Mirrors LookupItemName's existence logic without producing display text - used by the Health
+    // Report's broken-item check, which needs to tell "intentionally empty" apart from "references
+    // an item that no longer resolves," something ResolveItemName's return value can't do alone
+    // (both cases return NothingItemName).
+    public bool ItemExists(ulong itemId)
+    {
+        if (itemId == 0)
+            return true;
+
+        if (itemSheet != null && itemId <= uint.MaxValue && itemSheet.TryGetRow((uint)itemId, out var row)
+            && !string.IsNullOrWhiteSpace(row.Name.ExtractText()))
+            return true;
+
+        // A hand-built custom weapon (Glamourer's advanced editor) is intentionally not a catalog item.
+        if (((CustomItemId)itemId) is { IsCustom: true, IsBonusItem: false })
+            return true;
+
+        // Glamourer's own "nothing"/"smallclothes" sentinels (ItemManager.NothingId/SmallclothesId in
+        // its source: uint.MaxValue minus a small per-slot/per-weapon-type offset) - nowhere near any
+        // real item id, but still <= uint.MaxValue, so they reach and correctly fail the sheet lookup
+        // above without being custom-flagged either. Without this, every slot a design leaves
+        // intentionally empty reads as broken.
+        return itemId >= uint.MaxValue - 1000;
+    }
+
+    public bool BonusItemExists(string slotKey, ulong bonusId)
+    {
+        if (bonusId == 0)
+            return true;
+
+        if (ParseBonusSlot(slotKey) == BonusItemFlag.Glasses && glassesSheet != null && bonusId <= uint.MaxValue
+            && glassesSheet.TryGetRow((uint)bonusId, out var row) && !string.IsNullOrWhiteSpace(row.Name.ExtractText()))
+            return true;
+
+        // Glamourer's "nothing" sentinel for bonus slots (EquipItem.BonusItemNothing in its source) is
+        // a custom- AND bonus-flagged id, not a real Glasses sheet row.
+        return ((CustomItemId)bonusId) is { IsCustom: true, IsBonusItem: true };
+    }
+
     private string LookupItemName(ulong itemId)
     {
         // Glamourer encodes custom weapon models with bits >32 set, and uses random ItemIds for "nothing" that don't map to real Item rows.

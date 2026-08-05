@@ -289,6 +289,7 @@ public partial class MainWindow : Window, IDisposable
                 var meta = plugin.Configuration.GetOrSeedDesignMeta(aetherfitId, outfit.GlamourerDescription, outfit.GlamourerTags);
                 outfit.Description = meta.Description;
                 outfit.Tags = new List<string>(meta.Tags);
+                outfit.LastAppliedAt = meta.LastApplied;
                 job.Metadata[aetherfitId] = outfit;
 
                 if (!plugin.ImageStorage.HasCover(aetherfitId) && provider.GetNativeImagePath(nativeId) is { } nativeImagePath)
@@ -335,6 +336,12 @@ public partial class MainWindow : Window, IDisposable
             .ToList();
         foreach (var stale in staleMeta)
             plugin.Configuration.DesignMeta.Remove(stale);
+
+        var staleHealthIgnores = plugin.Configuration.IgnoredHealthChecks.Keys
+            .Where(k => !validIds.Contains(k))
+            .ToList();
+        foreach (var stale in staleHealthIgnores)
+            plugin.Configuration.IgnoredHealthChecks.Remove(stale);
 
         plugin.Configuration.FavouriteDesigns.RemoveWhere(id => !validIds.Contains(id));
         plugin.Configuration.HiddenDesigns.RemoveWhere(id => !validIds.Contains(id));
@@ -411,6 +418,10 @@ public partial class MainWindow : Window, IDisposable
         if (IconTextButton(FontAwesomeIcon.FolderOpen, "Open Shared Gallery", dropdown: true))
             ImGui.OpenPopup("##openGalleryPopup");
         DrawOpenGalleryPopup();
+        ImGui.SameLine();
+
+        if (IconTextButton(FontAwesomeIcon.Stethoscope, "Health Report"))
+            plugin.ToggleHealthReportUi();
 
         var countText = IsRefreshing && activeRefresh is { } job
             ? $"Loading {job.Index}/{designsCount}..."

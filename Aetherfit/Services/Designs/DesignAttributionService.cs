@@ -28,6 +28,17 @@ public sealed class DesignAttributionService
     public static string ModDisplayName(CachedMod mod)
         => string.IsNullOrWhiteSpace(mod.Name) ? mod.Directory : mod.Name;
 
+    // A mod association (State == Enabled) forces its own enabled state via a temporary Penumbra
+    // override at apply time, so the mod's state in the permanent collection never matters - the only
+    // way an association can actually fail is the mod no longer being installed at all.
+    public List<CachedMod> GetMissingModAssociations(CachedOutfit details)
+        => details.Mods.Where(m => m.State == ModState.Enabled
+                                 && !penumbra.GetInstalledModDirectories().Contains(m.Directory))
+            .ToList();
+
+    public bool HasMissingModAssociation(CachedOutfit details)
+        => GetMissingModAssociations(details).Count > 0;
+
     // Only enabled mods count, and when more than one changes the same thing the highest priority wins.
     // OrderByDescending is stable, so mods sharing a priority keep the order Glamourer listed them in.
     public Result Build(CachedOutfit details)
