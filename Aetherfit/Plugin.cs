@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -76,7 +77,25 @@ public sealed class Plugin : IDalamudPlugin
 
     public Plugin()
     {
-        Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        var loadedConfig = PluginInterface.GetPluginConfig() as Configuration;
+        Configuration = loadedConfig ?? new Configuration();
+
+        // Sensible starting defaults, seeded only for a genuinely fresh install (no saved config to
+        // load at all) - not via TagSuggestionBlacklist's own field initializer, which used to cause
+        // these same four entries to duplicate on every single load (see Configuration.cs).
+        if (loadedConfig == null)
+            Configuration.TagSuggestionBlacklist.AddRange(["1girl", "1boy", "solo", "looking at viewer"]);
+
+        // One-time (but safe to re-run - cheap and idempotent) cleanup for configs saved before the
+        // fix above: collapse whatever duplicate entries already accumulated back down to one each.
+        var dedupedBlacklist = Configuration.TagSuggestionBlacklist
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (dedupedBlacklist.Count != Configuration.TagSuggestionBlacklist.Count)
+        {
+            Configuration.TagSuggestionBlacklist = dedupedBlacklist;
+            Configuration.Save();
+        }
 
         if (Configuration.GalleryFitMode == GalleryFitMode.Crop && Configuration.GalleryFitWholeImage)
         {

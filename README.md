@@ -21,10 +21,11 @@ It adds the following functionality:
 - Add screenshots to designs
 - Get AI-suggested tags for a design based on its own screenshots, powered by a local, on-device image tagger — nothing is ever uploaded anywhere
 - Apply a random design to your character or a random design based on a selection of tags
-- The ability to apply a random design (Or random design based on tags) to a character when logging in.
-- Share your design gallery wiith friends
+- The ability to apply a random design (Or random design based on tags) to a character when logging in
+- Share your design gallery with friends
 - Associate designs with specific jobs
-- Apply multiple layered designs (Including ability to randomly select a design from a pool, useful for having a random weapon appearance as an example)
+- Apply multiple layered designs (Including ability to randomly select a design from a pool, useful for having a random weapon appearance as an example), with the ability to apply additional designs before or after the main design.  Useful for having different designs for accessories and such (including the ability to apply layers on bulk)
+- Health Report, show designs that having missing mods, duplicate designs and or broken items
 
 > **Composite tags:** tags can be written as `category/type`, e.g. `swimsuit/bikini` or `colour/blue`. A design tagged this way matches filters for the full tag *or* either half on its own — so it shows up whether you filter by `swimsuit/bikini`, just `swimsuit`, or just `bikini`, without having to add all three as separate tags. When designs are grouped by tags instead of folders, composite tags also build a nested tree instead of one flat entry — `swimsuit/bikini` shows up as a `swimsuit` branch containing a `bikini` branch, and a design carrying `summer/casual` and `winter/casual` appears under both, keeping same-named subtags (like `casual`) apart under their own parent.
 

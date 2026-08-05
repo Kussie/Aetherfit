@@ -123,7 +123,11 @@ public class Configuration : IPluginConfiguration
     // tag-implication graph, alongside the flat tags the model fired.
     public bool TagSuggestionComposites { get; set; } = true;
 
-    public List<string> TagSuggestionBlacklist { get; set; } = new() { "1girl", "1boy", "solo", "looking at viewer" };
+    // Deliberately empty here, not seeded with defaults - see Plugin.cs's constructor, which seeds
+    // sensible defaults only for a genuinely fresh install. A non-empty literal here previously caused
+    // Newtonsoft's default ObjectCreationHandling.Auto to reuse-and-append onto this list on every
+    // deserialize instead of replacing it, silently duplicating the seeded entries on every plugin load.
+    public List<string> TagSuggestionBlacklist { get; set; } = new();
 
     public Dictionary<string, string> TagSuggestionRenames { get; set; } = new() { ["pantyhose"] = "stockings" };
 
