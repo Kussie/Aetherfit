@@ -30,7 +30,8 @@ public sealed class DesignApplyService
             applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: true),
             applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false));
 
-    private void ApplyDesignCore(Guid id, List<Guid> beforeLayerIds, List<Guid> afterLayerIds, bool quiet = false)
+    private void ApplyDesignCore(Guid id, List<Guid> beforeLayerIds, List<Guid> afterLayerIds, bool quiet = false,
+        bool recordLastApplied = true)
     {
         var name = plugin.Configuration.ResolveDesignName(id);
         if (!plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit))
@@ -68,7 +69,7 @@ public sealed class DesignApplyService
         }
 
         // Applied before the base so anything it doesn't explicitly manage survives underneath it.
-        ApplyLayers(beforeLayerIds);
+        ApplyLayers(beforeLayerIds, recordLastApplied);
 
         var layerNames = beforeLayerIds.Concat(afterLayerIds).Select(plugin.Configuration.ResolveDesignName).ToList();
         if (!provider.Apply(outfit.ProviderDesignId, name, layerNames, quiet))
@@ -77,14 +78,21 @@ public sealed class DesignApplyService
         if (!quiet && plugin.GameData.DesignHasAnyIncompatibleItems(outfit))
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" can only be partially applied on your current character.");
 
-        ApplyLayers(afterLayerIds);
+        ApplyLayers(afterLayerIds, recordLastApplied);
 
         RecordLastWorn(id, beforeLayerIds, afterLayerIds);
+
+        // Only a genuine active choice counts as "worn" - ReapplyLastWorn is a pure state restore
+        // (login/zone-change), not the user newly picking this look, so it opts out via the caller.
+        if (recordLastApplied)
+            plugin.Configuration.RecordLastApplied(id, outfit);
     }
 
     // Applies each layer id (in order) via its provider's ApplyLayer IPC. Used for both the before- and
     // after-base layer passes - only the order relative to the base's own Apply call differs.
-    private void ApplyLayers(List<Guid> layerIds)
+    // recordLastApplied mirrors the base design's own flag: a layer worn alongside a restored (not
+    // actively chosen) base is itself just being restored, not freshly worn.
+    private void ApplyLayers(List<Guid> layerIds, bool recordLastApplied)
     {
         if (layerIds.Count == 0)
             return;
@@ -96,7 +104,11 @@ public sealed class DesignApplyService
             {
                 if (plugin.Configuration.CachedOutfits.TryGetValue(layerId, out var layerOutfit)
                     && plugin.DesignProviders.FirstOrDefault(p => p.Source == layerOutfit.Source) is { } layerProvider)
+                {
                     layerProvider.ApplyLayer(layerOutfit.ProviderDesignId);
+                    if (recordLastApplied)
+                        plugin.Configuration.RecordLastApplied(layerId, layerOutfit);
+                }
             }
         }
         finally { applyingLayer = false; }
@@ -186,7 +198,7 @@ public sealed class DesignApplyService
         if (skipped > 0 && plugin.Configuration.EnableRandomLayers)
             Plugin.Log.Info($"Skipped {skipped} previously worn layer(s) that no longer exist in Glamourer.");
 
-        ApplyDesignCore(baseId, beforeLayers, afterLayers, quiet);
+        ApplyDesignCore(baseId, beforeLayers, afterLayers, quiet, recordLastApplied: false);
         return ApplyResult.Ok(baseId);
     }
 

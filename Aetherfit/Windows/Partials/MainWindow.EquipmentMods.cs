@@ -402,17 +402,27 @@ public partial class MainWindow
 
         DesignDetailView.TextColoredUnformatted(ModLinkColor, label);
 
+        // An association forces its own enabled state at apply time, so the only real failure mode
+        // is the mod no longer being installed - see DesignAttributionService.HasMissingModAssociation.
+        var missing = mod.State == ModState.Enabled
+            && !plugin.Penumbra.GetInstalledModDirectories().Contains(mod.Directory);
+        if (missing)
+        {
+            ImGui.SameLine();
+            DesignDetailView.DrawFontAwesome(FontAwesomeIcon.ExclamationTriangle, UiTheme.ErrorText);
+        }
+
         var hovered = ImGui.IsItemHovered();
         if (hovered)
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-            DrawModTooltip(mod);
+            DrawModTooltip(mod, missing);
         }
         if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             plugin.Penumbra.OpenMod(mod.Directory, mod.Name);
     }
 
-    private static void DrawModTooltip(CachedMod mod)
+    private static void DrawModTooltip(CachedMod mod, bool missing = false)
     {
         ImGui.BeginTooltip();
         ImGui.PushTextWrapPos(ImGui.GetFontSize() * 30f);
@@ -444,6 +454,12 @@ public partial class MainWindow
                 ImGui.SameLine();
                 ImGui.TextUnformatted(string.IsNullOrEmpty(value) ? group : $"{group}: {value}");
             }
+        }
+
+        if (missing)
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(UiTheme.ErrorText, "Not installed — this association will fail to apply.");
         }
 
         ImGui.PopTextWrapPos();

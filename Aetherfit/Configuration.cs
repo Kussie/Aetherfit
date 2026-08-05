@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Aetherfit.Services.Integrations;
+using Newtonsoft.Json;
 
 namespace Aetherfit;
 
@@ -99,6 +100,11 @@ public class Configuration : IPluginConfiguration
     // Legacy: replaced by DesignLayerSlots. Migrated on first plugin load into a single slot per base design.
     public Dictionary<Guid, List<DesignLayer>> DesignLayers { get; set; } = new();
 
+    // Health Report findings dismissed by the user, keyed by design id then check-type tag
+    // ("MissingMod"/"BrokenItem"/"Duplicate" - see HealthReportWindow) - so a dismissed finding
+    // doesn't reappear on the next check run.
+    public Dictionary<Guid, HashSet<string>> IgnoredHealthChecks { get; set; } = new();
+
     // Provider -> (that provider's own native design id -> the stable Aetherfit-owned Guid for it).
     // Only ever grows; Glamourer never appears here (see DesignIdentity.Resolve).
     public Dictionary<DesignSource, Dictionary<Guid, Guid>> DesignIdentityMap { get; set; } = new();
@@ -186,6 +192,48 @@ public class Configuration : IPluginConfiguration
         };
         DesignMeta[id] = seeded;
         return seeded;
+    }
+
+    // Bumped on every RecordLastApplied so gallery sort/filter caches (which key off the design-list
+    // generation, not individual designs) know to rebuild without waiting for a full RefreshDesigns.
+    [JsonIgnore]
+    public int LastAppliedVersion { get; private set; }
+
+    // Takes the live CachedOutfit too, mirroring SetDescription/AddTag/RemoveTag - writing DesignMeta
+    // alone would only reach the UI on the next full RefreshDesigns, since CachedOutfit is otherwise
+    // only overlaid from DesignMeta during that refresh's metadata drain.
+    public void RecordLastApplied(Guid id, CachedOutfit outfit)
+    {
+        if (!DesignMeta.TryGetValue(id, out var meta))
+        {
+            meta = new LocalDesignMeta();
+            DesignMeta[id] = meta;
+        }
+        var now = DateTimeOffset.UtcNow;
+        meta.LastApplied = now;
+        outfit.LastAppliedAt = now;
+        LastAppliedVersion++;
+        Save();
+    }
+
+    public bool IsHealthCheckIgnored(Guid id, string checkType)
+        => IgnoredHealthChecks.TryGetValue(id, out var set) && set.Contains(checkType);
+
+    public void IgnoreHealthCheck(Guid id, string checkType)
+    {
+        if (!IgnoredHealthChecks.TryGetValue(id, out var set))
+        {
+            set = new HashSet<string>(StringComparer.Ordinal);
+            IgnoredHealthChecks[id] = set;
+        }
+        set.Add(checkType);
+        Save();
+    }
+
+    public void ClearIgnoredHealthChecks()
+    {
+        IgnoredHealthChecks.Clear();
+        Save();
     }
 
     public int MergeTagsFromGlamourer(Guid id, CachedOutfit outfit)
@@ -298,6 +346,7 @@ public class LocalDesignMeta
 {
     public string? Description { get; set; }
     public List<string> Tags { get; set; } = new();
+    public DateTimeOffset? LastApplied { get; set; }
 }
 
 [Serializable]
@@ -305,9 +354,6 @@ public class CachedOutfit
 {
     public string Name { get; set; } = string.Empty;
 
-    // Which provider this design came from, and that provider's own native id for it (== the
-    // Aetherfit id itself, for Glamourer). Source defaults to Glamourer (enum value 0) so entries
-    // written before this field existed still deserialize correctly.
     public DesignSource Source { get; set; }
     public Guid ProviderDesignId { get; set; }
 
@@ -322,6 +368,8 @@ public class CachedOutfit
 
     public DateTimeOffset? CreatedAt { get; set; }
     public DateTimeOffset? LastEdit { get; set; }
+
+    public DateTimeOffset? LastAppliedAt { get; set; }
 
     public List<CachedEquipmentSlot> Equipment { get; set; } = new();
     public List<CachedBonusItem> BonusItems { get; set; } = new();
@@ -339,8 +387,6 @@ public class CachedOutfit
     public bool? WeaponVisible { get; set; }
     public bool? VisorToggled { get; set; }
 
-    // Design-level application flags (always present on a design): whether it forces a redraw on apply
-    // and whether it resets temporary settings. Shown as enabled/disabled in the equipment panel.
     public bool ForcedRedraw { get; set; }
     public bool ResetTemporarySettings { get; set; }
 }

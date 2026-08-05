@@ -12,6 +12,7 @@ public sealed class PenumbraService
 {
     private readonly OpenMainWindow openMainWindow;
     private readonly GetChangedItems getChangedItems;
+    private readonly GetModList getModList;
     private readonly SetTemporaryModSettingsPlayer setTemporaryModSettingsPlayer;
     private readonly RemoveTemporaryModSettingsPlayer removeTemporaryModSettingsPlayer;
     private readonly RemoveAllTemporaryModSettingsPlayer removeAllTemporaryModSettingsPlayer;
@@ -21,12 +22,18 @@ public sealed class PenumbraService
     // directory and reuse that across every design.
     private readonly ConcurrentDictionary<string, IReadOnlySet<string>> changedItemsCache = new();
 
+    // A single snapshot of every currently-installed mod directory, used to detect a design's mod
+    // association referencing a mod that's no longer installed. Refetched once per refresh (see
+    // ClearChangedItemsCache, which this shares invalidation with).
+    private IReadOnlySet<string>? installedModDirectories;
+
     private static readonly IReadOnlySet<string> EmptySet = new HashSet<string>();
 
     public PenumbraService()
     {
         openMainWindow = new OpenMainWindow(Plugin.PluginInterface);
         getChangedItems = new GetChangedItems(Plugin.PluginInterface);
+        getModList = new GetModList(Plugin.PluginInterface);
         setTemporaryModSettingsPlayer = new SetTemporaryModSettingsPlayer(Plugin.PluginInterface);
         removeTemporaryModSettingsPlayer = new RemoveTemporaryModSettingsPlayer(Plugin.PluginInterface);
         removeAllTemporaryModSettingsPlayer = new RemoveAllTemporaryModSettingsPlayer(Plugin.PluginInterface);
@@ -96,7 +103,31 @@ public sealed class PenumbraService
         });
     }
 
-    public void ClearChangedItemsCache() => changedItemsCache.Clear();
+    public void ClearChangedItemsCache()
+    {
+        changedItemsCache.Clear();
+        installedModDirectories = null;
+    }
+
+    // Every currently-installed mod's directory - used to tell "mod association points at an
+    // uninstalled mod" apart from "installed but disabled" (the latter doesn't matter for an
+    // association, which forces its own enabled state at apply time regardless).
+    public IReadOnlySet<string> GetInstalledModDirectories()
+    {
+        if (installedModDirectories != null)
+            return installedModDirectories;
+
+        try
+        {
+            installedModDirectories = new HashSet<string>(getModList.Invoke().Keys, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query installed mod list");
+            installedModDirectories = EmptySet;
+        }
+        return installedModDirectories;
+    }
 
     // Temporary mod settings, scoped to the local player and a caller-owned lock key (see
     // SimpleGlamourSwitcherService's own key range) - the same relay mechanism SGS itself uses to

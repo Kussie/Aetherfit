@@ -16,7 +16,7 @@ namespace Aetherfit.Windows;
 
 public partial class MainWindow
 {
-    private enum GallerySortField { Name, LastModified, Created }
+    private enum GallerySortField { Name, LastModified, Created, LastWorn }
 
     private bool coverMode;
     private readonly Dictionary<Guid, int> galleryImageIndex = new();
@@ -42,6 +42,9 @@ public partial class MainWindow
     private bool cachedFilterFavourites;
     private bool cachedFilterVanillaOnly;
     private bool cachedFilterModdedOnly;
+    private bool cachedFilterNeverWorn;
+    private bool cachedFilterMissingModAssociation;
+    private int cachedLastAppliedVersion;
     private bool cachedPinFavourites = true;
     private bool cachedGlamaholicEnabled = true;
     private bool cachedGlamourPlateEnabled = true;
@@ -157,7 +160,7 @@ public partial class MainWindow
 
         ImGui.SetNextItemWidth(190f * scale);
         var fieldIdx = (int)gallerySortField;
-        var fieldOptions = new[] { "Name (alphabetical)", "Last modified", "Created" };
+        var fieldOptions = new[] { "Name (alphabetical)", "Last modified", "Created", "Last worn" };
         if (ImGui.Combo("##gallerySortField", ref fieldIdx, fieldOptions, fieldOptions.Length))
             gallerySortField = (GallerySortField)fieldIdx;
 
@@ -206,6 +209,9 @@ public partial class MainWindow
         cachedFilterFavourites != filterFavourites ||
         cachedFilterVanillaOnly != filterVanillaOnly ||
         cachedFilterModdedOnly != filterModdedOnly ||
+        cachedFilterNeverWorn != filterNeverWorn ||
+        cachedFilterMissingModAssociation != filterMissingModAssociation ||
+        cachedLastAppliedVersion != plugin.Configuration.LastAppliedVersion ||
         cachedPinFavourites != plugin.Configuration.GalleryPinFavouritesFirst ||
         cachedGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
         cachedGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled ||
@@ -239,6 +245,9 @@ public partial class MainWindow
         cachedFilterFavourites = filterFavourites;
         cachedFilterVanillaOnly = filterVanillaOnly;
         cachedFilterModdedOnly = filterModdedOnly;
+        cachedFilterNeverWorn = filterNeverWorn;
+        cachedFilterMissingModAssociation = filterMissingModAssociation;
+        cachedLastAppliedVersion = plugin.Configuration.LastAppliedVersion;
         cachedPinFavourites = plugin.Configuration.GalleryPinFavouritesFirst;
         cachedGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
         cachedGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
@@ -390,6 +399,8 @@ public partial class MainWindow
                     return CompareDates(GetLastEdit(a.Id), GetLastEdit(b.Id), asc);
                 case GallerySortField.Created:
                     return CompareDates(GetCreatedAt(a.Id), GetCreatedAt(b.Id), asc);
+                case GallerySortField.LastWorn:
+                    return CompareDates(GetLastAppliedAt(a.Id), GetLastAppliedAt(b.Id), asc);
                 default:
                     var cmp = NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName);
                     return asc ? cmp : -cmp;
@@ -402,6 +413,9 @@ public partial class MainWindow
 
     private DateTimeOffset? GetCreatedAt(Guid id) =>
         plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.CreatedAt : null;
+
+    private DateTimeOffset? GetLastAppliedAt(Guid id) =>
+        plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.LastAppliedAt : null;
 
     // Missing dates always sink to the bottom, regardless of direction.
     private static int CompareDates(DateTimeOffset? a, DateTimeOffset? b, bool ascending)
@@ -456,6 +470,8 @@ public partial class MainWindow
 
         var imageHovered = ImGui.IsItemHovered();
         var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
+        var hasMissingMod = plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var outfitForModBadge)
+            && plugin.Attribution.HasMissingModAssociation(outfitForModBadge);
 
         var hasArrows = additionalPaths.Count > 0;
         var canPrev = imgIdx > 0;
@@ -493,6 +509,11 @@ public partial class MainWindow
         // Hidden-eye toggle mirrors the star, anchored to the top-left corner instead of the top-right.
         var eyeMin = new Vector2(thumbStart.X + starMargin, thumbStart.Y + starMargin);
         var eyeMax = new Vector2(eyeMin.X + starSize, eyeMin.Y + starSize);
+
+        // Missing-mod-association warning, anchored to the bottom-left corner (the only one of the
+        // four not already used by the star/eye/page-count badges).
+        var warnMin = new Vector2(thumbStart.X + starMargin, thumbStart.Y + thumbHeight - starSize - starMargin);
+        var warnMax = new Vector2(warnMin.X + starSize, warnMin.Y + starSize);
         var overEye = imageHovered
             && mouse.X >= eyeMin.X && mouse.X <= eyeMax.X
             && mouse.Y >= eyeMin.Y && mouse.Y <= eyeMax.Y;
@@ -565,6 +586,20 @@ public partial class MainWindow
             var starCenter = (starMin + starMax) * 0.5f;
             dl.AddText(new Vector2(starCenter.X - starTextSize.X * 0.5f, starCenter.Y - starTextSize.Y * 0.5f),
                 starColor, starChar);
+        }
+
+        if (hasMissingMod)
+        {
+            var dl = ImGui.GetWindowDrawList();
+            dl.AddRectFilled(warnMin, warnMax, ImGui.ColorConvertFloat4ToU32(UiTheme.IconOverlayBg), 3f);
+            using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            {
+                var warnChar = FontAwesomeIcon.ExclamationTriangle.ToIconString();
+                var warnTextSize = ImGui.CalcTextSize(warnChar);
+                var warnCenter = (warnMin + warnMax) * 0.5f;
+                dl.AddText(new Vector2(warnCenter.X - warnTextSize.X * 0.5f, warnCenter.Y - warnTextSize.Y * 0.5f),
+                    ImGui.ColorConvertFloat4ToU32(UiTheme.ErrorText), warnChar);
+            }
         }
 
         // The hide-eye only appears on hover: a visible cell is never hidden, so there is no persistent state to show.

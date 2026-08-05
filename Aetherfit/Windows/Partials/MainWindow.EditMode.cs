@@ -356,10 +356,9 @@ public partial class MainWindow
             return;
         }
 
-        var datesLineCount = (details.CreatedAt.HasValue ? 1 : 0) + (details.LastEdit.HasValue ? 1 : 0);
-        // The footer always draws at least one line - the Source label rides along an existing date
-        // line when there is one, or gets its own standalone line when there are none (e.g. Glamaholic).
-        var datesBlockHeight = Math.Max(datesLineCount, 1) * ImGui.GetTextLineHeightWithSpacing();
+        // Always exactly two rows now: Created/Last worn, then Last edited/Source - Created and Last
+        // edited are omitted when absent, but Last worn and Source always occupy their row regardless.
+        var datesBlockHeight = 2 * ImGui.GetTextLineHeightWithSpacing();
 
         var bodyHeight = Math.Max(0, ImGui.GetContentRegionAvail().Y - datesBlockHeight);
 
@@ -583,23 +582,30 @@ public partial class MainWindow
         var sourceName = plugin.DesignProviders.FirstOrDefault(p => p.Source == details.Source)?.DisplayName
             ?? details.Source.ToString();
         var sourceText = $"Source: {sourceName}";
+
+        // Last worn is always shown ("Never" rather than hidden - it's itself a meaningful, common
+        // state), paired on a row with Created above Last edited/Source below, mirroring how Created
+        // and Last worn both describe "when," same as Last edited and Source both sit on the bottom row.
+        var lastWornText = details.LastAppliedAt is { } worn ? $"Last worn: {FormatFriendlyRelative(worn)}" : "Last worn: Never";
+        var lastWornTooltip = details.LastAppliedAt is { } w ? FormatFullDate(w) : null;
+
+        string? createdText = null, createdTooltip = null;
+        if (details.CreatedAt is { } created)
+        {
+            createdText = $"Created: {FormatFriendlyRelative(created)}";
+            createdTooltip = FormatFullDate(created);
+        }
+
+        string? lastEditedText = null, lastEditedTooltip = null;
+        if (details.LastEdit is { } edited)
+        {
+            lastEditedText = $"Last edited: {FormatFriendlyRelative(edited)}";
+            lastEditedTooltip = FormatFullDate(edited);
+        }
+
         ImGui.Indent();
-        if (details.CreatedAt is not null || details.LastEdit is not null)
-        {
-            if (details.CreatedAt is { } created)
-                DrawDateLine("Created", created, details.LastEdit is null ? sourceText : null);
-            if (details.LastEdit is { } edited)
-                DrawDateLine("Last edited", edited, sourceText);
-        }
-        else
-        {
-            // A source with no creation/edit timestamps of its own (e.g. Glamaholic) still gets its
-            // own unconditional line - the date lines above aren't the only thing gating this text.
-            // Right-aligned to match where it sits when it rides along a date line instead.
-            var rightW = ImGui.CalcTextSize(sourceText).X;
-            ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(), ImGui.GetContentRegionMax().X - rightW));
-            ImGui.TextDisabled(sourceText);
-        }
+        DrawFooterRow(createdText, createdTooltip, lastWornText, lastWornTooltip);
+        DrawFooterRow(lastEditedText, lastEditedTooltip, sourceText, null);
         ImGui.Unindent();
     }
 
@@ -833,20 +839,31 @@ public partial class MainWindow
             1);
     }
 
-    private static void DrawDateLine(string label, DateTimeOffset dt, string? rightText = null)
+    // A footer row: an optional left-aligned label (omitted entirely when null, e.g. a source with no
+    // Created/Last edited of its own) and an always-present right-aligned label.
+    private static void DrawFooterRow(string? leftText, string? leftTooltip, string rightText, string? rightTooltip)
     {
-        ImGui.TextDisabled($"{label}: {FormatFriendlyRelative(dt)}");
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(FormatFullDate(dt));
+        if (leftText != null)
+        {
+            ImGui.TextDisabled(leftText);
+            if (leftTooltip != null && ImGui.IsItemHovered())
+                ImGui.SetTooltip(leftTooltip);
+        }
 
-        if (rightText == null)
-            return;
-
-        var style = ImGui.GetStyle();
         var rightW = ImGui.CalcTextSize(rightText).X;
-        ImGui.SameLine(Math.Max(ImGui.GetCursorPosX() + style.ItemSpacing.X,
-            ImGui.GetContentRegionMax().X - rightW));
+        if (leftText != null)
+        {
+            var style = ImGui.GetStyle();
+            ImGui.SameLine(Math.Max(ImGui.GetCursorPosX() + style.ItemSpacing.X,
+                ImGui.GetContentRegionMax().X - rightW));
+        }
+        else
+        {
+            ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(), ImGui.GetContentRegionMax().X - rightW));
+        }
         ImGui.TextDisabled(rightText);
+        if (rightTooltip != null && ImGui.IsItemHovered())
+            ImGui.SetTooltip(rightTooltip);
     }
 
     private static string FormatFriendlyRelative(DateTimeOffset dt)
