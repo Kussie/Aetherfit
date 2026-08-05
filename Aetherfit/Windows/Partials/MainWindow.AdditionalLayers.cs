@@ -485,7 +485,9 @@ public partial class MainWindow
     {
         var associations = plugin.Configuration.DesignLayerSlots
             .Select(kv => (BaseId: kv.Key, Layer: kv.Value.SelectMany(s => s.Designs).FirstOrDefault(l => l.DesignId == id)))
-            .Where(t => t.Layer != null && plugin.Configuration.CachedOutfits.ContainsKey(t.BaseId))
+            .Where(t => t.Layer != null
+                     && plugin.Configuration.CachedOutfits.TryGetValue(t.BaseId, out var baseOutfit)
+                     && plugin.Configuration.IsProviderEnabled(baseOutfit.Source))
             .ToList();
 
         if (associations.Count == 0)
@@ -504,10 +506,7 @@ public partial class MainWindow
                 ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
                 ImGui.SetTooltip("Click to open in Aetherfit");
                 if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                {
-                    selectedDesign = baseId;
-                    coverMode = false;
-                }
+                    OpenDesign(baseId);
             }
 
             ImGui.SameLine();

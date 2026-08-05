@@ -93,6 +93,14 @@ public partial class MainWindow : Window, IDisposable
 
     public void OpenDesign(Guid id)
     {
+        // A design from a currently-disabled source can still be lingering in CachedOutfits for a
+        // moment (e.g. a Health Report row clicked right after toggling the source off, before the
+        // next refresh purges it) - refuse to open it rather than briefly showing something the user
+        // just asked to hide.
+        if (plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
+            && !plugin.Configuration.IsProviderEnabled(outfit.Source))
+            return;
+
         pendingRevealDesign = id;
         IsOpen = true;
     }
@@ -222,13 +230,11 @@ public partial class MainWindow : Window, IDisposable
         {
             // A disabled source is never fetched at all - not just filtered from the tree afterward -
             // so it can't surface an error notice (e.g. Glamour Plate's "not loaded this zone") while
-            // switched off. Treated like a fetch failure for preservation purposes: whatever was cached
-            // for it stays intact, just not refreshed, until it's re-enabled.
+            // switched off. Unlike a genuine fetch failure (below), a disabled source is deliberately
+            // left out of failedProviders too - see FinishRefresh, which only preserves a failed
+            // provider's prior cache, not a disabled one's.
             if (!plugin.Configuration.IsProviderEnabled(provider.Source))
-            {
-                failedProviders.Add(provider.Source);
                 continue;
-            }
 
             var result = provider.FetchDesignList();
             if (result.Error != null)
@@ -307,7 +313,10 @@ public partial class MainWindow : Window, IDisposable
 
         // A provider that failed to fetch this round keeps whatever it last had cached, rather than
         // a transient error wiping its designs (and their favourites/hidden/tags/job associations)
-        // out of Configuration entirely.
+        // out of Configuration entirely. A *disabled* provider gets no such preservation - disabling
+        // a source is a deliberate choice to remove it from the library, not a transient error to ride
+        // out, so its designs (and everything keyed off them) fall out of validIds below and get
+        // pruned by the same cleanup that already handles a design no longer existing at all.
         var merged = new Dictionary<Guid, CachedOutfit>(job.Metadata);
         if (job.FailedProviders.Count > 0)
             foreach (var (existingId, outfit) in plugin.Configuration.CachedOutfits)

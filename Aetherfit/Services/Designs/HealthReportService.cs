@@ -34,7 +34,7 @@ public sealed class HealthReportService
         var result = new List<MissingModFinding>();
         foreach (var (id, outfit) in configuration.CachedOutfits)
         {
-            if (configuration.IsHealthCheckIgnored(id, MissingModCheck))
+            if (!configuration.IsProviderEnabled(outfit.Source) || configuration.IsHealthCheckIgnored(id, MissingModCheck))
                 continue;
 
             var missing = attribution.GetMissingModAssociations(outfit);
@@ -49,7 +49,7 @@ public sealed class HealthReportService
         var result = new List<BrokenItemFinding>();
         foreach (var (id, outfit) in configuration.CachedOutfits)
         {
-            if (configuration.IsHealthCheckIgnored(id, BrokenItemCheck))
+            if (!configuration.IsProviderEnabled(outfit.Source) || configuration.IsHealthCheckIgnored(id, BrokenItemCheck))
                 continue;
 
             var broken = new List<string>();
@@ -71,7 +71,7 @@ public sealed class HealthReportService
         var groups = new Dictionary<string, List<(Guid Id, string Name)>>(StringComparer.Ordinal);
         foreach (var (id, outfit) in configuration.CachedOutfits)
         {
-            if (configuration.IsHealthCheckIgnored(id, DuplicateCheck))
+            if (!configuration.IsProviderEnabled(outfit.Source) || configuration.IsHealthCheckIgnored(id, DuplicateCheck))
                 continue;
 
             var key = BuildEquipmentSignature(outfit);
