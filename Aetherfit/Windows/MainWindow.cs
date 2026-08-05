@@ -43,6 +43,9 @@ public partial class MainWindow : Window, IDisposable
     // Set for the single frame after the filter changes. Pops matching nodes open to show results, but
     // otherwise stays out of the way so folders can still be collapsed.
     private bool expandTreesForFilter;
+
+    private Guid? revealDesignInTree;
+    private List<string>? revealDesignFolderPath;
     private FilterSnapshot filterSnapshot;
     private Dictionary<string, bool> filterTagsSnapshot = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<uint, bool> filterJobsSnapshot = new();
@@ -103,6 +106,40 @@ public partial class MainWindow : Window, IDisposable
 
         pendingRevealDesign = id;
         IsOpen = true;
+    }
+
+    // Switches to the plain folder tree (out of Cover Mode and out of any grouped-by view, since the
+    // reveal path below only knows how to walk the plain FolderNode tree) and queues a one-shot
+    // request that DrawTree picks up to force every ancestor folder open and scroll to the leaf.
+    private void RevealDesignInTree(Guid id)
+    {
+        coverMode = false;
+        groupByJob = false;
+        groupByTags = false;
+        groupBySource = false;
+
+        var path = FindDesignFolderPath(root, id, new List<string>());
+        if (path == null)
+            return; // not present in the tree right now (e.g. filtered out)
+
+        revealDesignInTree = id;
+        revealDesignFolderPath = path;
+    }
+
+    private static List<string>? FindDesignFolderPath(FolderNode node, Guid id, List<string> pathSoFar)
+    {
+        if (node.Designs.Any(d => d.Id == id))
+            return new List<string>(pathSoFar);
+
+        foreach (var (name, folder) in node.Folders)
+        {
+            pathSoFar.Add(name);
+            var found = FindDesignFolderPath(folder, id, pathSoFar);
+            if (found != null)
+                return found;
+            pathSoFar.RemoveAt(pathSoFar.Count - 1);
+        }
+        return null;
     }
 
     public override void Draw()
