@@ -140,6 +140,12 @@ public partial class MainWindow
         // Tree's drawn, so we're done with the one-shot expand request - clear it for next frame.
         expandTreesForFilter = false;
 
+        // Safety net: if the reveal target's leaf was never actually reached this frame (e.g. it's
+        // hidden by an active filter, or the grouped view got switched back on before this ran), don't
+        // leave the request dangling - it would otherwise keep forcing the same folders open forever.
+        revealDesignInTree = null;
+        revealDesignFolderPath = null;
+
         if (hoveredDesignForTooltip is { } hovered)
             DrawDesignLeafTooltip(hovered);
     }
@@ -171,6 +177,8 @@ public partial class MainWindow
             if (!FolderHasMatch(folder)) continue;
 
             ForceOpenIfFiltering(name, hasFilter);
+            if (revealDesignFolderPath is { } revealPath && depth < revealPath.Count && revealPath[depth] == name)
+                ImGui.SetNextItemOpen(true, ImGuiCond.Always);
 
             var rowX = ImGui.GetCursorScreenPos().X;
             var open = ImGui.TreeNodeEx(name, ImGuiTreeNodeFlags.SpanAvailWidth);
@@ -204,6 +212,13 @@ public partial class MainWindow
             var rowX = ImGui.GetCursorScreenPos().X;
             DrawDesignLeaf(design);
             DrawTreeItemTick(depth, rowX);
+
+            if (revealDesignInTree == design.Id)
+            {
+                ImGui.SetScrollHereY(0.3f);
+                revealDesignInTree = null;
+                revealDesignFolderPath = null;
+            }
         }
     }
 
@@ -379,13 +394,15 @@ public partial class MainWindow
 
                 // Measure the action cluster first so the title can be ellipsized to the space that remains.
                 var frameH = ImGui.GetFrameHeight();
-                float starW, eyeW, linkW, syncW, importW, bulkLayerW;
+                float starW, eyeW, revealW, linkW, syncW, importW, bulkLayerW;
                 using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
                 {
                     starW = ImGui.CalcTextSize(FontAwesomeIcon.Star.ToIconString()).X
                           + (style.FramePadding.X * 2);
                     eyeW = ImGui.CalcTextSize((isHidden ? FontAwesomeIcon.EyeSlash : FontAwesomeIcon.Eye).ToIconString()).X
                          + (style.FramePadding.X * 2);
+                    revealW = ImGui.CalcTextSize(FontAwesomeIcon.Sitemap.ToIconString()).X
+                          + (style.FramePadding.X * 2);
                     linkW = ImGui.CalcTextSize(FontAwesomeIcon.ExternalLinkAlt.ToIconString()).X
                           + (style.FramePadding.X * 2);
                     syncW = ImGui.CalcTextSize(FontAwesomeIcon.CloudUploadAlt.ToIconString()).X
@@ -400,26 +417,20 @@ public partial class MainWindow
                 // Glamour Plate both get the import-into-Glamourer button. Only Glamourer designs can be used
                 // as a layer at all (AllDesignsSorted), so the bulk-assign button only ever shows for those,
                 // and only while the layers feature itself is switched on.
-                var actionsW = starW + eyeW + (inner * 2)
-                    + (isGlamourer ? linkW + syncW + (inner * 2) : showForceSync ? syncW + inner : 0f)
-                    + (showImport ? importW + inner : 0f)
-                    + (showBulkLayer ? bulkLayerW + inner : 0f);
 
-                var rowTopY = ImGui.GetCursorPosY();
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (6f * ImGuiHelpers.GlobalScale));
+                var iconRowX = ImGui.GetCursorPosX();
                 ImGui.SetWindowFontScale(1.5f);
-                var titleAvail = Math.Max(50f * ImGuiHelpers.GlobalScale, ImGui.GetContentRegionAvail().X - actionsW);
+                var titleAvail = Math.Max(50f * ImGuiHelpers.GlobalScale, ImGui.GetContentRegionAvail().X);
                 var title = TextFit.Ellipsize(details.Name, titleAvail);
-                var titleH = ImGui.GetTextLineHeight();
                 ImGui.TextColored(UiTheme.GoldAccent, title);
                 ImGui.SetWindowFontScale(1.0f);
                 if (title != details.Name && ImGui.IsItemHovered())
                     ImGui.SetTooltip(details.Name);
 
-                var actionY = rowTopY + Math.Max(0f, (titleH - frameH) * 0.5f);
-
-                ImGui.SameLine(0, inner);
-                ImGui.SetCursorPosY(actionY);
+                // The action icons sit on their own row under the title now, rather than squeezed
+                // alongside it, so a long design name never has to compete with them for space.
+                ImGui.SetCursorPosX(iconRowX);
                 if (HeaderIconButton("favStar", FontAwesomeIcon.Star,
                         isFavourite ? UiTheme.FavouriteStar : UiTheme.FavouriteButtonOff,
                         new Vector2(starW, frameH)))
@@ -435,7 +446,6 @@ public partial class MainWindow
                     ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
 
                 ImGui.SameLine(0, inner);
-                ImGui.SetCursorPosY(actionY);
                 if (HeaderIconButton("hideEye", isHidden ? FontAwesomeIcon.EyeSlash : FontAwesomeIcon.Eye,
                         isHidden ? UiTheme.HiddenEyeOn : UiTheme.HiddenButtonOff,
                         new Vector2(eyeW, frameH)))
@@ -452,10 +462,15 @@ public partial class MainWindow
                         ? "Hidden — click to show in the gallery and exports"
                         : "Click to hide from the gallery and exports");
 
+                ImGui.SameLine(0, inner);
+                if (HeaderIconButton("revealInTree", FontAwesomeIcon.Sitemap, null, new Vector2(revealW, frameH)))
+                    RevealDesignInTree(id);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Show in the tree");
+
                 if (isGlamourer)
                 {
                     ImGui.SameLine(0, inner);
-                    ImGui.SetCursorPosY(actionY);
                     if (HeaderIconButton("openGlamourer", FontAwesomeIcon.ExternalLinkAlt, null, new Vector2(linkW, frameH)))
                         plugin.Glamourer.OpenInGlamourer(id, details.Name);
                     if (ImGui.IsItemHovered())
@@ -465,7 +480,6 @@ public partial class MainWindow
                 if (showForceSync)
                 {
                     ImGui.SameLine(0, inner);
-                    ImGui.SetCursorPosY(actionY);
                     if (HeaderIconButton("forceSync", FontAwesomeIcon.CloudUploadAlt, null, new Vector2(syncW, frameH)))
                         ConfirmDialog.Open(ForceSyncPopupId);
                     if (ImGui.IsItemHovered())
@@ -505,7 +519,6 @@ public partial class MainWindow
                 if (showImport)
                 {
                     ImGui.SameLine(0, inner);
-                    ImGui.SetCursorPosY(actionY);
                     if (HeaderIconButton("importGlamourer", FontAwesomeIcon.FileImport, null, new Vector2(importW, frameH)))
                     {
                         importDesignName = isGlamaholic ? details.Name : string.Empty;
@@ -522,7 +535,6 @@ public partial class MainWindow
                 if (showBulkLayer)
                 {
                     ImGui.SameLine(0, inner);
-                    ImGui.SetCursorPosY(actionY);
                     if (HeaderIconButton("bulkLayerAssign", FontAwesomeIcon.LayerGroup, null, new Vector2(bulkLayerW, frameH)))
                         OpenBulkLayerAssignPopup(id);
                     if (ImGui.IsItemHovered())
