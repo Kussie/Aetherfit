@@ -21,7 +21,7 @@
 
   <ItemGroup>
     <PackageReference Include="Glamourer.Api" Version="2.8.2" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.22.1" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.28.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 

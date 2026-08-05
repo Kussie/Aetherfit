@@ -374,12 +374,13 @@ public partial class MainWindow
                 var isGlamourPlate = details.Source == DesignSource.GlamourPlate;
                 var showForceSync = isGlamourer || isGlamaholic;
                 var showImport = isGlamaholic || isGlamourPlate;
+                var showBulkLayer = isGlamourer && plugin.Configuration.EnableRandomLayers;
                 var style = ImGui.GetStyle();
                 var inner = style.ItemInnerSpacing.X;
 
                 // Measure the action cluster first so the title can be ellipsized to the space that remains.
                 var frameH = ImGui.GetFrameHeight();
-                float starW, eyeW, linkW, syncW, importW;
+                float starW, eyeW, linkW, syncW, importW, bulkLayerW;
                 using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
                 {
                     starW = ImGui.CalcTextSize(FontAwesomeIcon.Star.ToIconString()).X
@@ -392,13 +393,18 @@ public partial class MainWindow
                           + (style.FramePadding.X * 2);
                     importW = ImGui.CalcTextSize(FontAwesomeIcon.FileImport.ToIconString()).X
                           + (style.FramePadding.X * 2);
+                    bulkLayerW = ImGui.CalcTextSize(FontAwesomeIcon.LayerGroup.ToIconString()).X
+                          + (style.FramePadding.X * 2);
                 }
                 // Glamourer gets both the open-in-native-UI link and the sync button; Glamaholic (no native UI
                 // concept - see GlamaholicService.OpenInNativeUi) only gets the sync button. Glamaholic and
-                // Glamour Plate both get the import-into-Glamourer button.
+                // Glamour Plate both get the import-into-Glamourer button. Only Glamourer designs can be used
+                // as a layer at all (AllDesignsSorted), so the bulk-assign button only ever shows for those,
+                // and only while the layers feature itself is switched on.
                 var actionsW = starW + eyeW + (inner * 2)
                     + (isGlamourer ? linkW + syncW + (inner * 2) : showForceSync ? syncW + inner : 0f)
-                    + (showImport ? importW + inner : 0f);
+                    + (showImport ? importW + inner : 0f)
+                    + (showBulkLayer ? bulkLayerW + inner : 0f);
 
                 var rowTopY = ImGui.GetCursorPosY();
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (6f * ImGuiHelpers.GlobalScale));
@@ -513,6 +519,18 @@ public partial class MainWindow
                 }
 
                 DrawImportToGlamourerPopup(details, isGlamaholic);
+
+                if (showBulkLayer)
+                {
+                    ImGui.SameLine(0, inner);
+                    ImGui.SetCursorPosY(actionY);
+                    if (HeaderIconButton("bulkLayerAssign", FontAwesomeIcon.LayerGroup, null, new Vector2(bulkLayerW, frameH)))
+                        OpenBulkLayerAssignPopup(id);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Apply as a layer to multiple designs");
+                }
+
+                DrawBulkLayerAssignPopup();
 
                 ImGui.Spacing();
 
