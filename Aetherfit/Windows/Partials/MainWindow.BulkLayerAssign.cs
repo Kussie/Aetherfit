@@ -98,6 +98,7 @@ public partial class MainWindow
 
         var candidates = plugin.Configuration.CachedOutfits
             .Where(kv => kv.Key != bulkLayerSourceId
+                      && plugin.Configuration.IsProviderEnabled(kv.Value.Source)
                       && bulkLayerFilterSources.Contains(kv.Value.Source)
                       && bulkLayerFilterTags.MatchesFilter((IReadOnlyCollection<string>?)kv.Value.Tags ?? Array.Empty<string>())
                       && bulkLayerFilterJobs.MatchesFilter(plugin.Configuration.GetJobAssociations(kv.Key)))

@@ -386,9 +386,11 @@ public class ConfigWindow : Window, IDisposable
         ImGui.TextUnformatted("Optional");
         ImGui.Spacing();
 
-        DrawIntegrationRow("Glamaholic", plugin.Glamaholic.CheckIntegration(),
+        var glamaholicInfo = plugin.Glamaholic.CheckIntegration();
+        DrawIntegrationRow("Glamaholic", glamaholicInfo,
             rightAligned: () => plugin.Configuration.GlamaholicEnabled = DrawRightAlignedCheckbox(
-                "Glamaholic", plugin.Configuration.GlamaholicEnabled, "Source designs from Glamaholic"),
+                "Glamaholic", plugin.Configuration.GlamaholicEnabled, "Source designs from Glamaholic",
+                glamaholicInfo.Status == PluginIntegrationStatus.Ok),
             extra: plugin.Configuration.GlamaholicEnabled ? () =>
                 plugin.Configuration.GlamaholicResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
                     "Glamaholic", plugin.Configuration.GlamaholicResetTemporarySettingsBeforeApply) : null);
@@ -397,9 +399,11 @@ public class ConfigWindow : Window, IDisposable
         DrawGlamourPlateIntegrationRow();
         ImGui.Spacing();
 
-        DrawIntegrationRow("Simple Glamour Switcher", plugin.SimpleGlamourSwitcher.CheckIntegration(),
+        var sgsInfo = plugin.SimpleGlamourSwitcher.CheckIntegration();
+        DrawIntegrationRow("Simple Glamour Switcher", sgsInfo,
             rightAligned: () => plugin.Configuration.SimpleGlamourSwitcherEnabled = DrawRightAlignedCheckbox(
-                "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherEnabled, "Source designs from Simple Glamour Switcher"),
+                "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherEnabled, "Source designs from Simple Glamour Switcher",
+                sgsInfo.Status == PluginIntegrationStatus.Ok),
             extra: plugin.Configuration.SimpleGlamourSwitcherEnabled ? () =>
                 plugin.Configuration.SimpleGlamourSwitcherResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
                     "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherResetTemporarySettingsBeforeApply) : null);
@@ -410,14 +414,21 @@ public class ConfigWindow : Window, IDisposable
     // Unticking excludes that source's designs from browsing, filtering, and random/direct apply
     // (see Configuration.IsProviderEnabled / DesignApplyService.IsUsable) without touching their
     // cached local metadata - they reappear intact if re-enabled. On by default.
-    private bool DrawRightAlignedCheckbox(string idSuffix, bool enabled, string tooltip)
+    private bool DrawRightAlignedCheckbox(string idSuffix, bool enabled, string tooltip, bool integrationOk = true)
     {
         var size = ImGui.GetFrameHeight();
         ImGui.SameLine(ImGui.GetContentRegionMax().X - size);
-        if (ImGui.Checkbox($"##enable{idSuffix}", ref enabled))
-            plugin.Configuration.Save();
+
+        // Always switchable off, but can't be switched on while the integration itself has a problem
+        // (not installed/loaded, wrong version) - there'd be nothing to actually source designs from.
+        var canToggle = integrationOk || enabled;
+        using (ImRaii.Disabled(!canToggle))
+        {
+            if (ImGui.Checkbox($"##enable{idSuffix}", ref enabled))
+                plugin.Configuration.Save();
+        }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(tooltip);
+            ImGui.SetTooltip(canToggle ? tooltip : $"{idSuffix} isn't available right now - see the status below.");
         return enabled;
     }
 
@@ -430,6 +441,10 @@ public class ConfigWindow : Window, IDisposable
         DesignDetailView.DrawFontAwesome(ok ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, ok ? UiTheme.StateOn : UiTheme.StateOff);
         ImGui.SameLine();
         ImGui.TextUnformatted("Glamour Plates");
+        // Unlike Glamaholic/SGS, "not ok" here just means "haven't opened the Glamour Dresser yet this
+        // zone" - a transient, self-resolving state, not a missing integration - so the checkbox stays
+        // always-togglable rather than blocking the user from turning on a setting that's fine to leave
+        // on persistently regardless of per-zone load state.
         plugin.Configuration.GlamourPlateEnabled = DrawRightAlignedCheckbox(
             "GlamourPlate", plugin.Configuration.GlamourPlateEnabled, "Source designs from the game's own Glamour Plates");
         DrawIndentedDisabledText(ok
