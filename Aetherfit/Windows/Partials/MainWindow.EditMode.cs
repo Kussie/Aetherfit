@@ -965,7 +965,10 @@ public partial class MainWindow
 
     private void DrawImportToGlamourerPopup(CachedOutfit details, bool isGlamaholic)
     {
-        ImGui.SetNextWindowSize(new Vector2(420, 0) * ImGuiHelpers.GlobalScale, ImGuiCond.Appearing);
+        // Height recomputed every frame (not just on Appearing) so the window grows to fit the warning
+        // below once the delete checkbox is ticked, instead of clipping it behind a size fixed before
+        // that text ever existed.
+        ImGui.SetNextWindowSize(new Vector2(420, 0) * ImGuiHelpers.GlobalScale, ImGuiCond.Always);
         using var modal = ImRaii.PopupModal(ImportToGlamourerPopupId, ImGuiWindowFlags.NoResize);
         if (!modal.Success)
             return;
@@ -991,7 +994,8 @@ public partial class MainWindow
             ImGui.Checkbox("Remove this design from Glamaholic after import", ref importDeleteFromGlamaholic);
             if (importDeleteFromGlamaholic)
             {
-                ImGui.TextColored(UiTheme.ErrorText,
+                using var color = ImRaii.PushColor(ImGuiCol.Text, UiTheme.ErrorText);
+                ImGui.TextWrapped(
                     "Glamaholic won't see this removal until it's restarted or you relog - it keeps its own "
                     + "plate list in memory and won't notice the change to its file until then.");
             }
