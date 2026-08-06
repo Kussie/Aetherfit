@@ -167,6 +167,7 @@ public sealed class TagSuggestionService : IDisposable
 
                     run.Results = best
                         .Where(kv => !excluded.Contains(kv.Key))
+                        .Where(kv => !HideAsCompositeSource(kv.Key, best, excluded))
                         .OrderByDescending(kv => kv.Value)
                         .Take(MaxSuggestedTags)
                         .Select(kv => new Suggestion(kv.Key, kv.Value))
@@ -185,6 +186,17 @@ public sealed class TagSuggestionService : IDisposable
             Fail(run, $"Tag analysis failed: {ex.Message} Try re-downloading the model in Settings.");
         }
     }
+
+    // Only meaningful for the CompositeTags.Map relationship (e.g. "crop top" -> "tops/crop top") -
+    // AddColourTags' "colour/blue" is a different facet extracted from a tag like "blue bikini", not
+    // a redundant restatement of it, so that pairing is deliberately left alone here. Only hides the
+    // flat tag when its composite actually survived into best AND isn't itself blacklisted - otherwise
+    // the user could end up with neither suggested.
+    private bool HideAsCompositeSource(string tag, Dictionary<string, float> best, HashSet<string> excluded)
+        => configuration.TagSuggestionHideCompositeSources
+           && CompositeTags.Map.TryGetValue(tag, out var composite)
+           && best.ContainsKey(composite)
+           && !excluded.Contains(composite);
 
     // Adds "category/type" composite tags (e.g. swimsuit/bikini) derived from Danbooru implications,
     // scored by the strongest contributing leaf. They sit alongside the flat tags they came from.
