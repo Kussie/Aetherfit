@@ -123,6 +123,10 @@ public class Configuration : IPluginConfiguration
     // tag-implication graph, alongside the flat tags the model fired.
     public bool TagSuggestionComposites { get; set; } = true;
 
+    // When a composite tag is suggested (e.g. tops/crop top), also hide the flat tag it was built
+    // from (crop top) rather than suggesting both. Off by default - preserves existing behaviour.
+    public bool TagSuggestionHideCompositeSources { get; set; } = false;
+
     // Deliberately empty here, not seeded with defaults - see Plugin.cs's constructor, which seeds
     // sensible defaults only for a genuinely fresh install. A non-empty literal here previously caused
     // Newtonsoft's default ObjectCreationHandling.Auto to reuse-and-append onto this list on every

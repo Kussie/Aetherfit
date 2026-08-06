@@ -206,6 +206,19 @@ public class ConfigWindow : Window, IDisposable
                         ImGui.SetTooltip("Also suggests grouped \"category/type\" tags such as swimsuit/bikini\n"
                                        + "or japanese clothes/kimono, plus colour/... tags for coloured\n"
                                        + "garments (e.g. blue bikini also suggests colour/blue).");
+
+                    using (ImRaii.Disabled(!composites))
+                    {
+                        var hideSources = cfg.TagSuggestionHideCompositeSources;
+                        if (ImGui.Checkbox("Hide single tags that make up a composite tag", ref hideSources))
+                        {
+                            cfg.TagSuggestionHideCompositeSources = hideSources;
+                            cfg.Save();
+                        }
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("If \"tops/crop top\" is suggested, don't also suggest the plain\n"
+                                       + "\"crop top\" tag it was built from.");
                     break;
 
                 case TagModelStore.State.Failed:
