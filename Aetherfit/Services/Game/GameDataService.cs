@@ -273,18 +273,26 @@ public sealed class GameDataService
         return itemId >= uint.MaxValue - 1000;
     }
 
+    // A bonus item's raw "BonusId" from Glamourer always carries CustomItemId's BonusItemFlag bit
+    // (bit 49 - set by the implicit BonusItemId -> CustomItemId conversion Glamourer's own serializer
+    // uses, confirmed against its source), so even a perfectly ordinary equipped item's id is already
+    // far past uint.MaxValue. The real Glasses-sheet row id always lives in the low 16 bits regardless
+    // of which flag bits are set on top of it (same as CustomItemId.BonusItem's own extraction), so a
+    // plain narrowing cast recovers it safely.
+    private static uint BonusRowId(ulong bonusId) => (ushort)bonusId;
+
     public bool BonusItemExists(string slotKey, ulong bonusId)
     {
         if (bonusId == 0)
             return true;
 
-        if (ParseBonusSlot(slotKey) == BonusItemFlag.Glasses && glassesSheet != null && bonusId <= uint.MaxValue
-            && glassesSheet.TryGetRow((uint)bonusId, out var row) && !string.IsNullOrWhiteSpace(row.Name.ExtractText()))
-            return true;
-
         // Glamourer's "nothing" sentinel for bonus slots (EquipItem.BonusItemNothing in its source) is
         // a custom- AND bonus-flagged id, not a real Glasses sheet row.
-        return ((CustomItemId)bonusId) is { IsCustom: true, IsBonusItem: true };
+        if (((CustomItemId)bonusId) is { IsCustom: true, IsBonusItem: true })
+            return true;
+
+        return ParseBonusSlot(slotKey) == BonusItemFlag.Glasses && glassesSheet != null
+            && glassesSheet.TryGetRow(BonusRowId(bonusId), out var row) && !string.IsNullOrWhiteSpace(row.Name.ExtractText());
     }
 
     private string LookupItemName(ulong itemId)
@@ -344,10 +352,10 @@ public sealed class GameDataService
 
     private string LookupBonusItemName(string slotKey, ulong bonusId)
     {
-        // Glamourer's only published bonus slot is "Glasses"; the BonusId is a row in
-        // FFXIV's Glasses excel sheet, not the regular Item sheet.
-        if (ParseBonusSlot(slotKey) == BonusItemFlag.Glasses && glassesSheet != null && bonusId <= uint.MaxValue
-            && glassesSheet.TryGetRow((uint)bonusId, out var row))
+        // Glamourer's only published bonus slot is "Glasses"; the BonusId is a row in FFXIV's Glasses
+        // excel sheet, not the regular Item sheet - see BonusRowId for why it has to be unmasked first.
+        if (ParseBonusSlot(slotKey) == BonusItemFlag.Glasses && glassesSheet != null
+            && glassesSheet.TryGetRow(BonusRowId(bonusId), out var row))
         {
             var text = row.Name.ExtractText();
             if (!string.IsNullOrWhiteSpace(text))
