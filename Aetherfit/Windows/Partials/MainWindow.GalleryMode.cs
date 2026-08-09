@@ -451,7 +451,7 @@ public partial class MainWindow
 
         var clicked = false;
         var shiftClicked = false;
-        var shiftRightClicked = false;
+        var rightClicked = false;
         var doubleClicked = false;
 
         if (currentImage != null)
@@ -549,8 +549,8 @@ public partial class MainWindow
                 else
                     clicked = true;
             }
-            if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.GetIO().KeyShift && !overLeft && !overRight && !overStar && !overEye)
-                shiftRightClicked = true;
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && !overLeft && !overRight && !overStar && !overEye)
+                rightClicked = true;
             if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !overLeft && !overRight && !overStar && !overEye)
                 doubleClicked = true;
             if (overStar)
@@ -635,20 +635,62 @@ public partial class MainWindow
         if (shiftClicked)
         {
             selectedDesign = design.Id;
-            coverMode = false;
-        }
-        if (shiftRightClicked)
-        {
-            selectedDesign = design.Id;
-            if (plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var quickOpenOutfit)
-                && quickOpenOutfit.Source == DesignSource.Glamourer)
-                plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
+            RevealDesignInTree(design.Id);
         }
         if (doubleClicked)
         {
             selectedDesign = design.Id;
             ApplyDesignById(design.Id);
         }
+
+        if (rightClicked)
+            ImGui.OpenPopup("##cellContextMenu");
+        DrawCellContextMenu(design);
+    }
+
+    private void DrawCellContextMenu(DesignLeaf design)
+    {
+        using var popup = ImRaii.Popup("##cellContextMenu");
+        if (!popup.Success)
+            return;
+
+        if (ImGui.MenuItem("Apply"))
+        {
+            selectedDesign = design.Id;
+            ApplyDesignById(design.Id);
+        }
+
+        var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
+        if (ImGui.MenuItem(isFavourite ? "Remove from Favourites" : "Add to Favourites"))
+        {
+            if (isFavourite)
+                plugin.Configuration.FavouriteDesigns.Remove(design.Id);
+            else
+                plugin.Configuration.FavouriteDesigns.Add(design.Id);
+            plugin.Configuration.Save();
+            favouriteVersion++;
+        }
+
+        // Visible cells are never hidden (see the eye-icon overlay above), so this is always an add.
+        if (ImGui.MenuItem("Hide"))
+        {
+            plugin.Configuration.HiddenDesigns.Add(design.Id);
+            plugin.Configuration.Save();
+            hiddenVersion++;
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Show in the tree"))
+        {
+            selectedDesign = design.Id;
+            RevealDesignInTree(design.Id);
+        }
+
+        if (plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var outfit)
+            && outfit.Source == DesignSource.Glamourer
+            && ImGui.MenuItem("Open in Glamourer"))
+            plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
     }
 
     private string FitCellLabel(Guid id, string label, float width)
@@ -669,8 +711,8 @@ public partial class MainWindow
         if (!string.IsNullOrEmpty(design.FullPath))
             ImGui.TextDisabled(design.FullPath);
         ImGui.TextDisabled("Double-click to apply");
-        ImGui.TextDisabled("Shift+click to open in edit view");
-        ImGui.TextDisabled("Shift+right-click to open in Glamourer");
+        ImGui.TextDisabled("Shift+click to show in the tree");
+        ImGui.TextDisabled("Right-click for more options");
         ImGui.EndTooltip();
     }
 }
