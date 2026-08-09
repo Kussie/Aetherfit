@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Dalamud.Bindings.ImGui;
+using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -28,6 +30,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IObjectTable ObjectTable { get; private set; } = null!;
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
+    [PluginService] internal static IKeyState KeyState { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
 
@@ -210,6 +213,7 @@ public sealed class Plugin : IDalamudPlugin
         ClientState.TerritoryChanged += OnTerritoryChanged;
         Glamourer.OnExternalStateFinalized += OnGlamourerStateFinalized;
         Glamourer.OnAnyStateFinalized += OnGlamourerAnyStateFinalized;
+        Framework.Update += OnKeybindUpdate;
 
         _ = FeatureFlags.RefreshAsync();
     }
@@ -223,6 +227,7 @@ public sealed class Plugin : IDalamudPlugin
         ClientState.TerritoryChanged -= OnTerritoryChanged;
         Glamourer.OnExternalStateFinalized -= OnGlamourerStateFinalized;
         Glamourer.OnAnyStateFinalized -= OnGlamourerAnyStateFinalized;
+        Framework.Update -= OnKeybindUpdate;
         Glamourer.Dispose();
         TagSuggestions.Dispose();
         TagModel.Dispose();
@@ -256,6 +261,7 @@ public sealed class Plugin : IDalamudPlugin
       + "/aetherfit tag [favourite] <tag1,tag2,...> — apply a random outfit matching the tags, optionally favourites only.\n"
       + "/aetherfit job — apply a random outfit associated with your current job.\n"
       + "/aetherfit favourite [job] — apply a random favourite outfit, optionally only one associated with your current job.\n"
+      + "/aetherfit wear \"design name\" — apply the design with this exact name (quotes required).\n"
       + "/aetherfit last — reapply the last known design.\n"
       + "/aetherfit revert — revert appearance to the game state.\n"
       + "/aetherfit help — show this list.";
@@ -264,6 +270,17 @@ public sealed class Plugin : IDalamudPlugin
     {
         foreach (var line in UsageText.Split('\n'))
             ChatGui.Print($"{ChatPrefix}{line}");
+    }
+
+    // Requires the whole argument to be one double-quoted string (e.g. "Boreal Blush") - quotes are
+    // mandatory even for single-word names, so a design name can never be mistaken for a future
+    // subcommand option. No escaping support (a design name containing a literal " isn't parseable).
+    private static string? ParseQuotedArg(string rest)
+    {
+        var trimmed = rest.Trim();
+        if (trimmed.Length < 2 || trimmed[0] != '"' || trimmed[^1] != '"')
+            return null;
+        return trimmed[1..^1];
     }
 
     private void OnCommand(string command, string args)
@@ -334,6 +351,21 @@ public sealed class Plugin : IDalamudPlugin
                 break;
             }
 
+            case "wear":
+            {
+                var name = ParseQuotedArg(rest);
+                if (name == null)
+                {
+                    ChatGui.PrintError($"{ChatPrefix}Usage: /aetherfit wear \"Design Name\" — quotes are required.");
+                    break;
+                }
+
+                var err = MainWindow.ApplyDesignByName(name);
+                if (err != null)
+                    ChatGui.PrintError($"{ChatPrefix}{err}");
+                break;
+            }
+
             case "last":
             {
                 var err = MainWindow.ReapplyLastWorn();
@@ -355,6 +387,51 @@ public sealed class Plugin : IDalamudPlugin
                 PrintUsage();
                 break;
         }
+    }
+
+    private void OnKeybindUpdate(IFramework framework)
+    {
+        CheckKeybind(Configuration.WearRandomKeybind, () =>
+        {
+            var err = MainWindow.ApplyRandomDesign();
+            if (err != null) ChatGui.PrintError($"{ChatPrefix}{err}");
+        });
+        CheckKeybind(Configuration.WearFavouriteKeybind, () =>
+        {
+            var err = MainWindow.ApplyRandomFavourite(matchCurrentJob: false);
+            if (err != null) ChatGui.PrintError($"{ChatPrefix}{err}");
+        });
+        CheckKeybind(Configuration.WearLastKeybind, () =>
+        {
+            var err = MainWindow.ReapplyLastWorn();
+            if (err != null) ChatGui.PrintError($"{ChatPrefix}{err}");
+        });
+        CheckKeybind(Configuration.RevertKeybind, () => MainWindow.RevertAppearance());
+    }
+
+    // Edge-triggered (via bind.WasDown, not a plain "is it down" check) so a held key fires once, not
+    // every tick it stays down. WasDown lives on the KeyBind itself - see Configuration.cs - so
+    // ConfigWindow's key-capture UI can seed it directly and avoid the recording key-press also
+    // registering as the hotkey's first trigger.
+    private void CheckKeybind(KeyBind bind, Action action)
+    {
+        // Never fire while a text field has keyboard focus (e.g. typing in a tag search box) - a
+        // hotkey firing mid-typing would be surprising and impossible to type around.
+        if (!bind.IsSet || ImGui.GetIO().WantTextInput)
+        {
+            bind.WasDown = false;
+            return;
+        }
+
+        var isDown = KeyState[bind.Key]
+            && (!bind.Ctrl || KeyState[VirtualKey.CONTROL])
+            && (!bind.Alt || KeyState[VirtualKey.MENU])
+            && (!bind.Shift || KeyState[VirtualKey.SHIFT]);
+
+        if (isDown && !bind.WasDown)
+            action();
+
+        bind.WasDown = isDown;
     }
 
     private void OnLogin() => Restore.BeginLoginRestore();

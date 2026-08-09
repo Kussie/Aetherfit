@@ -752,6 +752,13 @@ public partial class MainWindow : Window, IDisposable
         return result.Error;
     }
 
+    public string? ApplyDesignByName(string name)
+    {
+        var result = plugin.DesignApply.ApplyByName(name);
+        if (result.DesignId is { } id) selectedDesign = id;
+        return result.Error;
+    }
+
     public string? ApplyRandomFavourite(bool matchCurrentJob)
     {
         var result = plugin.DesignApply.ApplyRandomFavourite(matchCurrentJob);

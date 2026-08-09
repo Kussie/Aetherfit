@@ -65,6 +65,8 @@ Once added, find Aetherfit in the main `/xlplugins` window and install it. You c
 
 `/aetherfit favourite [job]` - Apply a random favourite design. Add `job` to only pick favourites associated with your current job.
 
+`/aetherfit wear "design name"` - Apply the design with this exact name. The name must be in quotes, even if it's a single word.
+
 `/aetherfit last` - Reapply the last design you had worn.
 
 `/aetherfit revert` - Revert your character to the game's state.

@@ -1,4 +1,5 @@
 using Dalamud.Configuration;
+using Dalamud.Game.ClientState.Keys;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -137,6 +138,14 @@ public class Configuration : IPluginConfiguration
 
     public LoginAction LoginAction { get; set; } = LoginAction.None;
     public List<string> LoginTags { get; set; } = new();
+
+    // Global hotkeys - detected via IKeyState polling on Framework.Update (see Plugin.cs), never
+    // suppressed/consumed, so a key already bound elsewhere (the game, another plugin) still also
+    // does whatever it normally does.
+    public KeyBind WearRandomKeybind { get; set; } = new();
+    public KeyBind WearFavouriteKeybind { get; set; } = new();
+    public KeyBind WearLastKeybind { get; set; } = new();
+    public KeyBind RevertKeybind { get; set; } = new();
 
     public int LiveShareDefaultTtlMinutes { get; set; } = 30;
 
@@ -333,6 +342,34 @@ public class Configuration : IPluginConfiguration
         CharacterLoginSettings[contentId] = seeded;
         Save();
         return seeded;
+    }
+}
+
+[Serializable]
+public sealed class KeyBind
+{
+    public VirtualKey Key { get; set; } = VirtualKey.NO_KEY;
+    public bool Ctrl { get; set; }
+    public bool Alt { get; set; }
+    public bool Shift { get; set; }
+
+    [JsonIgnore]
+    public bool IsSet => Key != VirtualKey.NO_KEY;
+
+    [JsonIgnore]
+    public bool WasDown { get; set; }
+
+    public override string ToString()
+    {
+        if (!IsSet)
+            return "Not bound";
+
+        var parts = new List<string>();
+        if (Ctrl) parts.Add("Ctrl");
+        if (Alt) parts.Add("Alt");
+        if (Shift) parts.Add("Shift");
+        parts.Add(Key.ToString());
+        return string.Join(" + ", parts);
     }
 }
 
