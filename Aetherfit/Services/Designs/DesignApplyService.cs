@@ -281,6 +281,43 @@ public sealed class DesignApplyService
         return ApplyResult.Ok(pick);
     }
 
+    // Exact (case-insensitive) match only, across every source - a name is expected to be typed or
+    // pasted verbatim (see /aetherfit wear's mandatory quoting), so silently guessing at a partial
+    // match would be more likely to wear the wrong thing than to help.
+    public ApplyResult ApplyByName(string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0)
+        {
+            const string msg = "No design name provided.";
+            Plugin.Log.Info(msg);
+            return ApplyResult.Fail(msg);
+        }
+
+        var matches = plugin.Configuration.CachedOutfits
+            .Where(kv => IsUsable(kv.Key) && string.Equals(kv.Value.Name, name, StringComparison.OrdinalIgnoreCase))
+            .Select(kv => kv.Key)
+            .ToList();
+
+        if (matches.Count == 0)
+        {
+            var msg = $"No design named \"{name}\" found.";
+            Plugin.Log.Info(msg);
+            return ApplyResult.Fail(msg);
+        }
+
+        if (matches.Count > 1)
+        {
+            var msg = $"{matches.Count} designs are named \"{name}\" — can't tell which one you mean.";
+            Plugin.Log.Info(msg);
+            return ApplyResult.Fail(msg);
+        }
+
+        var pick = matches[0];
+        ApplyDesignById(pick);
+        return ApplyResult.Ok(pick);
+    }
+
     public ApplyResult ApplyRandomFavourite(bool matchCurrentJob)
     {
         var favourites = plugin.Configuration.FavouriteDesigns

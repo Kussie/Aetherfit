@@ -7,6 +7,7 @@ using Aetherfit.Services.Tagging;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.ClientState.Keys;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
@@ -49,6 +50,7 @@ public class ConfigWindow : Window, IDisposable
         DrawTab("Login & Zoning", DrawLoginSection);
         DrawTab("Tag Suggestions", DrawTagSuggestionsSection);
         DrawTab("Commands", DrawCommandsSection);
+        DrawTab("Keybinds", DrawKeybindsSection);
         DrawTab("Integrations", DrawIntegrationsTab);
     }
 
@@ -368,6 +370,8 @@ public class ConfigWindow : Window, IDisposable
             "Apply a random design associated with your current job. Set associations per-design in the design details pane.");
         DrawCommand("/aetherfit favourite [job]",
             "Apply a random favourite design. Add \"job\" to only pick favourites associated with your current job.");
+        DrawCommand("/aetherfit wear \"design name\"",
+            "Apply the design with this exact name. The name must be in quotes, even if it's a single word.");
         DrawCommand("/aetherfit last", "Reapply the last design you had worn.");
         DrawCommand("/aetherfit revert", "Revert your character's appearance back to the game's state.");
     }
@@ -380,6 +384,91 @@ public class ConfigWindow : Window, IDisposable
             ImGui.TextWrapped(description);
         ImGui.Unindent();
         ImGui.Spacing();
+    }
+
+    // Which of the four KeyBind instances (if any) is currently waiting for a key press. Reference
+    // equality against Configuration's own KeyBind objects, not a copy.
+    private KeyBind? recordingKeybind;
+
+    private void DrawKeybindsSection()
+    {
+        var cfg = plugin.Configuration;
+
+        ImGui.TextWrapped("Global hotkeys, detected while FFXIV itself has focus (not specifically an "
+            + "Aetherfit window). Aetherfit only detects these key presses - it can't stop the game or "
+            + "another plugin from also reacting to the same key, so pick one that isn't already bound "
+            + "elsewhere.");
+        ImGui.Spacing();
+
+        DrawKeybindRow("Wear Random", cfg.WearRandomKeybind);
+        DrawKeybindRow("Wear Favourite", cfg.WearFavouriteKeybind);
+        DrawKeybindRow("Wear Last", cfg.WearLastKeybind);
+        DrawKeybindRow("Revert", cfg.RevertKeybind);
+
+        if (recordingKeybind != null)
+            CaptureKeybind();
+    }
+
+    private void DrawKeybindRow(string label, KeyBind bind)
+    {
+        using var id = ImRaii.PushId(label);
+        var scale = ImGuiHelpers.GlobalScale;
+
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextUnformatted(label);
+        ImGui.SameLine(140 * scale);
+
+        var recording = recordingKeybind == bind;
+        if (ImGui.Button(recording ? "Press a key... (Esc to cancel)" : bind.ToString(), new Vector2(220 * scale, 0)))
+            recordingKeybind = recording ? null : bind;
+
+        ImGui.SameLine();
+        using (ImRaii.Disabled(!bind.IsSet))
+        {
+            if (ImGui.Button("Clear"))
+            {
+                bind.Key = VirtualKey.NO_KEY;
+                bind.Ctrl = bind.Alt = bind.Shift = false;
+                plugin.Configuration.Save();
+                if (recordingKeybind == bind)
+                    recordingKeybind = null;
+            }
+        }
+    }
+
+    // Modifiers are read live (whatever's held when the first non-modifier key comes down), so
+    // Ctrl+Alt+F1 records as Key=F1 with both modifiers set, not as capturing "Ctrl" itself as the key.
+    private void CaptureKeybind()
+    {
+        if (ImGui.IsKeyPressed(ImGuiKey.Escape))
+        {
+            recordingKeybind = null;
+            return;
+        }
+
+        var ctrl = Plugin.KeyState[VirtualKey.CONTROL];
+        var alt = Plugin.KeyState[VirtualKey.MENU];
+        var shift = Plugin.KeyState[VirtualKey.SHIFT];
+
+        foreach (var key in Plugin.KeyState.GetValidVirtualKeys())
+        {
+            if (key is VirtualKey.NO_KEY or VirtualKey.CONTROL or VirtualKey.LCONTROL or VirtualKey.RCONTROL
+                or VirtualKey.MENU or VirtualKey.LMENU or VirtualKey.RMENU
+                or VirtualKey.SHIFT or VirtualKey.LSHIFT or VirtualKey.RSHIFT)
+                continue;
+
+            if (!Plugin.KeyState[key])
+                continue;
+
+            recordingKeybind!.Key = key;
+            recordingKeybind!.Ctrl = ctrl;
+            recordingKeybind!.Alt = alt;
+            recordingKeybind!.Shift = shift;
+            recordingKeybind!.WasDown = true;
+            plugin.Configuration.Save();
+            recordingKeybind = null;
+            break;
+        }
     }
 
     private void DrawIntegrationsTab()
