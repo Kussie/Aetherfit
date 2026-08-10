@@ -159,7 +159,8 @@ public sealed class DesignApplyService
         for (var i = 0; i < pool.Count; i++)
         {
             var pos = history.IndexOf(pool[i]);
-            weights[i] = pos < 0 || pos >= depth ? 1.0 : (pos + 1.0) / (depth + 1.0);
+            var recentWeight = pos < 0 || pos >= depth ? 1.0 : (pos + 1.0) / (depth + 1.0);
+            weights[i] = recentWeight * LongTermRecencyFactor(pool[i]);
             total += weights[i];
         }
 
@@ -172,6 +173,19 @@ public sealed class DesignApplyService
         }
 
         return pool[^1];
+    }
+
+    // Long-term "haven't worn this in a while" boost, layered on top of the short-term anti-repeat
+    // weighting above. Capped so a design that's never been worn doesn't dominate every roll forever.
+    private const double LongTermRecencyCapDays = 90.0;
+
+    private double LongTermRecencyFactor(Guid id)
+    {
+        var days = plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit) && outfit.LastAppliedAt is { } lastWorn
+            ? (DateTimeOffset.UtcNow - lastWorn).TotalDays
+            : LongTermRecencyCapDays;
+
+        return 1.0 + Math.Clamp(days, 0, LongTermRecencyCapDays) / LongTermRecencyCapDays;
     }
 
     public ApplyResult ReapplyLastWorn(bool quiet = false)
