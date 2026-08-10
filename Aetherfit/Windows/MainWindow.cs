@@ -466,7 +466,8 @@ public partial class MainWindow : Window, IDisposable
         DrawOpenGalleryPopup();
         ImGui.SameLine();
 
-        if (IconTextButton(FontAwesomeIcon.Stethoscope, "Health Report"))
+        if (IconTextButton(FontAwesomeIcon.Stethoscope, "Health Report", warning: HasHealthIssues(),
+                warningTooltip: "Some designs have health issues"))
             plugin.ToggleHealthReportUi();
 
         var countText = IsRefreshing && activeRefresh is { } job
@@ -651,6 +652,23 @@ public partial class MainWindow : Window, IDisposable
                 ImGui.OpenPopup(ApplyByTagPopupId);
             }
         }
+    }
+
+    private bool cachedHasHealthIssues;
+    private int cachedHealthIssuesGeneration = -1;
+    private int cachedHealthIssuesIgnoreVersion = -1;
+
+    private bool HasHealthIssues()
+    {
+        if (cachedHealthIssuesGeneration != designListGeneration || cachedHealthIssuesIgnoreVersion != plugin.Configuration.HealthCheckIgnoreVersion)
+        {
+            cachedHasHealthIssues = plugin.HealthReport.FindMissingModAssociations().Count > 0
+                || plugin.HealthReport.FindBrokenItems().Count > 0
+                || plugin.HealthReport.FindDuplicates().Count > 0;
+            cachedHealthIssuesGeneration = designListGeneration;
+            cachedHealthIssuesIgnoreVersion = plugin.Configuration.HealthCheckIgnoreVersion;
+        }
+        return cachedHasHealthIssues;
     }
 
     private bool cachedAnyHasTags;

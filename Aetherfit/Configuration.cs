@@ -233,6 +233,11 @@ public class Configuration : IPluginConfiguration
         Save();
     }
 
+    // Bumped whenever the ignore set changes, so the toolbar badge's cached "any issues?" check
+    // knows to recompute without re-scanning the whole library every frame.
+    [JsonIgnore]
+    public int HealthCheckIgnoreVersion { get; private set; }
+
     public bool IsHealthCheckIgnored(Guid id, string checkType)
         => IgnoredHealthChecks.TryGetValue(id, out var set) && set.Contains(checkType);
 
@@ -244,12 +249,14 @@ public class Configuration : IPluginConfiguration
             IgnoredHealthChecks[id] = set;
         }
         set.Add(checkType);
+        HealthCheckIgnoreVersion++;
         Save();
     }
 
     public void ClearIgnoredHealthChecks()
     {
         IgnoredHealthChecks.Clear();
+        HealthCheckIgnoreVersion++;
         Save();
     }
 
