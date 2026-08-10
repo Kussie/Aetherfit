@@ -116,13 +116,22 @@ public sealed class GameDataService
     public bool? IsItemWearableByCurrentCharacter(ulong itemId, CachedOutfit details)
         => ResolveEffectiveRaceGender(details) is { } rg ? IsItemWearableBy(itemId, rg.RaceRowId, rg.IsFemale) : null;
 
-    // True only when at least one equipped item is a *known* mismatch - an unresolvable item never counts
-    // (see IsItemWearableBy's null case), and a design with no equipment/no resolvable race is never flagged.
-    public bool DesignHasAnyIncompatibleItems(CachedOutfit details)
+    public bool DesignHasAnyIncompatibleItems(CachedOutfit details) => GetIncompatibleItems(details).Count > 0;
+
+    // Per-slot breakdown of the above - which applied slots are a *known* mismatch for the design's
+    // effective race/gender (see ResolveEffectiveRaceGender: a design that customizes race/gender as
+    // part of itself is checked against that, not the live character). An unresolvable item never
+    // counts (see IsItemWearableBy's null case), and an unapplied slot can never actually be worn.
+    public List<string> GetIncompatibleItems(CachedOutfit details)
     {
+        var result = new List<string>();
         if (ResolveEffectiveRaceGender(details) is not { } rg)
-            return false;
-        return details.Equipment.Any(e => IsItemWearableBy(e.ItemId, rg.RaceRowId, rg.IsFemale) == false);
+            return result;
+
+        foreach (var slot in details.Equipment)
+            if (slot.Apply && IsItemWearableBy(slot.ItemId, rg.RaceRowId, rg.IsFemale) == false)
+                result.Add(slot.Slot.ToString());
+        return result;
     }
 
     // "Au Ra, Hrothgar" (and a Male/Female-only suffix if one gender is excluded) - for the incompatibility tooltip.

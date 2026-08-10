@@ -685,6 +685,7 @@ public partial class MainWindow : Window, IDisposable
         {
             cachedHasHealthIssues = plugin.HealthReport.FindMissingModAssociations().Count > 0
                 || plugin.HealthReport.FindBrokenItems().Count > 0
+                || plugin.HealthReport.FindIncompatibleDesigns().Count > 0
                 || plugin.HealthReport.FindDuplicates().Count > 0;
             cachedHealthIssuesGeneration = designListGeneration;
             cachedHealthIssuesIgnoreVersion = plugin.Configuration.HealthCheckIgnoreVersion;

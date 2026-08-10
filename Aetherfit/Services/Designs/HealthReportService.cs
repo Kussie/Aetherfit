@@ -13,6 +13,7 @@ public sealed class HealthReportService
     public const string MissingModCheck = "MissingMod";
     public const string BrokenItemCheck = "BrokenItem";
     public const string DuplicateCheck = "Duplicate";
+    public const string IncompatibleCheck = "Incompatible";
 
     private readonly Configuration configuration;
     private readonly GameDataService gameData;
@@ -28,6 +29,7 @@ public sealed class HealthReportService
     public sealed record MissingModFinding(Guid Id, string Name, IReadOnlyList<CachedMod> MissingMods);
     public sealed record BrokenItemFinding(Guid Id, string Name, IReadOnlyList<string> BrokenSlots);
     public sealed record DuplicateGroup(IReadOnlyList<(Guid Id, string Name)> Designs);
+    public sealed record IncompatibleItemFinding(Guid Id, string Name, IReadOnlyList<string> IncompatibleSlots);
 
     public List<MissingModFinding> FindMissingModAssociations()
     {
@@ -62,6 +64,24 @@ public sealed class HealthReportService
 
             if (broken.Count > 0)
                 result.Add(new BrokenItemFinding(id, outfit.Name, broken));
+        }
+        return result;
+    }
+
+    // Designs with equipment that can't be worn by the current character - or, for a design that
+    // customizes race/gender as part of itself (see GameDataService.ResolveEffectiveRaceGender),
+    // whatever race/gender it applies rather than the live character.
+    public List<IncompatibleItemFinding> FindIncompatibleDesigns()
+    {
+        var result = new List<IncompatibleItemFinding>();
+        foreach (var (id, outfit) in configuration.CachedOutfits)
+        {
+            if (!configuration.IsProviderEnabled(outfit.Source) || configuration.IsHealthCheckIgnored(id, IncompatibleCheck))
+                continue;
+
+            var incompatible = gameData.GetIncompatibleItems(outfit);
+            if (incompatible.Count > 0)
+                result.Add(new IncompatibleItemFinding(id, outfit.Name, incompatible));
         }
         return result;
     }
