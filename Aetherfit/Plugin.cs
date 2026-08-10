@@ -9,6 +9,7 @@ using Dalamud.Plugin;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using Aetherfit.Services.Designs;
+using Aetherfit.Services.Export;
 using Aetherfit.Services.Game;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Persistence;
@@ -58,6 +59,7 @@ public sealed class Plugin : IDalamudPlugin
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
+    public LookBookExportService LookBookExport { get; init; }
     public TagModelStore TagModel { get; init; }
     public TagSuggestionService TagSuggestions { get; init; }
     public GalleryLiveShareService LiveShare { get; init; }
@@ -168,6 +170,7 @@ public sealed class Plugin : IDalamudPlugin
         ImageStorage = new ImageStorageService(Configuration);
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
+        LookBookExport = new LookBookExportService(Configuration, ImageStorage);
         TagModel = new TagModelStore(Configuration);
         TagSuggestions = new TagSuggestionService(TagModel, Configuration);
         LiveShare = new GalleryLiveShareService(this);

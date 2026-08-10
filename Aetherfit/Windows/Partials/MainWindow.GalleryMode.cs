@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using Aetherfit.Services.Export;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Sharing;
 using Aetherfit.Ui;
@@ -124,6 +125,26 @@ public partial class MainWindow
             {
                 if (success && !string.IsNullOrEmpty(path))
                     plugin.GallerySharing.ExportToFileAsync(label, path, onlyIds);
+            });
+    }
+
+    // onlyIds null = export everything; otherwise just those designs (the currently filtered list).
+    private void OpenExportLookBookDialog(IReadOnlySet<Guid>? onlyIds = null)
+    {
+        var label = Plugin.PlayerState.IsLoaded && !string.IsNullOrWhiteSpace(Plugin.PlayerState.CharacterName)
+            ? Plugin.PlayerState.CharacterName
+            : "Look Book";
+        var filters = $"PDF Document{{{LookBookExportService.FileExtension}}}";
+        var defaultName = SanitizeFileName(label) + " Look Book" + LookBookExportService.FileExtension;
+        fileDialog.SaveFileDialog(
+            "Export Look Book",
+            filters,
+            defaultName,
+            LookBookExportService.FileExtension,
+            (success, path) =>
+            {
+                if (success && !string.IsNullOrEmpty(path))
+                    plugin.LookBookExport.ExportToFileAsync(label, path, onlyIds);
             });
     }
 

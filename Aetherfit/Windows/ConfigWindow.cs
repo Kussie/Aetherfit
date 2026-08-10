@@ -20,6 +20,7 @@ public class ConfigWindow : Window, IDisposable
 {
     private readonly Plugin plugin;
     private const string LoginTagsPopupId = "LoginTagsPopup";
+    private const string DeleteAllImagesPopupId = "Delete All Images?##deleteAllImagesConfirm";
     private string loginTagSearchText = string.Empty;
     private List<string> availableLoginTags = [];
 
@@ -115,6 +116,24 @@ public class ConfigWindow : Window, IDisposable
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("When on, applying a base design also applies its configured layers top to bottom,\npicking one design at random from any layer that holds several.\nWhen off, the Additional Design Layers panel is hidden and no layers are applied.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Trash, "Delete All Images", Vector2.Zero))
+            ConfirmDialog.Open(DeleteAllImagesPopupId);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Deletes every cover and additional thumbnail image saved for all of your designs.");
+
+        if (ConfirmDialog.Draw(DeleteAllImagesPopupId,
+                "This will permanently delete every cover and additional thumbnail image stored for all of your "
+                + "designs. Your designs themselves - in Glamourer, Glamaholic, or wherever else - are untouched; "
+                + "only the images Aetherfit has saved for them. This can't be undone.",
+                "Hold to Delete All Images", holdToConfirm: true))
+        {
+            plugin.ImageStorage.ClearAllImages();
+        }
 
         ImGui.Spacing();
         ImGui.Separator();

@@ -377,6 +377,14 @@ public sealed class ImageStorageService
         }
     }
 
+    // Wipes every design's cover and additional images - reuses CleanupRemovedDesigns' stale-file
+    // sweep by treating the entire library as "removed", so the deletion logic only lives in one place.
+    public void ClearAllImages()
+    {
+        CleanupRemovedDesigns(new HashSet<Guid>());
+        configuration.Save();
+    }
+
     public void CleanupRemovedDesigns(IReadOnlySet<Guid> validIds)
     {
         var coverDir = ImagesDirectory;
