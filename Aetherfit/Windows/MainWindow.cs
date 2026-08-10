@@ -582,6 +582,27 @@ public partial class MainWindow : Window, IDisposable
             ImGui.EndMenu();
         }
 
+        if (ImGui.BeginMenu("Export Look Book"))
+        {
+            if (ImGui.MenuItem("All Designs"))
+                OpenExportLookBookDialog();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("A printable PDF of design covers - for showing off, not re-importing.");
+
+            var hasLookBookFilter = HasAnyFilter;
+            using (ImRaii.Disabled(!hasLookBookFilter))
+            {
+                if (ImGui.MenuItem("Filtered Designs"))
+                    OpenExportLookBookDialog(CollectVisibleDesignIds());
+            }
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip(hasLookBookFilter
+                    ? "Export only the designs currently shown by the active filters."
+                    : "Set a filter first to export only the designs that remain visible.");
+
+            ImGui.EndMenu();
+        }
+
         ImGui.Separator();
 
         var liveSharingEnabled = plugin.FeatureFlags.EnableLiveSharing;
