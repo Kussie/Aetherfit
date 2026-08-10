@@ -217,12 +217,11 @@ public partial class MainWindow
             HandleAffectedModHover(mod);
     }
 
-    // Shift-gated, unlike the mod association rows, so a stray click doesn't open Penumbra.
     private void HandleAffectedModHover(CachedMod mod)
     {
         ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
         DrawModTooltip(mod);
-        if (ImGui.GetIO().KeyShift && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             plugin.Penumbra.OpenMod(mod.Directory, mod.Name);
     }
 

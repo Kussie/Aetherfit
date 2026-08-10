@@ -19,6 +19,7 @@ public sealed class HealthReportWindow : Window, IDisposable
 
     private bool missingModsOpen = true;
     private bool brokenItemsOpen = true;
+    private bool incompatibleOpen = true;
     private bool duplicatesOpen = true;
 
     public HealthReportWindow(Plugin plugin)
@@ -44,6 +45,7 @@ public sealed class HealthReportWindow : Window, IDisposable
         // dictionary work over what's already cached in memory; revisit only if that stops being true.
         var missingMods = plugin.HealthReport.FindMissingModAssociations();
         var brokenItems = plugin.HealthReport.FindBrokenItems();
+        var incompatible = plugin.HealthReport.FindIncompatibleDesigns();
         var duplicates = plugin.HealthReport.FindDuplicates();
 
         if (Pills.DrawCollapsibleSubheader($"Missing Mod Associations ({missingMods.Count})", ref missingModsOpen))
@@ -81,6 +83,22 @@ public sealed class HealthReportWindow : Window, IDisposable
         }
         ImGui.Spacing();
 
+        if (Pills.DrawCollapsibleSubheader($"Incompatible Items ({incompatible.Count})", ref incompatibleOpen))
+        {
+            ImGui.Indent();
+            if (incompatible.Count == 0)
+            {
+                ImGui.TextDisabled("No issues found.");
+            }
+            else
+            {
+                foreach (var finding in incompatible)
+                    DrawFindingRow(finding.Id, finding.Name, string.Join(", ", finding.IncompatibleSlots), HealthReportService.IncompatibleCheck);
+            }
+            ImGui.Unindent();
+        }
+        ImGui.Spacing();
+
         if (Pills.DrawCollapsibleSubheader($"Duplicate Designs ({duplicates.Count})", ref duplicatesOpen))
         {
             ImGui.Indent();
@@ -103,11 +121,11 @@ public sealed class HealthReportWindow : Window, IDisposable
         if (ImGui.Button("Clear Ignored"))
             ConfirmDialog.Open(ClearIgnoredPopupId);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Un-ignore every dismissed finding across all three sections above");
+            ImGui.SetTooltip("Un-ignore every dismissed finding across every section above");
 
         if (ConfirmDialog.Draw(ClearIgnoredPopupId,
-                "This will un-ignore every previously dismissed Health Report finding across all three "
-                + "sections - anything you've dismissed will start showing up again.",
+                "This will un-ignore every previously dismissed Health Report finding across every "
+                + "section above - anything you've dismissed will start showing up again.",
                 "Clear Ignored"))
         {
             plugin.Configuration.ClearIgnoredHealthChecks();
