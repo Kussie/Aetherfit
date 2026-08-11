@@ -39,6 +39,8 @@ public partial class MainWindow
     private const string ForceSyncPopupId = "Force Sync?##forceSyncConfirm";
     private const string ImportToGlamourerPopupId = "Import into Glamourer?##importGlamourerConfirm";
     private const string AddTagPopupId = "AddDesignTagPopup";
+    private const string AddVariantPopupId = "AddVariantPopup";
+    private string variantPickerFilter = string.Empty;
     private string addTagSearchText = string.Empty;
     private string importDesignName = string.Empty;
     private bool importReclaimFocus;
@@ -145,6 +147,7 @@ public partial class MainWindow
         // leave the request dangling - it would otherwise keep forcing the same folders open forever.
         revealDesignInTree = null;
         revealDesignFolderPath = null;
+        revealDesignVariantParent = null;
 
         if (hoveredDesignForTooltip is { } hovered)
             DrawDesignLeafTooltip(hovered);
@@ -209,8 +212,16 @@ public partial class MainWindow
         {
             plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var cached);
             if (!DesignMatchesFilters(design, cached)) continue;
+            if (plugin.Configuration.GetVariantInfo(design.Id) != null) continue; // drawn nested under its parent below
+
+            var variantIds = plugin.Configuration.GetVariantsOf(design.Id).Select(kv => kv.Key).ToList();
+            var hasVariants = variantIds.Count > 0;
+
+            if (hasVariants && revealDesignVariantParent == design.Id)
+                ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+
             var rowX = ImGui.GetCursorScreenPos().X;
-            DrawDesignLeaf(design);
+            var open = DrawDesignLeaf(design, hasVariants);
             DrawTreeItemTick(depth, rowX);
 
             if (revealDesignInTree == design.Id)
@@ -218,6 +229,44 @@ public partial class MainWindow
                 ImGui.SetScrollHereY(0.3f);
                 revealDesignInTree = null;
                 revealDesignFolderPath = null;
+                revealDesignVariantParent = null;
+            }
+
+            if (!hasVariants) continue;
+
+            if (open)
+            {
+                var drawList = ImGui.GetWindowDrawList();
+                var guideX = rowX + TreeArrowCenterOffset();
+                var guideTop = ImGui.GetCursorScreenPos().Y;
+
+                foreach (var variantId in variantIds)
+                {
+                    if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;
+                    plugin.Configuration.CachedOutfits.TryGetValue(variantId, out var variantCached);
+                    if (!DesignMatchesFilters(variantLeaf, variantCached)) continue;
+
+                    var childRowX = ImGui.GetCursorScreenPos().X;
+                    DrawDesignLeaf(variantLeaf, false);
+                    DrawTreeItemTick(depth + 1, childRowX);
+
+                    if (revealDesignInTree == variantId)
+                    {
+                        ImGui.SetScrollHereY(0.3f);
+                        revealDesignInTree = null;
+                        revealDesignFolderPath = null;
+                        revealDesignVariantParent = null;
+                    }
+                }
+
+                var guideBottom = ImGui.GetCursorScreenPos().Y
+                                  - ImGui.GetStyle().ItemSpacing.Y
+                                  - (ImGui.GetTextLineHeight() * 0.5f);
+                if (guideBottom > guideTop)
+                    drawList.AddLine(new Vector2(guideX, guideTop), new Vector2(guideX, guideBottom),
+                        ImGui.ColorConvertFloat4ToU32(TreeGuideColor), ImGuiHelpers.GlobalScale);
+
+                ImGui.TreePop();
             }
         }
     }
@@ -245,32 +294,51 @@ public partial class MainWindow
 
     // Keyed by design id; invalidated per-entry when favourite state or the display name changes,
     // so a frequently-redrawn tree of leaves isn't rebuilding this string every frame.
-    private readonly Dictionary<Guid, (bool IsFavourite, string Name, string Label)> leafLabelCache = new();
+    private readonly Dictionary<Guid, (bool IsFavourite, bool HasVariants, string Name, string Label)> leafLabelCache = new();
 
-    private string GetLeafLabel(DesignLeaf design, bool isFavourite)
+    // The leading spaces on a non-favourite leaf just reserve room for the manually-drawn dot on a
+    // plain Selectable row. A TreeNodeEx row (hasVariants) already gets that same breathing room for
+    // free from its own arrow glyph - which is also where the dot itself ends up sitting - so adding
+    // the same padding again on top of it just pushes the name further right than it needs to be.
+    private string GetLeafLabel(DesignLeaf design, bool isFavourite, bool hasVariants)
     {
         if (leafLabelCache.TryGetValue(design.Id, out var cached)
-            && cached.IsFavourite == isFavourite && cached.Name == design.DisplayName)
+            && cached.IsFavourite == isFavourite && cached.HasVariants == hasVariants && cached.Name == design.DisplayName)
             return cached.Label;
 
         var label = isFavourite
             ? $"★ {design.DisplayName}##{design.Id}"
-            : $"   {design.DisplayName}##{design.Id}";
-        leafLabelCache[design.Id] = (isFavourite, design.DisplayName, label);
+            : hasVariants
+                ? $"{design.DisplayName}##{design.Id}"
+                : $"   {design.DisplayName}##{design.Id}";
+        leafLabelCache[design.Id] = (isFavourite, hasVariants, design.DisplayName, label);
         return label;
     }
 
-    private void DrawDesignLeaf(DesignLeaf design)
+    // Returns whether the row is expanded (only meaningful when hasVariants - a plain leaf always
+    // returns false, since it has nothing to expand into).
+    private bool DrawDesignLeaf(DesignLeaf design, bool hasVariants)
     {
         var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
         var hasColor = design.Color != 0;
         var selected = selectedDesign == design.Id;
-        var label = GetLeafLabel(design, isFavourite);
+        var label = GetLeafLabel(design, isFavourite, hasVariants);
+        var open = false;
 
         using (ImRaii.PushColor(ImGuiCol.Text, design.Color, hasColor))
         {
-            if (ImGui.Selectable(label, selected))
+            if (hasVariants)
+            {
+                var flags = ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.OpenOnArrow
+                    | (selected ? ImGuiTreeNodeFlags.Selected : 0);
+                open = ImGui.TreeNodeEx(label, flags);
+                if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    selectedDesign = design.Id;
+            }
+            else if (ImGui.Selectable(label, selected))
+            {
                 selectedDesign = design.Id;
+            }
 
             if (!isFavourite)
                 DrawLeafDot(hasColor ? design.Color : ImGui.GetColorU32(ImGuiCol.Text));
@@ -292,6 +360,8 @@ public partial class MainWindow
 
         if (ImGui.IsItemHovered())
             hoveredDesignForTooltip = design;
+
+        return open;
     }
 
     // A filled dot at the start of a leaf row, sized from the line height and tinted to the design's colour.
@@ -394,7 +464,7 @@ public partial class MainWindow
 
                 // Measure the action cluster first so the title can be ellipsized to the space that remains.
                 var frameH = ImGui.GetFrameHeight();
-                float starW, eyeW, revealW, linkW, syncW, importW, bulkLayerW;
+                float starW, eyeW, revealW, linkW, syncW, importW, bulkLayerW, variantW;
                 using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
                 {
                     starW = ImGui.CalcTextSize(FontAwesomeIcon.Star.ToIconString()).X
@@ -410,6 +480,8 @@ public partial class MainWindow
                     importW = ImGui.CalcTextSize(FontAwesomeIcon.FileImport.ToIconString()).X
                           + (style.FramePadding.X * 2);
                     bulkLayerW = ImGui.CalcTextSize(FontAwesomeIcon.LayerGroup.ToIconString()).X
+                          + (style.FramePadding.X * 2);
+                    variantW = ImGui.CalcTextSize(FontAwesomeIcon.CodeBranch.ToIconString()).X
                           + (style.FramePadding.X * 2);
                 }
                 // Glamourer gets both the open-in-native-UI link and the sync button; Glamaholic (no native UI
@@ -467,6 +539,18 @@ public partial class MainWindow
                     RevealDesignInTree(id);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Show in the tree");
+
+                ImGui.SameLine(0, inner);
+                var currentVariant = plugin.Configuration.GetVariantInfo(id);
+                if (HeaderIconButton("addVariant", FontAwesomeIcon.CodeBranch,
+                        currentVariant != null ? UiTheme.GoldAccent : null, new Vector2(variantW, frameH)))
+                {
+                    variantPickerFilter = string.Empty;
+                    ImGui.OpenPopup(AddVariantPopupId);
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(currentVariant != null ? "Change this design's variant parent" : "Add as Variant");
+                DrawAddVariantPopup(id);
 
                 if (isGlamourer)
                 {
@@ -546,6 +630,9 @@ public partial class MainWindow
                 ImGui.Spacing();
 
                 DrawJobAssociations(id);
+
+                if (plugin.Configuration.GetVariantInfo(id) is { } variant)
+                    DrawVariantSection(id, variant);
 
                 if (Pills.DrawCollapsibleSubheader("Tags", ref tagsPanelOpen))
                 {
@@ -961,6 +1048,98 @@ public partial class MainWindow
 
         if (tagToRemove != null)
             plugin.Configuration.RemoveTag(id, details, tagToRemove);
+    }
+
+    // Single-level nesting only: a design that's already a variant of something can't itself be
+    // picked as a parent, which transitively also excludes id's own existing variants (they already
+    // carry a VariantInfo entry pointing at id).
+    private void DrawAddVariantPopup(Guid id)
+    {
+        using var popup = ImRaii.Popup(AddVariantPopupId);
+        if (!popup.Success)
+            return;
+
+        if (ImGui.IsWindowAppearing())
+            ImGui.SetKeyboardFocusHere();
+        ImGui.SetNextItemWidth(250 * ImGuiHelpers.GlobalScale);
+        ImGui.InputTextWithHint("##variantFilter", "Filter by name...", ref variantPickerFilter, 64);
+        ImGui.Separator();
+
+        var matches = plugin.Configuration.CachedOutfits
+            .Where(kv => kv.Key != id && plugin.Configuration.GetVariantInfo(kv.Key) == null
+                        && (variantPickerFilter.Length == 0 || kv.Value.Name.Contains(variantPickerFilter, StringComparison.OrdinalIgnoreCase)))
+            .Select(kv => (Id: kv.Key, kv.Value.Name))
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (matches.Count == 0)
+        {
+            ImGui.TextDisabled("No matching designs.");
+            return;
+        }
+
+        var listHeight = Math.Min(matches.Count, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
+        using var scroll = ImRaii.Child("##variantPickerList", new Vector2(250 * ImGuiHelpers.GlobalScale, listHeight), false);
+        foreach (var (parentId, name) in matches)
+        {
+            if (ImGui.Selectable($"{name}##variant{parentId}"))
+            {
+                var existing = plugin.Configuration.GetVariantInfo(id);
+                plugin.Configuration.SetVariantParent(id, parentId,
+                    existing?.InheritTagsAndDescription ?? true, existing?.InheritGear ?? false);
+                plugin.Configuration.Save();
+                variantVersion++;
+                ImGui.CloseCurrentPopup();
+            }
+        }
+    }
+
+    private void DrawVariantSection(Guid id, VariantInfo variant)
+    {
+        if (!Pills.DrawCollapsibleSubheader("Variant", ref variantPanelOpen))
+            return;
+        ImGui.Indent();
+
+        var parentName = ResolveLinkedDesignName(variant.ParentId);
+        ImGui.TextDisabled("Variant of:");
+        ImGui.SameLine();
+        DesignDetailView.TextColoredUnformatted(ModLinkColor, parentName);
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            ImGui.SetTooltip("Click to open in Aetherfit");
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                OpenDesign(variant.ParentId);
+        }
+
+        ImGui.SameLine();
+        if (ImGuiComponents.IconButton(FontAwesomeIcon.Unlink))
+        {
+            plugin.Configuration.RemoveVariant(id);
+            plugin.Configuration.Save();
+            variantVersion++;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Remove variant relationship");
+
+        var inheritTags = variant.InheritTagsAndDescription;
+        if (ImGui.Checkbox("Inherit tags and description from parent when unset", ref inheritTags))
+        {
+            variant.InheritTagsAndDescription = inheritTags;
+            plugin.Configuration.ApplyVariantTagDescriptionFallback(id);
+            plugin.Configuration.Save();
+            variantVersion++;
+        }
+
+        var inheritGear = variant.InheritGear;
+        if (ImGui.Checkbox("Inherit gear and customizations (applies parent first)", ref inheritGear))
+        {
+            variant.InheritGear = inheritGear;
+            plugin.Configuration.Save();
+        }
+
+        ImGui.Unindent();
+        ImGui.Spacing();
     }
 
     private void DrawImportToGlamourerPopup(CachedOutfit details, bool isGlamaholic)

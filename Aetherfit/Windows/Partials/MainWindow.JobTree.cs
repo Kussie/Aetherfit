@@ -125,7 +125,7 @@ public partial class MainWindow
         if (ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.SpanAvailWidth))
         {
             foreach (var leaf in leaves)
-                DrawDesignLeaf(leaf);
+                DrawDesignLeaf(leaf, false); // variant nesting only applies to the plain folder tree
             ImGui.TreePop();
         }
     }

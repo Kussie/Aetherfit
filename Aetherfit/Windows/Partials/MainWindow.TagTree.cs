@@ -124,7 +124,7 @@ public partial class MainWindow
             DrawTagNode(childName, $"{path}/{childName}", child, hasFilter);
 
         foreach (var leaf in node.Designs)
-            DrawDesignLeaf(leaf);
+            DrawDesignLeaf(leaf, false); // variant nesting only applies to the plain folder tree
 
         ImGui.TreePop();
     }

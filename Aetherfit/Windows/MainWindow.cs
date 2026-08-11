@@ -20,6 +20,10 @@ public partial class MainWindow : Window, IDisposable
     private readonly Plugin plugin;
 
     private FolderNode root = new();
+    // Resolves a variant's Guid back to its DesignLeaf (display name/path/color) for tree nesting and
+    // gallery stacking - a variant's own folder path can differ from its parent's, so it isn't
+    // reachable by walking root the normal way once excluded from the flat/tree design lists.
+    private Dictionary<Guid, DesignLeaf> designLeafById = new();
     private int designsCount;
     private string? designsError;
     private Guid? selectedDesign;
@@ -36,6 +40,8 @@ public partial class MainWindow : Window, IDisposable
     private bool coverGroupByJob;
     private bool coverGroupByTags;
     private bool coverGroupBySource;
+    // When on, variants show as their own flat cells instead of stacked behind their parent's.
+    private bool coverUnstackVariants;
 
     // When a filter is active we force every matching tree node open and keep note of the previous state so it can be restored whe nthe filters are cleared
     private readonly Dictionary<uint, bool> treeOpenSnapshot = new();
@@ -46,6 +52,9 @@ public partial class MainWindow : Window, IDisposable
 
     private Guid? revealDesignInTree;
     private List<string>? revealDesignFolderPath;
+    // Set when the reveal target is itself a variant - DrawTree needs to force this (its parent's)
+    // leaf row open too, in addition to opening ancestor folders.
+    private Guid? revealDesignVariantParent;
     private FilterSnapshot filterSnapshot;
     private Dictionary<string, bool> filterTagsSnapshot = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<uint, bool> filterJobsSnapshot = new();
@@ -91,6 +100,7 @@ public partial class MainWindow : Window, IDisposable
         coverGroupByJob = false;
         coverGroupByTags = false;
         coverGroupBySource = false;
+        coverUnstackVariants = false;
         RefreshDesigns();
     }
 
@@ -118,12 +128,18 @@ public partial class MainWindow : Window, IDisposable
         groupByTags = false;
         groupBySource = false;
 
-        var path = FindDesignFolderPath(root, id, new List<string>());
+        // A variant isn't its own entry in FolderNode.Designs (it's nested under its parent's row
+        // instead) - search for the parent, and remember to also force the parent's row open.
+        var variant = plugin.Configuration.GetVariantInfo(id);
+        var searchId = variant?.ParentId ?? id;
+
+        var path = FindDesignFolderPath(root, searchId, new List<string>());
         if (path == null)
             return; // not present in the tree right now (e.g. filtered out)
 
         revealDesignInTree = id;
         revealDesignFolderPath = path;
+        revealDesignVariantParent = variant != null ? searchId : null;
     }
 
     private static List<string>? FindDesignFolderPath(FolderNode node, Guid id, List<string> pathSoFar)
@@ -306,6 +322,7 @@ public partial class MainWindow : Window, IDisposable
         }
 
         // The tree only needs the list, so it shows immediately; metadata streams in behind it.
+        designLeafById = leaves.ToDictionary(l => l.Id);
         root = BuildFolderTree(leaves);
         designsCount = leaves.Count;
         designsError = errors.Count > 0 ? string.Join("\n", errors) : null;
@@ -392,6 +409,19 @@ public partial class MainWindow : Window, IDisposable
         plugin.Configuration.FavouriteDesigns.RemoveWhere(id => !validIds.Contains(id));
         plugin.Configuration.HiddenDesigns.RemoveWhere(id => !validIds.Contains(id));
         CleanupStaleLayers(validIds);
+
+        var staleVariants = plugin.Configuration.DesignVariants
+            .Where(kv => !validIds.Contains(kv.Key) || !validIds.Contains(kv.Value.ParentId))
+            .Select(kv => kv.Key)
+            .ToList();
+        foreach (var stale in staleVariants)
+            plugin.Configuration.DesignVariants.Remove(stale);
+
+        // Every surviving variant's Description/Tags need to reflect inheritance before the UI reads
+        // them this frame - the per-design overlay in OnFrameworkUpdate only ever sets a design's own
+        // meta, since a variant's parent may not have been processed yet at that point in the stream.
+        foreach (var variantId in plugin.Configuration.DesignVariants.Keys)
+            plugin.Configuration.ApplyVariantTagDescriptionFallback(variantId);
 
         if (selectedDesign is { } sid && !validIds.Contains(sid))
             selectedDesign = null;
