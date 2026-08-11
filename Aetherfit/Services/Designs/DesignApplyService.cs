@@ -71,6 +71,20 @@ public sealed class DesignApplyService
         // Applied before the base so anything it doesn't explicitly manage survives underneath it.
         ApplyLayers(beforeLayerIds, recordLastApplied);
 
+        if (plugin.Configuration.GetVariantInfo(id) is { InheritGear: true } variant
+            && plugin.Configuration.CachedOutfits.TryGetValue(variant.ParentId, out var parentOutfit)
+            && plugin.Configuration.IsProviderEnabled(parentOutfit.Source)
+            && plugin.DesignProviders.FirstOrDefault(p => p.Source == parentOutfit.Source) is { } parentProvider)
+        {
+            // Sequential Apply: mechanically sets the base state by applying the parent design first, so
+            // slots this variant doesn't itself manage (Apply == false) survive underneath it. Deliberately
+            // NOT routed through ApplyLayer/beforeLayerIds - that's Glamourer-only (see SupportsLayers) and
+            // would silently no-op for a Glamaholic/GlamourPlate/SGS parent. No bookkeeping (RecordLastApplied/
+            // RecordLastWorn, incompatible-item warning) attaches to this parent apply - only the variant's
+            // own apply below counts as the user's actual choice.
+            parentProvider.Apply(parentOutfit.ProviderDesignId, parentOutfit.Name, null, quiet: true);
+        }
+
         var layerNames = beforeLayerIds.Concat(afterLayerIds).Select(plugin.Configuration.ResolveDesignName).ToList();
         if (!provider.Apply(outfit.ProviderDesignId, name, layerNames, quiet))
             return;

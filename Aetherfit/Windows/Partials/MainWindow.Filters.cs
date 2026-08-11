@@ -459,19 +459,24 @@ public partial class MainWindow
         return match;
     }
 
-    private void CollectVisibleDesigns(FolderNode node, List<DesignLeaf> result)
+    // excludeVariants: the gallery grid wants variants left out (they're drawn stacked behind their
+    // parent's cell instead of as their own flat entry) - exports (CollectVisibleDesignIds) don't,
+    // since a variant is still its own real design that a "Filtered Designs" export should include.
+    private void CollectVisibleDesigns(FolderNode node, List<DesignLeaf> result, bool excludeVariants = false)
     {
         foreach (var design in node.Designs)
         {
             // Hidden designs are kept out of the gallery and exports entirely (the design tree still shows them).
             if (plugin.Configuration.HiddenDesigns.Contains(design.Id))
                 continue;
+            if (excludeVariants && plugin.Configuration.GetVariantInfo(design.Id) != null)
+                continue;
             plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var cached);
             if (DesignMatchesFilters(design, cached))
                 result.Add(design);
         }
         foreach (var folder in node.Folders.Values)
-            CollectVisibleDesigns(folder, result);
+            CollectVisibleDesigns(folder, result, excludeVariants);
     }
 
     // The ids of every design that currently passes the active filters - used to export only the visible list.

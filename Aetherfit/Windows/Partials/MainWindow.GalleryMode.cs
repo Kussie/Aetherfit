@@ -21,6 +21,9 @@ public partial class MainWindow
 
     private bool coverMode;
     private readonly Dictionary<Guid, int> galleryImageIndex = new();
+    // Which variant is currently fronted in a parent's card stack - 0 = the parent itself, 1..n =
+    // GetVisibleVariantsFor(parent)[n-1]. Same resolve-and-clamp shape as galleryImageIndex.
+    private readonly Dictionary<Guid, int> galleryVariantIndex = new();
     // Ellipsized cell labels, cached because truncation re-measures per character.
     private readonly Dictionary<Guid, (string Source, float Width, string Fitted)> cellLabelCache = new();
     private GallerySortField gallerySortField = GallerySortField.Name;
@@ -52,6 +55,9 @@ public partial class MainWindow
     private bool cachedSimpleGlamourSwitcherEnabled = true;
     private int favouriteVersion;
     private int cachedFavouriteVersion = -1;
+    private int variantVersion;
+    private int cachedVariantVersion = -1;
+    private bool cachedUnstackVariants;
     private int hiddenVersion;
     private int cachedHiddenVersion = -1;
     private int jobAssociationVersion;
@@ -238,7 +244,9 @@ public partial class MainWindow
         cachedGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled ||
         cachedSimpleGlamourSwitcherEnabled != plugin.Configuration.SimpleGlamourSwitcherEnabled ||
         cachedFavouriteVersion != favouriteVersion ||
-        cachedHiddenVersion != hiddenVersion;
+        cachedHiddenVersion != hiddenVersion ||
+        cachedVariantVersion != variantVersion ||
+        cachedUnstackVariants != coverUnstackVariants;
 
     // Bumped every time RebuildGalleryCache actually runs, regardless of why (filter/sort/generation/...
     // all funnel through here) - lets other caches derived from cachedVisible (e.g. the tag-grouped
@@ -249,7 +257,7 @@ public partial class MainWindow
     {
         galleryCacheVersion++;
         cachedVisible.Clear();
-        CollectVisibleDesigns(root, cachedVisible);
+        CollectVisibleDesigns(root, cachedVisible, excludeVariants: !coverUnstackVariants);
         SortGalleryDesigns(cachedVisible);
 
         cachedGeneration = designListGeneration;
@@ -275,6 +283,8 @@ public partial class MainWindow
         cachedSimpleGlamourSwitcherEnabled = plugin.Configuration.SimpleGlamourSwitcherEnabled;
         cachedFavouriteVersion = favouriteVersion;
         cachedHiddenVersion = hiddenVersion;
+        cachedVariantVersion = variantVersion;
+        cachedUnstackVariants = coverUnstackVariants;
     }
 
     // The groupings are mutually exclusive - ticking one unticks the others (all three can be off).
@@ -298,6 +308,10 @@ public partial class MainWindow
             coverGroupByJob = false;
             coverGroupByTags = false;
         }
+        ImGui.SameLine();
+        ImGui.Checkbox("Show variants separately", ref coverUnstackVariants);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Off: variants are stacked behind their parent's cell.\nOn: every variant gets its own cell, like a normal design.");
     }
 
     private void DrawCoverGrid()
@@ -448,15 +462,43 @@ public partial class MainWindow
         return ascending ? cmp : -cmp;
     }
 
-    private void DrawCoverCell(DesignLeaf design, float thumbWidth, float thumbHeight)
+    // A parent's variants that currently pass the same visibility/filter rules the flat gallery list
+    // uses - only these are eligible to appear cycled into the stack.
+    private List<DesignLeaf> GetVisibleVariantsFor(Guid parentId)
     {
-        using var id = ImRaii.PushId(design.Id.ToString());
+        var result = new List<DesignLeaf>();
+        foreach (var (variantId, _) in plugin.Configuration.GetVariantsOf(parentId))
+        {
+            if (plugin.Configuration.HiddenDesigns.Contains(variantId))
+                continue;
+            if (!designLeafById.TryGetValue(variantId, out var leaf))
+                continue;
+            plugin.Configuration.CachedOutfits.TryGetValue(variantId, out var cached);
+            if (DesignMatchesFilters(leaf, cached))
+                result.Add(leaf);
+        }
+        return result;
+    }
+
+    private void DrawCoverCell(DesignLeaf parentDesign, float thumbWidth, float thumbHeight)
+    {
+        using var id = ImRaii.PushId(parentDesign.Id.ToString());
+
+        // Widget IDs stay anchored to the parent so cycling doesn't remount the cell - everything
+        // below operates on whichever design (parent or a variant) is currently fronted. When variants
+        // are shown separately, each already gets its own flat cell, so the parent's cell shouldn't
+        // also try to stack/cycle them - that would show every variant twice.
+        var variants = coverUnstackVariants ? [] : GetVisibleVariantsFor(parentDesign.Id);
+        var stackIdx = variants.Count > 0
+            ? GalleryDraw.ResolveImageIndex(galleryVariantIndex, parentDesign.Id, variants.Count + 1)
+            : 0;
+        var design = stackIdx > 0 ? variants[stackIdx - 1] : parentDesign;
+
         using var group = ImRaii.Group();
 
         var thumbStart = ImGui.GetCursorScreenPos();
         var thumbVec = new Vector2(thumbWidth, thumbHeight);
         var containerAspect = thumbWidth / thumbHeight;
-
         // Faint plate behind the whole card, thumb plus the one-line label strip.
         var cellMax = thumbStart + new Vector2(thumbWidth,
             thumbHeight + ImGui.GetStyle().ItemSpacing.Y + ImGui.GetTextLineHeight());
@@ -517,6 +559,40 @@ public partial class MainWindow
             dl.AddRectFilled(badgeMin, badgeMax,
                 ImGui.ColorConvertFloat4ToU32(UiTheme.IconOverlayBg), 3f);
             dl.AddText(badgeMin + new Vector2(pad, pad), ImGui.ColorConvertFloat4ToU32(Vector4.One), badge);
+        }
+
+        // Variant browse badge, top-center - every corner is already spoken for (star/eye/warning/image
+        // count). Click its left/right half to step back/forward through the stack, same idea as the
+        // image-paging arrows but positioned clear of them (those sit on the thumbnail's vertical edges).
+        if (variants.Count > 0)
+        {
+            var dl = ImGui.GetWindowDrawList();
+            var total = variants.Count + 1;
+            var badgeText = $"< {stackIdx + 1}/{total} >";
+            var pad = 3f * ImGuiHelpers.GlobalScale;
+            var margin = 4f * ImGuiHelpers.GlobalScale;
+            var badgeTextSize = ImGui.CalcTextSize(badgeText);
+            var badgeMin = new Vector2(thumbStart.X + (thumbWidth - badgeTextSize.X) * 0.5f - pad, thumbStart.Y + margin);
+            var badgeMax = badgeMin + badgeTextSize + new Vector2(pad * 2f, pad * 2f);
+
+            var overVariantBadge = mouse.X >= badgeMin.X && mouse.X <= badgeMax.X
+                && mouse.Y >= badgeMin.Y && mouse.Y <= badgeMax.Y;
+
+            dl.AddRectFilled(badgeMin, badgeMax,
+                ImGui.ColorConvertFloat4ToU32(overVariantBadge ? UiTheme.IconOverlayBgHovered : UiTheme.IconOverlayBg), 3f);
+            dl.AddText(badgeMin + new Vector2(pad, pad), ImGui.ColorConvertFloat4ToU32(Vector4.One), badgeText);
+
+            if (overVariantBadge)
+            {
+                ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                ImGui.SetTooltip($"Variant {stackIdx + 1}/{total}: {design.DisplayName}\nClick left/right half to browse");
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                {
+                    var badgeCenterX = (badgeMin.X + badgeMax.X) * 0.5f;
+                    var step = mouse.X < badgeCenterX ? total - 1 : 1;
+                    galleryVariantIndex[parentDesign.Id] = (stackIdx + step) % total;
+                }
+            }
         }
 
         var starSize = 24f * ImGuiHelpers.GlobalScale;

@@ -130,6 +130,13 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.Save();
         }
 
+        if (Configuration.Version < 2)
+        {
+            // No-op today (DesignVariants defaults via its own field initializer).
+            Configuration.Version = 2;
+            Configuration.Save();
+        }
+
         // Attached after the migrations above so those still write directly.
         configSaver = new ConfigurationSaver(Configuration);
         Configuration.AttachSaver(configSaver);

@@ -98,6 +98,10 @@ public class Configuration : IPluginConfiguration
 
     public Dictionary<Guid, List<DesignLayerSlot>> DesignLayerSlots { get; set; } = new();
 
+    // Variant design -> its parent + which of the parent's data it inherits. Stored here (not on
+    // CachedOutfit) for the same reason as DesignJobAssociations above.
+    public Dictionary<Guid, VariantInfo> DesignVariants { get; set; } = new();
+
     // Legacy: replaced by DesignLayerSlots. Migrated on first plugin load into a single slot per base design.
     public Dictionary<Guid, List<DesignLayer>> DesignLayers { get; set; } = new();
 
@@ -324,8 +328,16 @@ public class Configuration : IPluginConfiguration
         Save();
     }
 
+    // Falls back to the parent's own slots when this design is a variant with none of its own -
+    // a single hop, since variant-of-a-variant chains aren't allowed (see SetVariantParent).
     public List<DesignLayerSlot> GetLayerSlots(Guid id)
-        => DesignLayerSlots.TryGetValue(id, out var slots) ? slots : new();
+    {
+        if (DesignLayerSlots.TryGetValue(id, out var ownSlots))
+            return ownSlots;
+        if (DesignVariants.TryGetValue(id, out var variant) && DesignLayerSlots.TryGetValue(variant.ParentId, out var parentSlots))
+            return parentSlots;
+        return new();
+    }
 
     public void SetLayerSlots(Guid id, List<DesignLayerSlot> slots)
     {
@@ -334,6 +346,50 @@ public class Configuration : IPluginConfiguration
             DesignLayerSlots.Remove(id);
         else
             DesignLayerSlots[id] = slots;
+    }
+
+    public VariantInfo? GetVariantInfo(Guid id) => DesignVariants.TryGetValue(id, out var v) ? v : null;
+
+    public IEnumerable<KeyValuePair<Guid, VariantInfo>> GetVariantsOf(Guid parentId)
+        => DesignVariants.Where(kv => kv.Value.ParentId == parentId);
+
+    public void SetVariantParent(Guid id, Guid parentId, bool inheritTagsAndDescription = true, bool inheritGear = false)
+    {
+        DesignVariants[id] = new VariantInfo
+        {
+            ParentId = parentId,
+            InheritTagsAndDescription = inheritTagsAndDescription,
+            InheritGear = inheritGear,
+        };
+        ApplyVariantTagDescriptionFallback(id);
+    }
+
+    public void RemoveVariant(Guid id)
+    {
+        DesignVariants.Remove(id);
+        ApplyVariantTagDescriptionFallback(id);
+    }
+
+    // Resets to this design's own meta, then conditionally overlays the parent's Description/Tags if
+    // this is a variant with inheritance on and its own values are unset - always reset first so
+    // toggling inheritance off or unlinking correctly reverts the displayed value.
+    public void ApplyVariantTagDescriptionFallback(Guid id)
+    {
+        if (!CachedOutfits.TryGetValue(id, out var outfit))
+            return;
+
+        DesignMeta.TryGetValue(id, out var meta);
+        outfit.Description = meta?.Description;
+        outfit.Tags = meta != null ? new List<string>(meta.Tags) : new List<string>();
+
+        if (DesignVariants.TryGetValue(id, out var variant) && variant.InheritTagsAndDescription
+            && CachedOutfits.TryGetValue(variant.ParentId, out var parentOutfit))
+        {
+            if (string.IsNullOrWhiteSpace(outfit.Description))
+                outfit.Description = parentOutfit.Description;
+            if (outfit.Tags.Count == 0)
+                outfit.Tags = new List<string>(parentOutfit.Tags);
+        }
     }
 
     public CharacterLoginSettings GetOrCreateLoginSettings(ulong contentId)
@@ -399,6 +455,14 @@ public class LocalDesignMeta
     public string? Description { get; set; }
     public List<string> Tags { get; set; } = new();
     public DateTimeOffset? LastApplied { get; set; }
+}
+
+[Serializable]
+public class VariantInfo
+{
+    public Guid ParentId { get; set; }
+    public bool InheritTagsAndDescription { get; set; } = true;
+    public bool InheritGear { get; set; } = false;
 }
 
 [Serializable]
