@@ -28,7 +28,10 @@ It adds the following functionality:
 - Health Report, show designs that having missing mods, duplicate designs, broken items, and or items that can't be worn by your current race/gender
 - Export a printable PDF "look book" of your design covers, for showing off outside the plugin
 - Mark a design as a variant of another (e.g. same mod with different settings, or the same style in a different colour) — it appears nested under its parent in the tree and stacked behind it in the gallery, and can optionally inherit the parent's layers, tags/description, and gear
+- Batch Screenshot mode — pick a set of designs (by tag, job, or source) and Aetherfit applies each one in turn, waits an adjustable delay, captures it with a fixed centered crop, and saves it as that design's cover — unattended, with a framing guide overlay to line up your camera first
 - Quick Search: a global keybind (set in Settings → Keybinds) pops open a small command-palette-style search box — type a design's name and hit Enter to apply it instantly without opening the main window
+- Filter by equipment slot — find designs with actual gear equipped in one or more specific slots (Head, Body, Legs, etc.), requiring all selected slots to be filled rather than any
+- A "What's New" window pops up automatically after an update that adds something worth announcing (not on routine releases), and won't show again once dismissed
 
 > **Composite tags:** tags can be written as `category/type`, e.g. `swimsuit/bikini` or `colour/blue`. A design tagged this way matches filters for the full tag *or* either half on its own — so it shows up whether you filter by `swimsuit/bikini`, just `swimsuit`, or just `bikini`, without having to add all three as separate tags. When designs are grouped by tags instead of folders, composite tags also build a nested tree instead of one flat entry — `swimsuit/bikini` shows up as a `swimsuit` branch containing a `bikini` branch, and a design carrying `summer/casual` and `winter/casual` appears under both, keeping same-named subtags (like `casual`) apart under their own parent.
 

@@ -186,6 +186,52 @@ public sealed class ImageStorageService
         }
     }
 
+    public void DemoteCoverToAdditional(Guid id)
+    {
+        if (!configuration.OutfitImages.TryGetValue(id, out var coverName) || string.IsNullOrEmpty(coverName))
+            return;
+
+        try
+        {
+            var imagesDir = EnsureImagesDirectory();
+            var coverPath = Path.Combine(imagesDir, coverName);
+            if (!File.Exists(coverPath))
+            {
+                configuration.OutfitImages.Remove(id);
+                return;
+            }
+
+            if (!configuration.OutfitAdditionalImages.TryGetValue(id, out var list))
+            {
+                list = new List<string>();
+                configuration.OutfitAdditionalImages[id] = list;
+            }
+
+            if (list.Count >= MaxAdditionalImages)
+            {
+                DeleteFileQuietly(Path.Combine(AdditionalImagesDirectory, list[0]));
+                list.RemoveAt(0);
+            }
+
+            var additionalDir = EnsureAdditionalImagesDirectory();
+            var demotedName = $"{id:N}_{Guid.NewGuid():N}{NormalizeExtension(Path.GetExtension(coverName))}";
+            File.Move(coverPath, Path.Combine(additionalDir, demotedName));
+            list.Add(demotedName);
+
+            configuration.OutfitImages.Remove(id);
+            configuration.Save();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to demote cover image to additional for {Id}", id);
+        }
+        finally
+        {
+            coverPathCache.Remove(id);
+            additionalPathsCache.Remove(id);
+        }
+    }
+
     public void AddAdditional(Guid id, string sourcePath)
     {
         try
@@ -433,7 +479,7 @@ public sealed class ImageStorageService
         return dir;
     }
 
-    // A unique cover filename per set/promote. 
+    // A unique cover filename per set/promote.
     private static string CoverFileName(Guid id, string ext) => $"{id:N}_{Guid.NewGuid():N}{ext}";
 
     private static void DeleteCoverFilesFor(Guid id, string imagesDir)

@@ -71,6 +71,8 @@ public sealed class Plugin : IDalamudPlugin
     private ConfigWindow ConfigWindow { get; init; }
     private HealthReportWindow HealthReportWindow { get; init; }
     private QuickSearchWindow QuickSearchWindow { get; init; }
+    private BatchScreenshotWindow BatchScreenshotWindow { get; init; }
+    private ChangelogWindow ChangelogWindow { get; init; }
     internal MainWindow MainWindow { get; init; }
     public ImageViewerWindow ImageViewer { get; init; }
     public ScreenshotSetupWindow ScreenshotSetup { get; init; }
@@ -91,7 +93,11 @@ public sealed class Plugin : IDalamudPlugin
         // load at all) - not via TagSuggestionBlacklist's own field initializer, which used to cause
         // these same four entries to duplicate on every single load (see Configuration.cs).
         if (loadedConfig == null)
+        {
             Configuration.TagSuggestionBlacklist.AddRange(["1girl", "1boy", "solo", "looking at viewer"]);
+            // Nothing to catch a fresh install up on - it already has everything the changelog would announce.
+            Configuration.LastSeenChangelogRevision = ChangelogData.LatestRevision;
+        }
 
         // One-time (but safe to re-run - cheap and idempotent) cleanup for configs saved before the
         // fix above: collapse whatever duplicate entries already accumulated back down to one each.
@@ -194,6 +200,8 @@ public sealed class Plugin : IDalamudPlugin
         ConfigWindow = new ConfigWindow(this);
         HealthReportWindow = new HealthReportWindow(this);
         QuickSearchWindow = new QuickSearchWindow(this);
+        BatchScreenshotWindow = new BatchScreenshotWindow(this);
+        ChangelogWindow = new ChangelogWindow(this);
         MainWindow = new MainWindow(this);
         ImageViewer = new ImageViewerWindow();
         ScreenshotSetup = new ScreenshotSetupWindow(this);
@@ -204,6 +212,8 @@ public sealed class Plugin : IDalamudPlugin
         WindowSystem.AddWindow(ConfigWindow);
         WindowSystem.AddWindow(HealthReportWindow);
         WindowSystem.AddWindow(QuickSearchWindow);
+        WindowSystem.AddWindow(BatchScreenshotWindow);
+        WindowSystem.AddWindow(ChangelogWindow);
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ImageViewer);
         WindowSystem.AddWindow(ScreenshotSetup);
@@ -229,6 +239,9 @@ public sealed class Plugin : IDalamudPlugin
         Glamourer.OnAnyStateFinalized += OnGlamourerAnyStateFinalized;
         Framework.Update += OnKeybindUpdate;
 
+        if (Configuration.LastSeenChangelogRevision < ChangelogData.LatestRevision)
+            ChangelogWindow.IsOpen = true;
+
         _ = FeatureFlags.RefreshAsync();
     }
 
@@ -253,6 +266,8 @@ public sealed class Plugin : IDalamudPlugin
         ConfigWindow.Dispose();
         HealthReportWindow.Dispose();
         QuickSearchWindow.Dispose();
+        BatchScreenshotWindow.Dispose();
+        ChangelogWindow.Dispose();
         MainWindow.Dispose();
         ImageViewer.Dispose();
         ScreenshotSetup.Dispose();
@@ -472,6 +487,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();
     public void ToggleHealthReportUi() => HealthReportWindow.Toggle();
+    public void ToggleBatchScreenshotUi() => BatchScreenshotWindow.Toggle();
 
     // Not a plain Toggle() - opening needs to reset the search text and recompute the popup's
     // on-screen position each time, not just flip visibility.

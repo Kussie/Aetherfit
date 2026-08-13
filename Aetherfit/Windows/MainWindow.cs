@@ -58,6 +58,7 @@ public partial class MainWindow : Window, IDisposable
     private FilterSnapshot filterSnapshot;
     private Dictionary<string, bool> filterTagsSnapshot = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<uint, bool> filterJobsSnapshot = new();
+    private HashSet<EquipmentSlot> filterEquipmentSlotsSnapshot = new();
 
     private readonly FileDialogManager fileDialog = new();
     private const string ImageFilters = "Image{.png,.jpg,.jpeg,.webp}";
@@ -499,6 +500,10 @@ public partial class MainWindow : Window, IDisposable
         if (IconTextButton(FontAwesomeIcon.Stethoscope, "Health Report", warning: HasHealthIssues(),
                 warningTooltip: "Some designs have health issues"))
             plugin.ToggleHealthReportUi();
+        ImGui.SameLine();
+
+        if (IconTextButton(FontAwesomeIcon.Images, "Batch Screenshot"))
+            plugin.ToggleBatchScreenshotUi();
 
         var countText = IsRefreshing && activeRefresh is { } job
             ? $"Loading {job.Index}/{designsCount}..."
