@@ -282,6 +282,10 @@ public sealed class GameDataService
         return itemId >= uint.MaxValue - 1000;
     }
 
+    // True when this id represents an empty slot (id 0, or one of Glamourer's own "nothing"/
+    // "smallclothes" sentinels) rather than an actual equipped item.
+    public static bool IsEmptySlotItem(ulong itemId) => itemId == 0 || itemId >= uint.MaxValue - 1000;
+
     // A bonus item's raw "BonusId" from Glamourer always carries CustomItemId's BonusItemFlag bit
     // (bit 49 - set by the implicit BonusItemId -> CustomItemId conversion Glamourer's own serializer
     // uses, confirmed against its source), so even a perfectly ordinary equipped item's id is already

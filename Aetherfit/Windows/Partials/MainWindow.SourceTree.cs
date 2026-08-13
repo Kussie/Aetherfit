@@ -18,6 +18,7 @@ public partial class MainWindow
     private FilterSnapshot cachedSourceTreeFilterSnapshot;
     private Dictionary<string, bool> cachedSourceTreeFilterTags = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<uint, bool> cachedSourceTreeFilterJobs = new();
+    private HashSet<EquipmentSlot> cachedSourceTreeFilterEquipmentSlots = new();
     private bool cachedSourceTreeGlamaholicEnabled = true;
     private bool cachedSourceTreeGlamourPlateEnabled = true;
     private bool cachedSourceTreeSimpleGlamourSwitcherEnabled = true;
@@ -27,6 +28,7 @@ public partial class MainWindow
         cachedSourceTreeFilterSnapshot != CaptureFilterSnapshot() ||
         !FiltersEqual(cachedSourceTreeFilterTags, filterTags) ||
         !FiltersEqual(cachedSourceTreeFilterJobs, filterJobs) ||
+        !cachedSourceTreeFilterEquipmentSlots.SetEquals(filterEquipmentSlots) ||
         cachedSourceTreeGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
         cachedSourceTreeGlamourPlateEnabled != plugin.Configuration.GlamourPlateEnabled ||
         cachedSourceTreeSimpleGlamourSwitcherEnabled != plugin.Configuration.SimpleGlamourSwitcherEnabled;
@@ -60,6 +62,7 @@ public partial class MainWindow
         cachedSourceTreeFilterSnapshot = CaptureFilterSnapshot();
         cachedSourceTreeFilterTags = new(filterTags, StringComparer.OrdinalIgnoreCase);
         cachedSourceTreeFilterJobs = new(filterJobs);
+        cachedSourceTreeFilterEquipmentSlots = new(filterEquipmentSlots);
         cachedSourceTreeGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;
         cachedSourceTreeGlamourPlateEnabled = plugin.Configuration.GlamourPlateEnabled;
         cachedSourceTreeSimpleGlamourSwitcherEnabled = plugin.Configuration.SimpleGlamourSwitcherEnabled;

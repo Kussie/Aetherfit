@@ -16,6 +16,7 @@ public partial class MainWindow
     private enum ImageFilterMode { All, HasImage, NoImage }
 
     private const string FilterTagsPopupId = "FilterTagsPopup";
+    private const string FilterSlotsPopupId = "FilterSlotsPopup";
 
     private string filterName = string.Empty;
     private bool searchDesignName = true;   // preserves current default behaviour
@@ -32,6 +33,8 @@ public partial class MainWindow
     private bool filterModdedOnly;
     private bool filterNeverWorn;
     private bool filterMissingModAssociation;
+    // A design must have real gear (Apply on, item not empty) in every selected slot - AND, not OR.
+    private readonly HashSet<EquipmentSlot> filterEquipmentSlots = new();
     private List<string> availableTagsForFilter = new();
     private List<(string Directory, string DisplayName)> availableModsForFilter = new();
     private int cachedAvailableTagsGeneration = -1;
@@ -46,7 +49,8 @@ public partial class MainWindow
                               || filterVanillaOnly
                               || filterModdedOnly
                               || filterNeverWorn
-                              || filterMissingModAssociation;
+                              || filterMissingModAssociation
+                              || filterEquipmentSlots.Count > 0;
 
     private int ActiveFilterCount => (filterName.Length > 0 ? 1 : 0)
                                    + filterTags.Count
@@ -57,7 +61,8 @@ public partial class MainWindow
                                    + (filterVanillaOnly ? 1 : 0)
                                    + (filterModdedOnly ? 1 : 0)
                                    + (filterNeverWorn ? 1 : 0)
-                                   + (filterMissingModAssociation ? 1 : 0);
+                                   + (filterMissingModAssociation ? 1 : 0)
+                                   + filterEquipmentSlots.Count;
 
 
     private readonly record struct FilterSnapshot(
@@ -100,6 +105,7 @@ public partial class MainWindow
             extraControls();
         }
         DrawFilterTagsPopup();
+        DrawFilterSlotsPopup();
     }
 
     // "N active" plus a ghost Clear button, right-aligned on the collapsing header's own row so
@@ -147,6 +153,7 @@ public partial class MainWindow
         filterModdedOnly = false;
         filterNeverWorn = false;
         filterMissingModAssociation = false;
+        filterEquipmentSlots.Clear();
     }
 
     // Narrow (design tree pane): one control per row. Wide (gallery): two rows -
@@ -180,6 +187,11 @@ public partial class MainWindow
             tagSearchText = string.Empty;
             ImGui.OpenPopup(FilterTagsPopupId);
         }
+
+        if (wide)
+            ImGui.SameLine();
+        if (DrawSlotFilterButton(wide ? tagBtnW : -1f))
+            ImGui.OpenPopup(FilterSlotsPopupId);
 
         ImGui.AlignTextToFramePadding();
         ImGui.TextDisabled("Cover Image:");
@@ -357,6 +369,58 @@ public partial class MainWindow
             plugin.GameData.GetJobIcon, "filter", 260 * scale, emptyMessage);
     }
 
+    // Styled to match DrawTagJobPickerButton.
+    private bool DrawSlotFilterButton(float width)
+    {
+        var count = filterEquipmentSlots.Count;
+        var label = count == 0 ? "Filter by equipment slot..." : count == 1 ? "1 slot filter active" : $"{count} slot filters active";
+
+        bool clicked;
+        using (ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f)))
+        using (ImRaii.PushColor(ImGuiCol.Button, ImGui.GetColorU32(ImGuiCol.FrameBg))
+                   .Push(ImGuiCol.ButtonHovered, ImGui.GetColorU32(ImGuiCol.FrameBgHovered))
+                   .Push(ImGuiCol.ButtonActive, ImGui.GetColorU32(ImGuiCol.FrameBgActive))
+                   .Push(ImGuiCol.Text, UiTheme.PlaceholderText))
+            clicked = ImGui.Button($"{label}##slotFilterPicker", new Vector2(width, 0));
+
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var sz = ImGui.GetFontSize() * 0.35f;
+        var center = new Vector2(max.X - ImGui.GetStyle().FramePadding.X - sz, (min.Y + max.Y) * 0.5f);
+        ImGui.GetWindowDrawList().AddTriangleFilled(
+            center + new Vector2(-sz, -sz * 0.5f),
+            center + new Vector2(sz, -sz * 0.5f),
+            center + new Vector2(0f, sz * 0.75f),
+            ImGui.ColorConvertFloat4ToU32(UiTheme.PlaceholderText));
+        return clicked;
+    }
+
+    // A design matches only if it has real gear in EVERY selected slot (AND, not OR), so this is a
+    // plain multi-select checkbox list rather than the tri-state include/exclude tag/job picker.
+    private void DrawFilterSlotsPopup()
+    {
+        using var popup = ImRaii.Popup(FilterSlotsPopupId);
+        if (!popup.Success)
+            return;
+
+        ImGui.TextColored(UiTheme.SectionHeader, "Has gear in slot(s)");
+        foreach (var (slot, label) in DesignDetailView.SlotDisplay)
+        {
+            var selected = filterEquipmentSlots.Contains(slot);
+            if (ImGui.Checkbox($"{label}##slotFilter{slot}", ref selected))
+            {
+                if (selected)
+                    filterEquipmentSlots.Add(slot);
+                else
+                    filterEquipmentSlots.Remove(slot);
+            }
+        }
+
+        ImGui.Separator();
+        if (ImGui.Button("Done", new Vector2(-1, 0)))
+            ImGui.CloseCurrentPopup();
+    }
+
     private bool NameFilterMatches(DesignLeaf design, CachedOutfit? cached)
     {
         // No scope enabled => the name filter is inert rather than matching nothing.
@@ -432,6 +496,19 @@ public partial class MainWindow
 
         if (filterMissingModAssociation && (cached == null || !plugin.Attribution.HasMissingModAssociation(cached)))
             return false;
+
+        if (filterEquipmentSlots.Count > 0)
+        {
+            if (cached == null)
+                return false;
+            foreach (var slot in filterEquipmentSlots)
+            {
+                var equipped = cached.Equipment.Any(s =>
+                    s.Slot == slot && s.Apply && !GameDataService.IsEmptySlotItem(s.ItemId));
+                if (!equipped)
+                    return false;
+            }
+        }
 
         return true;
     }

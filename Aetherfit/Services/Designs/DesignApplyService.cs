@@ -6,8 +6,6 @@ using Aetherfit.Utils;
 
 namespace Aetherfit.Services.Designs;
 
-// Picking and applying designs (including random picks and additional layers) - split out of MainWindow
-// so it's testable independent of ImGui, and callable from both the UI and Plugin's slash commands.
 public sealed class DesignApplyService
 {
     private const int RecentHistoryCap = 10;
@@ -17,18 +15,17 @@ public sealed class DesignApplyService
 
     public DesignApplyService(Plugin plugin) => this.plugin = plugin;
 
-    // The id of the design actually applied, so the caller can update its own selection UI; null if
-    // nothing was applied (see Error).
     public readonly record struct ApplyResult(Guid? DesignId, string? Error)
     {
         public static ApplyResult Ok(Guid id) => new(id, null);
         public static ApplyResult Fail(string error) => new(null, error);
     }
 
-    public void ApplyDesignById(Guid id)
+    public void ApplyDesignById(Guid id, bool recordLastApplied = true)
         => ApplyDesignCore(id,
             applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: true),
-            applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false));
+            applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false),
+            recordLastApplied: recordLastApplied);
 
     private void ApplyDesignCore(Guid id, List<Guid> beforeLayerIds, List<Guid> afterLayerIds, bool quiet = false,
         bool recordLastApplied = true)
@@ -94,12 +91,16 @@ public sealed class DesignApplyService
 
         ApplyLayers(afterLayerIds, recordLastApplied);
 
-        RecordLastWorn(id, beforeLayerIds, afterLayerIds);
-
         // Only a genuine active choice counts as "worn" - ReapplyLastWorn is a pure state restore
-        // (login/zone-change), not the user newly picking this look, so it opts out via the caller.
+        // (login/zone-change) and Batch Screenshot mode is just capturing a preview, neither is the
+        // user newly picking this look, so both opt out via the caller. Gates both the session-level
+        // "recently/last worn" bookkeeping and the per-design last-applied timestamp together, since
+        // they're the same underlying question: did this apply actually count as wearing it.
         if (recordLastApplied)
+        {
+            RecordLastWorn(id, beforeLayerIds, afterLayerIds);
             plugin.Configuration.RecordLastApplied(id, outfit);
+        }
     }
 
     // Applies each layer id (in order) via its provider's ApplyLayer IPC. Used for both the before- and

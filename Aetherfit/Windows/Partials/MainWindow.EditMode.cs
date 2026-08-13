@@ -111,7 +111,8 @@ public partial class MainWindow
         var snapshot = CaptureFilterSnapshot();
         var filterChanged = snapshot != filterSnapshot
             || !FiltersEqual(filterTags, filterTagsSnapshot)
-            || !FiltersEqual(filterJobs, filterJobsSnapshot);
+            || !FiltersEqual(filterJobs, filterJobsSnapshot)
+            || !filterEquipmentSlotsSnapshot.SetEquals(filterEquipmentSlots);
         if (hasFilter && filterChanged)
             expandTreesForFilter = true;
         if (filterChanged)
@@ -119,6 +120,7 @@ public partial class MainWindow
             filterSnapshot = snapshot;
             filterTagsSnapshot = new(filterTags, StringComparer.OrdinalIgnoreCase);
             filterJobsSnapshot = new(filterJobs);
+            filterEquipmentSlotsSnapshot = new(filterEquipmentSlots);
         }
 
         // Cleared each frame - see FolderHasMatch.

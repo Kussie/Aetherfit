@@ -28,6 +28,8 @@ public class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 0;
 
+    public int LastSeenChangelogRevision { get; set; }
+
     // Persisted separately by OutfitCacheStore (it's derived data and large); ShouldSerialize keeps it
     // out of the plugin config while still deserializing configs from before the split.
     public Dictionary<Guid, CachedOutfit> CachedOutfits { get; set; } = new();
