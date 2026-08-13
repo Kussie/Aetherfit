@@ -28,6 +28,7 @@ It adds the following functionality:
 - Health Report, show designs that having missing mods, duplicate designs, broken items, and or items that can't be worn by your current race/gender
 - Export a printable PDF "look book" of your design covers, for showing off outside the plugin
 - Mark a design as a variant of another (e.g. same mod with different settings, or the same style in a different colour) — it appears nested under its parent in the tree and stacked behind it in the gallery, and can optionally inherit the parent's layers, tags/description, and gear
+- Quick Search: a global keybind (set in Settings → Keybinds) pops open a small command-palette-style search box — type a design's name and hit Enter to apply it instantly without opening the main window
 
 > **Composite tags:** tags can be written as `category/type`, e.g. `swimsuit/bikini` or `colour/blue`. A design tagged this way matches filters for the full tag *or* either half on its own — so it shows up whether you filter by `swimsuit/bikini`, just `swimsuit`, or just `bikini`, without having to add all three as separate tags. When designs are grouped by tags instead of folders, composite tags also build a nested tree instead of one flat entry — `swimsuit/bikini` shows up as a `swimsuit` branch containing a `bikini` branch, and a design carrying `summer/casual` and `winter/casual` appears under both, keeping same-named subtags (like `casual`) apart under their own parent.
 

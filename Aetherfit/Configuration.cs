@@ -150,6 +150,7 @@ public class Configuration : IPluginConfiguration
     public KeyBind WearFavouriteKeybind { get; set; } = new();
     public KeyBind WearLastKeybind { get; set; } = new();
     public KeyBind RevertKeybind { get; set; } = new();
+    public KeyBind QuickSearchKeybind { get; set; } = new();
 
     public int LiveShareDefaultTtlMinutes { get; set; } = 30;
 
