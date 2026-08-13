@@ -423,6 +423,7 @@ public class ConfigWindow : Window, IDisposable
         DrawKeybindRow("Wear Favourite", cfg.WearFavouriteKeybind);
         DrawKeybindRow("Wear Last", cfg.WearLastKeybind);
         DrawKeybindRow("Revert", cfg.RevertKeybind);
+        DrawKeybindRow("Quick Search", cfg.QuickSearchKeybind);
 
         if (recordingKeybind != null)
             CaptureKeybind();

@@ -8,6 +8,7 @@ using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using Aetherfit.Services.Designs;
 using Aetherfit.Services.Export;
 using Aetherfit.Services.Game;
@@ -69,6 +70,7 @@ public sealed class Plugin : IDalamudPlugin
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
     private HealthReportWindow HealthReportWindow { get; init; }
+    private QuickSearchWindow QuickSearchWindow { get; init; }
     internal MainWindow MainWindow { get; init; }
     public ImageViewerWindow ImageViewer { get; init; }
     public ScreenshotSetupWindow ScreenshotSetup { get; init; }
@@ -191,6 +193,7 @@ public sealed class Plugin : IDalamudPlugin
 
         ConfigWindow = new ConfigWindow(this);
         HealthReportWindow = new HealthReportWindow(this);
+        QuickSearchWindow = new QuickSearchWindow(this);
         MainWindow = new MainWindow(this);
         ImageViewer = new ImageViewerWindow();
         ScreenshotSetup = new ScreenshotSetupWindow(this);
@@ -200,6 +203,7 @@ public sealed class Plugin : IDalamudPlugin
         ReceiveLiveWindow = new ReceiveLiveWindow(this);
         WindowSystem.AddWindow(ConfigWindow);
         WindowSystem.AddWindow(HealthReportWindow);
+        WindowSystem.AddWindow(QuickSearchWindow);
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ImageViewer);
         WindowSystem.AddWindow(ScreenshotSetup);
@@ -248,6 +252,7 @@ public sealed class Plugin : IDalamudPlugin
 
         ConfigWindow.Dispose();
         HealthReportWindow.Dispose();
+        QuickSearchWindow.Dispose();
         MainWindow.Dispose();
         ImageViewer.Dispose();
         ScreenshotSetup.Dispose();
@@ -417,6 +422,7 @@ public sealed class Plugin : IDalamudPlugin
             if (err != null) ChatGui.PrintError($"{ChatPrefix}{err}");
         });
         CheckKeybind(Configuration.RevertKeybind, () => MainWindow.RevertAppearance());
+        CheckKeybind(Configuration.QuickSearchKeybind, ToggleQuickSearchUi);
     }
 
     // Edge-triggered (via bind.WasDown, not a plain "is it down" check) so a held key fires once, not
@@ -425,9 +431,11 @@ public sealed class Plugin : IDalamudPlugin
     // registering as the hotkey's first trigger.
     private void CheckKeybind(KeyBind bind, Action action)
     {
-        // Never fire while a text field has keyboard focus (e.g. typing in a tag search box) - a
-        // hotkey firing mid-typing would be surprising and impossible to type around.
-        if (!bind.IsSet || ImGui.GetIO().WantTextInput)
+        // Never fire while a text field has keyboard focus - either an ImGui one (e.g. typing in a tag
+        // search box) or the game's own (chat, a naming dialog, etc, via RaptureAtkModule - ImGui's
+        // WantTextInput only knows about ImGui's own widgets, not the game's native UI). A hotkey firing
+        // mid-typing would be surprising and impossible to type around either way.
+        if (!bind.IsSet || ImGui.GetIO().WantTextInput || IsGameTextInputActive())
         {
             bind.WasDown = false;
             return;
@@ -444,6 +452,14 @@ public sealed class Plugin : IDalamudPlugin
         bind.WasDown = isDown;
     }
 
+    // Covers chat, naming dialogs, and anything else the game itself is reading keystrokes for - a
+    // read-only check against the game's own UI module, no different from other plugins polling this.
+    private static unsafe bool IsGameTextInputActive()
+    {
+        var module = RaptureAtkModule.Instance();
+        return module != null && module->IsTextInputActive();
+    }
+
     private void OnLogin() => Restore.BeginLoginRestore();
 
     private void OnTerritoryChanged(uint territoryId) => Restore.HandleTerritoryChanged();
@@ -456,6 +472,16 @@ public sealed class Plugin : IDalamudPlugin
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();
     public void ToggleHealthReportUi() => HealthReportWindow.Toggle();
+
+    // Not a plain Toggle() - opening needs to reset the search text and recompute the popup's
+    // on-screen position each time, not just flip visibility.
+    public void ToggleQuickSearchUi()
+    {
+        if (QuickSearchWindow.IsOpen)
+            QuickSearchWindow.IsOpen = false;
+        else
+            QuickSearchWindow.Show();
+    }
     public void ToggleMainUi() => MainWindow.Toggle();
     public void OpenDesignInMain(Guid id) => MainWindow.OpenDesign(id);
 
