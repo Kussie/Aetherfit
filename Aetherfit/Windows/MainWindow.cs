@@ -505,6 +505,12 @@ public partial class MainWindow : Window, IDisposable
 
         if (IconTextButton(FontAwesomeIcon.Images, "Batch Screenshot"))
             plugin.ToggleBatchScreenshotUi();
+        ImGui.SameLine();
+
+        if (IconTextButton(FontAwesomeIcon.Robot, "Automations", warning: HasEmptyAutomations(),
+                warningTooltip: "Automations is on but no rules are configured for this character",
+                suffix: AutomationsStateSuffix()))
+            plugin.ToggleAutomationsUi();
 
         var countText = IsRefreshing && activeRefresh is { } job
             ? $"Loading {job.Index}/{designsCount}..."
@@ -522,9 +528,43 @@ public partial class MainWindow : Window, IDisposable
             plugin.ToggleConfigUi();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Settings");
+
+        DrawAutomationsActiveRuleLine();
     }
 
-    private static float IconTextButtonWidth(FontAwesomeIcon icon, string label, bool dropdown = false, bool warning = false)
+    // ON/OFF baked right into the toolbar button itself - the at-a-glance indicator.
+    private (string Text, Vector4 Color)? AutomationsStateSuffix()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return null;
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        return settings.AutomationsEnabled ? ("ON", UiTheme.StateOn) : ("OFF", UiTheme.StateOff);
+    }
+
+    // Which rule is currently applying, if any - the ON/OFF state itself is already shown on the button above.
+    private void DrawAutomationsActiveRuleLine()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        if (settings.AutomationsEnabled && plugin.Automation.CurrentRuleName is { } activeName)
+        {
+            ImGui.TextDisabled("Automations:");
+            ImGui.SameLine();
+            ImGui.TextColored(UiTheme.GoldAccent, $"currently applying \"{activeName}\"");
+        }
+    }
+
+    private bool HasEmptyAutomations()
+        => Plugin.PlayerState.IsLoaded
+           && plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+           && settings.AutomationsEnabled
+           && settings.AutomationRules.Count == 0;
+
+    private static float IconTextButtonWidth(FontAwesomeIcon icon, string label, bool dropdown = false,
+        bool warning = false, (string Text, Vector4 Color)? suffix = null)
     {
         var style = ImGui.GetStyle();
         float iconW, warningW;
@@ -533,14 +573,15 @@ public partial class MainWindow : Window, IDisposable
             iconW = ImGui.CalcTextSize(icon.ToIconString()).X;
             warningW = warning ? style.ItemInnerSpacing.X + ImGui.CalcTextSize(FontAwesomeIcon.ExclamationTriangle.ToIconString()).X : 0f;
         }
+        var suffixW = suffix != null ? style.ItemInnerSpacing.X + ImGui.CalcTextSize(suffix.Value.Text).X : 0f;
         var caretW = dropdown ? style.ItemInnerSpacing.X + (ImGui.GetFontSize() * 0.5f) : 0f;
-        return (style.FramePadding.X * 2) + iconW + style.ItemInnerSpacing.X + ImGui.CalcTextSize(label).X + warningW + caretW;
+        return (style.FramePadding.X * 2) + iconW + style.ItemInnerSpacing.X + ImGui.CalcTextSize(label).X + suffixW + warningW + caretW;
     }
 
     // Icon + label button, with a caret when it opens a menu and/or a trailing warning icon+tooltip.
     // Drawn by hand because a single ImGui button can't mix the icon font with the text font.
     internal static bool IconTextButton(FontAwesomeIcon icon, string label, bool dropdown = false,
-        bool warning = false, string? warningTooltip = null)
+        bool warning = false, string? warningTooltip = null, (string Text, Vector4 Color)? suffix = null)
     {
         var style = ImGui.GetStyle();
         var iconStr = icon.ToIconString();
@@ -550,7 +591,7 @@ public partial class MainWindow : Window, IDisposable
         var textW = ImGui.CalcTextSize(label).X;
         var caretHalf = ImGui.GetFontSize() * 0.25f;
 
-        var clicked = ImGui.Button($"##iconText{label}", new Vector2(IconTextButtonWidth(icon, label, dropdown, warning), 0));
+        var clicked = ImGui.Button($"##iconText{label}", new Vector2(IconTextButtonWidth(icon, label, dropdown, warning, suffix), 0));
         var hovered = ImGui.IsItemHovered();
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
@@ -564,6 +605,13 @@ public partial class MainWindow : Window, IDisposable
         x += iconW + style.ItemInnerSpacing.X;
         dl.AddText(new Vector2(x, textY), color, label);
         x += textW;
+
+        if (suffix != null)
+        {
+            x += style.ItemInnerSpacing.X;
+            dl.AddText(new Vector2(x, textY), ImGui.GetColorU32(suffix.Value.Color), suffix.Value.Text);
+            x += ImGui.CalcTextSize(suffix.Value.Text).X;
+        }
 
         if (warning)
         {

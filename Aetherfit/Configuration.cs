@@ -23,6 +23,84 @@ public enum GalleryFitMode
     Stretch,
 }
 
+public enum AutomationConditionType
+{
+    Job,
+    Territory,
+    Mounted,
+    Weather,
+    Time,
+    Swimming,
+    // Appended, not inserted - these enums serialize by ordinal, so an earlier position would
+    // reshuffle every already-saved condition type.
+    Housing,
+}
+
+public enum SwimState
+{
+    Swimming,
+    Diving,
+}
+
+public enum HousingTargetType
+{
+    AnyHouse,
+    AnyApartment,
+    SpecificPlot,
+    SpecificApartmentRoom,
+}
+
+// Captured via the "Add Current Plot/Apartment" buttons rather than typed in, so ward/plot/room
+// numbering only ever needs to round-trip through HousingManager's own values, never be guessed at.
+[Serializable]
+public class HousingTarget
+{
+    public HousingTargetType Type { get; set; }
+    // SpecificPlot/SpecificApartmentRoom only - the exact housing zone, since ward+plot numbers repeat
+    // across different housing areas (e.g. The Lavender Beds and its Subdivision).
+    public uint TerritoryTypeId { get; set; }
+    public int Ward { get; set; }
+    public int Plot { get; set; }
+    public int Room { get; set; }
+}
+
+[Serializable]
+public class AutomationCondition
+{
+    public AutomationConditionType Type { get; set; }
+    public List<uint> JobIds { get; set; } = new();
+    public List<uint> TerritoryIds { get; set; } = new();
+
+    // Mounted only: true = must be mounted. MountIds empty = any mount, non-empty = one of these.
+    public bool MountedValue { get; set; }
+    public List<uint> MountIds { get; set; } = new();
+
+    public List<byte> WeatherIds { get; set; } = new();
+
+    // Eorzea hours, 0-23. Wraps past midnight when EndHour <= StartHour.
+    public int StartHour { get; set; }
+    public int EndHour { get; set; }
+
+    public List<SwimState> SwimStates { get; set; } = new() { SwimState.Swimming, SwimState.Diving };
+
+    public List<HousingTarget> HousingTargets { get; set; } = new();
+}
+
+[Serializable]
+public class AutomationRule
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "New Rule";
+    public bool Enabled { get; set; } = true;
+    public List<AutomationCondition> Conditions { get; set; } = new();
+    public List<Guid> DesignIds { get; set; } = new();
+
+    // Each inner list is a set of tags a design must carry all of (AND'd), resolved to matching designs
+    // at apply time rather than a fixed id - so the pool follows tag changes automatically. Merged into
+    // the same candidate pool as DesignIds, not picked from separately.
+    public List<List<string>> TagPools { get; set; } = new();
+}
+
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
@@ -153,6 +231,7 @@ public class Configuration : IPluginConfiguration
     public KeyBind WearLastKeybind { get; set; } = new();
     public KeyBind RevertKeybind { get; set; } = new();
     public KeyBind QuickSearchKeybind { get; set; } = new();
+    public KeyBind AutomationsToggleKeybind { get; set; } = new();
 
     public int LiveShareDefaultTtlMinutes { get; set; } = 30;
 
@@ -450,6 +529,10 @@ public class CharacterLoginSettings
     public List<Guid> LastWornBeforeLayers { get; set; } = new();
     public List<Guid> RecentDesignHistory { get; set; } = new();
     public bool ReapplyOnZoneChange { get; set; } = false;
+
+    public bool AutomationsEnabled { get; set; } = false;
+    public bool AutomationsDisableInDuties { get; set; } = true;
+    public List<AutomationRule> AutomationRules { get; set; } = new();
 }
 
 [Serializable]
