@@ -261,7 +261,7 @@ public sealed class DesignApplyService
            && plugin.DesignProviders.FirstOrDefault(p => p.Source == outfit.Source) is { } provider
            && provider.Capabilities.HasFlag(DesignProviderCapabilities.Layers);
 
-    private bool IsUsable(Guid id)
+    public bool IsUsable(Guid id)
         => !plugin.Configuration.HiddenDesigns.Contains(id)
            && plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
            && plugin.Configuration.IsProviderEnabled(outfit.Source);

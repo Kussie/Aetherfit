@@ -7,6 +7,7 @@ using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Textures.TextureWraps;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherfit.Ui;
@@ -118,10 +119,14 @@ internal static class Pills
             ImGui.CloseCurrentPopup();
     }
 
+    private const float RemovableThumbnailMaxPt = 160f;
+
     // Draws a wrapping row of removable "label ×" chips. Each chip shows a "Remove" tooltip on hover and,
     // when clicked, fires onRemove for that item (deferred until after the loop so the source isn't mutated
-    // mid-iteration). Callers pass the items already in their desired order.
-    public static void DrawRemovableRow<T>(IEnumerable<T> items, Func<T, string> label, Action<T> onRemove)
+    // mid-iteration). Callers pass the items already in their desired order. thumbnailPath, when given, adds
+    // the design's cover image to the tooltip - same hover preview as QuickSearchWindow's search results.
+    public static void DrawRemovableRow<T>(IEnumerable<T> items, Func<T, string> label, Action<T> onRemove,
+        Func<T, string?>? thumbnailPath = null)
     {
         var style = ImGui.GetStyle();
         var spacing = style.ItemSpacing.X;
@@ -147,11 +152,29 @@ internal static class Pills
             }
 
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"Remove \"{text}\"");
+                DrawRemovableTooltip(text, thumbnailPath?.Invoke(item));
         }
 
         if (removed)
             onRemove(toRemove!);
+    }
+
+    private static void DrawRemovableTooltip(string label, string? imagePath)
+    {
+        ImGui.BeginTooltip();
+        ImGui.TextUnformatted($"Remove \"{label}\"");
+
+        if (imagePath != null)
+        {
+            var tex = Plugin.TextureProvider.GetFromFile(imagePath).GetWrapOrEmpty();
+            if (tex.Width > 0 && tex.Height > 0)
+            {
+                var (size, _) = GalleryDraw.ComputeFitSize(new Vector2(RemovableThumbnailMaxPt, RemovableThumbnailMaxPt) * ImGuiHelpers.GlobalScale, tex.Width, tex.Height);
+                ImGui.Image(tex.Handle, size);
+            }
+        }
+
+        ImGui.EndTooltip();
     }
 
     public static (FontAwesomeIcon Icon, Vector4 Color) FilterStateIcon(FilterState state) => state switch

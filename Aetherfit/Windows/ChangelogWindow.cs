@@ -18,8 +18,7 @@ internal static class ChangelogData
     {
         new(1, "Batch Screenshot Mode", new[]
         {
-            "Batch Screenshot mode: pick a set of designs by tag, job or source and Aetherfit applies each one in turn, waits, captures it with a fixed centered crop, and saves it as that design's cover - unattended.",
-            "New equipment slot filters in design and gallery views.",
+            "Added a robust automation system to automatically equip designs based on specific conditions",
         }),
     };
 

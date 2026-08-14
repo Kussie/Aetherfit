@@ -52,6 +52,7 @@ public sealed class RestoreSequenceService
 
         // Read-only lookup on purpose: don't create/save settings from an event firing every zone.
         if (!plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+            || settings.AutomationsEnabled
             || !settings.ReapplyOnZoneChange
             || settings.LastWornDesign == null)
             return;
@@ -201,7 +202,7 @@ public sealed class RestoreSequenceService
         plugin.MainWindow.InvalidateAttributionCache();
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-        if (settings.LoginAction == LoginAction.None)
+        if (settings.AutomationsEnabled || settings.LoginAction == LoginAction.None)
             return;
 
         string? err = settings.LoginAction switch
