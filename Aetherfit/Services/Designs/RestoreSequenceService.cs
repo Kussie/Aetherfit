@@ -119,20 +119,29 @@ public sealed class RestoreSequenceService
         WaitForPlayer(gen, playerAttemptsLeft, quietDeadline);
     }
 
+    // True if a stale/cancelled sequence (gen mismatch) or a logout mid-wait means this tick should stop.
+    private bool ShouldAbort(int gen)
+    {
+        if (gen != generation)
+            return true;
+
+        if (!Plugin.ClientState.IsLoggedIn)
+        {
+            phase = Phase.Idle;
+            return true;
+        }
+
+        return false;
+    }
+
     private void WaitForPlayer(int gen, int attemptsLeft, TimeSpan quietDeadline)
     {
         // Poll until the local player exists rather than relying on a fixed delay — loading screens
         // can easily exceed any fixed timer.
         Plugin.Framework.RunOnTick(() =>
         {
-            if (gen != generation)
+            if (ShouldAbort(gen))
                 return;
-
-            if (!Plugin.ClientState.IsLoggedIn)
-            {
-                phase = Phase.Idle;
-                return;
-            }
 
             if (Plugin.ObjectTable.LocalPlayer == null)
             {
@@ -161,14 +170,8 @@ public sealed class RestoreSequenceService
     {
         Plugin.Framework.RunOnTick(() =>
         {
-            if (gen != generation)
+            if (ShouldAbort(gen))
                 return;
-
-            if (!Plugin.ClientState.IsLoggedIn)
-            {
-                phase = Phase.Idle;
-                return;
-            }
 
             var quiet = DateTime.UtcNow - lastGlamourerActivityUtc >= TimeSpan.FromSeconds(3);
             if (!quiet && DateTime.UtcNow < deadlineUtc)

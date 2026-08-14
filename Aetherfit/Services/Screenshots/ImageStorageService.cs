@@ -295,52 +295,41 @@ public sealed class ImageStorageService
 
         string? coverPath = null;
         if (cover is { } c && c.Bytes.Length > 0)
-        {
-            try
-            {
-                var candidate = Path.Combine(dir, $"{sourceId:N}{NormalizeExtension(c.Ext)}");
-                // NormalizeExtension already strips dangerous extensions; this is a second line of defence
-                // in case the file name itself ever resolves outside the foreign cache directory.
-                if (IsContainedIn(dir, candidate))
-                {
-                    File.WriteAllBytes(candidate, c.Bytes);
-                    coverPath = candidate;
-                }
-                else
-                {
-                    Plugin.Log.Warning("Skipped foreign cover for {Id}: path escaped the cache directory", sourceId);
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.Warning(ex, "Failed to write foreign cover for {Id}", sourceId);
-                coverPath = null;
-            }
-        }
+            coverPath = TryWriteContained(dir, $"{sourceId:N}{NormalizeExtension(c.Ext)}", c.Bytes, sourceId, "cover");
 
         var additionalPaths = new List<string>();
         for (var i = 0; i < additional.Count; i++)
         {
             var (bytes, ext) = additional[i];
             if (bytes.Length == 0) continue;
-            try
-            {
-                var path = Path.Combine(dir, $"{sourceId:N}_{i}{NormalizeExtension(ext)}");
-                if (!IsContainedIn(dir, path))
-                {
-                    Plugin.Log.Warning("Skipped foreign image for {Id}: path escaped the cache directory", sourceId);
-                    continue;
-                }
-                File.WriteAllBytes(path, bytes);
+            if (TryWriteContained(dir, $"{sourceId:N}_{i}{NormalizeExtension(ext)}", bytes, sourceId, "additional image") is { } path)
                 additionalPaths.Add(path);
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.Warning(ex, "Failed to write foreign additional image for {Id}", sourceId);
-            }
         }
 
         return (coverPath, additionalPaths);
+    }
+
+    // NormalizeExtension already strips dangerous extensions; the containment check here is a second
+    // line of defence in case the file name itself ever resolves outside the foreign cache directory.
+    private static string? TryWriteContained(string dir, string fileName, byte[] bytes, Guid sourceId, string label)
+    {
+        try
+        {
+            var candidate = Path.Combine(dir, fileName);
+            if (!IsContainedIn(dir, candidate))
+            {
+                Plugin.Log.Warning("Skipped foreign {Label} for {Id}: path escaped the cache directory", label, sourceId);
+                return null;
+            }
+
+            File.WriteAllBytes(candidate, bytes);
+            return candidate;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to write foreign {Label} for {Id}", label, sourceId);
+            return null;
+        }
     }
 
     public void ClearForeign(string originKey)

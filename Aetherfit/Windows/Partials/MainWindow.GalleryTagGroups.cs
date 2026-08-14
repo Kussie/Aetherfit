@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherfit.Windows;
 
@@ -82,7 +81,7 @@ public partial class MainWindow
         if (cachedCoverUntagged.Count > 0)
         {
             ImGui.Separator();
-            if (DrawCoverTagSectionHeader($"Untagged ({cachedCoverUntagged.Count})", "##untagged"))
+            if (Pills.DrawKeyedSubheader(coverTagSectionOpen, $"Untagged ({cachedCoverUntagged.Count})", "##untagged"))
             {
                 ImGui.Spacing();
                 var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
@@ -96,7 +95,9 @@ public partial class MainWindow
     {
         ImGui.Separator();
         var label = $"{name} ({CountNodeDesigns(node)})";
-        if (!DrawCoverTagSectionHeader(label, path))
+        // Keyed by the full path, not just name - same-named tags nested under different parents
+        // (e.g. "casual" under both "summer" and "winter") would otherwise share open/closed state.
+        if (!Pills.DrawKeyedSubheader(coverTagSectionOpen, label, path))
             return;
 
         ImGui.Indent();
@@ -126,17 +127,4 @@ public partial class MainWindow
         return count;
     }
 
-    // DrawCollapsibleSubheader draws its label as raw text (no ImGui "##" parsing) and derives its
-    // internal widget ID from that same label, so same-named nodes under different parents (e.g. a
-    // "casual" tag nested under both "summer" and "winter") would otherwise collide. Pushing the path
-    // onto the ID stack keeps them distinct without baking "##..." into the visible label.
-    private bool DrawCoverTagSectionHeader(string label, string key)
-    {
-        if (!coverTagSectionOpen.TryGetValue(key, out var open))
-            open = true;
-        using var id = ImRaii.PushId(key);
-        var result = Pills.DrawCollapsibleSubheader(label, ref open);
-        coverTagSectionOpen[key] = open;
-        return result;
-    }
 }

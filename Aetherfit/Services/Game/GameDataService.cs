@@ -388,11 +388,8 @@ public sealed class GameDataService
     private byte[]? cmpBytes;
     private bool cmpLoadAttempted;
 
-    /// <summary>
-    /// Turns a colour customization (skin, hair, eyes, lips, ...) into a packed 0xRRGGBB colour for the
-    /// preview swatch. Returns false if it isn't a colour parameter, the value is out of range, or the
-    /// cmp file couldn't be read.
-    /// </summary>
+    // Turns a colour customization (skin, hair, eyes, lips, ...) into a packed 0xRRGGBB colour for the
+    // preview swatch. False if it isn't a colour parameter, the value is out of range, or human.cmp couldn't be read.
     public bool TryResolveCustomizeColor(string key, int value, int clan, int gender, out uint rgb)
     {
         rgb = 0;

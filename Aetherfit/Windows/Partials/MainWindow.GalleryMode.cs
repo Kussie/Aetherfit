@@ -33,22 +33,13 @@ public partial class MainWindow
     private List<DesignLeaf> cachedVisible = [];
     private int designListGeneration;
     private int cachedGeneration = -1;
-    private string cachedFilterName = string.Empty;
-    private bool cachedSearchDesignName;
-    private bool cachedSearchModName;
-    private bool cachedSearchEquipmentName;
-    private ImageFilterMode cachedFilterImage;
+    private FilterSnapshot cachedFilterSnapshot;
     private Dictionary<string, bool> cachedFilterTags = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<uint, bool> cachedFilterJobs = new();
     private Dictionary<string, bool> cachedFilterMods = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<EquipmentSlot> cachedFilterEquipmentSlots = new();
     private GallerySortField cachedSortField;
     private bool cachedSortAscending = true;
-    private bool cachedFilterFavourites;
-    private bool cachedFilterVanillaOnly;
-    private bool cachedFilterModdedOnly;
-    private bool cachedFilterNeverWorn;
-    private bool cachedFilterMissingModAssociation;
     private int cachedLastAppliedVersion;
     private bool cachedPinFavourites = true;
     private bool cachedGlamaholicEnabled = true;
@@ -76,27 +67,8 @@ public partial class MainWindow
             coverMode = false;
         ImGui.Separator();
 
-        // A source erroring doesn't mean nothing is available - only block the whole pane when every
-        // source failed and there's genuinely nothing to show (designsCount == 0). Otherwise the error
-        // is just a heads-up shown alongside whatever other sources did succeed.
-        if (designsError != null && designsCount == 0)
-        {
-            ImGui.TextWrapped("No design sources are currently available.");
-            ImGui.TextDisabled(designsError);
+        if (DrawDesignsUnavailableBanner())
             return;
-        }
-
-        if (designsCount == 0)
-        {
-            ImGui.Text("No designs found.");
-            return;
-        }
-
-        if (designsError != null)
-        {
-            ImGui.TextWrapped(designsError);
-            ImGui.Spacing();
-        }
 
         DrawFilterUi(defaultOpen: true, wide: true, extraControls: DrawCoverGroupByControls);
         ImGui.Spacing();
@@ -226,20 +198,11 @@ public partial class MainWindow
         cachedGeneration != designListGeneration ||
         cachedSortField != gallerySortField ||
         cachedSortAscending != gallerySortAscending ||
-        cachedFilterImage != filterImage ||
-        cachedFilterName != filterName ||
-        cachedSearchDesignName != searchDesignName ||
-        cachedSearchModName != searchModName ||
-        cachedSearchEquipmentName != searchEquipmentName ||
+        cachedFilterSnapshot != CaptureFilterSnapshot() ||
         !FiltersEqual(cachedFilterTags, filterTags) ||
         !FiltersEqual(cachedFilterJobs, filterJobs) ||
         !FiltersEqual(cachedFilterMods, filterMods) ||
         !cachedFilterEquipmentSlots.SetEquals(filterEquipmentSlots) ||
-        cachedFilterFavourites != filterFavourites ||
-        cachedFilterVanillaOnly != filterVanillaOnly ||
-        cachedFilterModdedOnly != filterModdedOnly ||
-        cachedFilterNeverWorn != filterNeverWorn ||
-        cachedFilterMissingModAssociation != filterMissingModAssociation ||
         cachedLastAppliedVersion != plugin.Configuration.LastAppliedVersion ||
         cachedPinFavourites != plugin.Configuration.GalleryPinFavouritesFirst ||
         cachedGlamaholicEnabled != plugin.Configuration.GlamaholicEnabled ||
@@ -265,20 +228,11 @@ public partial class MainWindow
         cachedGeneration = designListGeneration;
         cachedSortField = gallerySortField;
         cachedSortAscending = gallerySortAscending;
-        cachedFilterImage = filterImage;
-        cachedFilterName = filterName;
-        cachedSearchDesignName = searchDesignName;
-        cachedSearchModName = searchModName;
-        cachedSearchEquipmentName = searchEquipmentName;
+        cachedFilterSnapshot = CaptureFilterSnapshot();
         cachedFilterTags = new Dictionary<string, bool>(filterTags, StringComparer.OrdinalIgnoreCase);
         cachedFilterJobs = new Dictionary<uint, bool>(filterJobs);
         cachedFilterMods = new Dictionary<string, bool>(filterMods, StringComparer.OrdinalIgnoreCase);
         cachedFilterEquipmentSlots = new HashSet<EquipmentSlot>(filterEquipmentSlots);
-        cachedFilterFavourites = filterFavourites;
-        cachedFilterVanillaOnly = filterVanillaOnly;
-        cachedFilterModdedOnly = filterModdedOnly;
-        cachedFilterNeverWorn = filterNeverWorn;
-        cachedFilterMissingModAssociation = filterMissingModAssociation;
         cachedLastAppliedVersion = plugin.Configuration.LastAppliedVersion;
         cachedPinFavourites = plugin.Configuration.GalleryPinFavouritesFirst;
         cachedGlamaholicEnabled = plugin.Configuration.GlamaholicEnabled;

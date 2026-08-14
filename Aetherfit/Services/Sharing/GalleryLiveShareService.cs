@@ -73,52 +73,47 @@ public sealed class GalleryLiveShareService : IDisposable
         }
     }
 
-    public void HostAsync(string sharerLabel, IReadOnlySet<Guid>? onlyIds, int ttlMinutes)
+    // Shared by HostAsync/JoinAsync: the feature-flag/busy guards, and resetting into a fresh
+    // cancellable operation. Null means the caller already printed why it refused to start.
+    private CancellationToken? BeginOperation()
     {
         if (!plugin.FeatureFlags.EnableLiveSharing)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Live sharing is temporarily disabled.");
-            return;
+            return null;
         }
 
         if (IsBusy)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}A live share is already running.");
-            return;
+            return null;
         }
 
         ResetState();
         IsBusy = true;
+        var cts = new CancellationTokenSource();
+        operationCts = cts;
+        return cts.Token;
+    }
+
+    public void HostAsync(string sharerLabel, IReadOnlySet<Guid>? onlyIds, int ttlMinutes)
+    {
+        if (BeginOperation() is not { } token)
+            return;
+
         Phase = LiveSharePhase.ExportingBundle;
         Progress = 0.05f;
         RequestedTtlSeconds = ttlMinutes * 60;
-
-        var cts = new CancellationTokenSource();
-        operationCts = cts;
-        _ = RunHostAsync(sharerLabel, onlyIds, cts.Token);
+        _ = RunHostAsync(sharerLabel, onlyIds, token);
     }
 
     public void JoinAsync(string code)
     {
-        if (!plugin.FeatureFlags.EnableLiveSharing)
-        {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Live sharing is temporarily disabled.");
+        if (BeginOperation() is not { } token)
             return;
-        }
 
-        if (IsBusy)
-        {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}A live share is already running.");
-            return;
-        }
-
-        ResetState();
-        IsBusy = true;
         Phase = LiveSharePhase.Downloading;
-
-        var cts = new CancellationTokenSource();
-        operationCts = cts;
-        _ = RunGuestAsync(code.Trim(), cts.Token);
+        _ = RunGuestAsync(code.Trim(), token);
     }
 
     // Also used to dismiss a finished/failed modal - always resets fully back to Idle so reopening

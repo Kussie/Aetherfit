@@ -8,6 +8,7 @@ using Aetherfit.Models;
 using Aetherfit.Services.Designs;
 using Aetherfit.Services.Game;
 using Aetherfit.Services.Screenshots;
+using Aetherfit.Utils;
 using Newtonsoft.Json;
 
 namespace Aetherfit.Services.Sharing;
@@ -159,12 +160,12 @@ public sealed class GallerySharingService
                 }
 
                 WriteBundle(finalPath, snapshot, imageEntries);
-                PrintOnFramework($"{Plugin.ChatPrefix}Exported {snapshot.Designs.Count} design(s) to {Path.GetFileName(finalPath)}.");
+                FrameworkChat.Print($"{Plugin.ChatPrefix}Exported {snapshot.Designs.Count} design(s) to {Path.GetFileName(finalPath)}.");
             }
             catch (Exception ex)
             {
                 Plugin.Log.Warning(ex, "Failed to export gallery to {Path}", finalPath);
-                PrintErrorOnFramework($"{Plugin.ChatPrefix}Failed to export gallery: {ex.Message}");
+                FrameworkChat.PrintError($"{Plugin.ChatPrefix}Failed to export gallery: {ex.Message}");
             }
             finally
             {
@@ -197,12 +198,6 @@ public sealed class GallerySharingService
             });
         });
     }
-
-    private static void PrintOnFramework(string message)
-        => Plugin.Framework.RunOnFrameworkThread(() => Plugin.ChatGui.Print(message));
-
-    private static void PrintErrorOnFramework(string message)
-        => Plugin.Framework.RunOnFrameworkThread(() => Plugin.ChatGui.PrintError(message));
 
     private ForeignGallery? ImportFromFile(string path)
     {
@@ -239,7 +234,7 @@ public sealed class GallerySharingService
         }
         catch (Exception ex)
         {
-            PrintErrorOnFramework($"{Plugin.ChatPrefix}Failed to import gallery: {ex.Message}");
+            FrameworkChat.PrintError($"{Plugin.ChatPrefix}Failed to import gallery: {ex.Message}");
             Plugin.Log.Warning(ex, "Failed to import gallery from {Path}", path);
             return null;
         }
@@ -330,7 +325,7 @@ public sealed class GallerySharingService
     private static void WarnIfNewer(SharedGallery snapshot)
     {
         if (snapshot.FormatVersion > SharedGallery.CurrentFormatVersion)
-            PrintOnFramework($"{Plugin.ChatPrefix}This gallery was made with a newer version of Aetherfit; some details may not show correctly.");
+            FrameworkChat.Print($"{Plugin.ChatPrefix}This gallery was made with a newer version of Aetherfit; some details may not show correctly.");
     }
 
     // Pulls an image's bytes out of the zip entry (new bundles) or the inline base64 (old ones), whichever it has.

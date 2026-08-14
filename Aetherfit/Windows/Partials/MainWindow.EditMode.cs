@@ -64,27 +64,8 @@ public partial class MainWindow
             coverMode = true;
         ImGui.Separator();
 
-        // A source erroring doesn't mean nothing is available - only block the whole pane when every
-        // source failed and there's genuinely nothing to show (designsCount == 0). Otherwise the error
-        // is just a heads-up shown alongside whatever other sources did succeed.
-        if (designsError != null && designsCount == 0)
-        {
-            ImGui.TextWrapped("No design sources are currently available.");
-            ImGui.TextDisabled(designsError);
+        if (DrawDesignsUnavailableBanner())
             return;
-        }
-
-        if (designsCount == 0)
-        {
-            ImGui.Text("No designs found.");
-            return;
-        }
-
-        if (designsError != null)
-        {
-            ImGui.TextWrapped(designsError);
-            ImGui.Spacing();
-        }
 
         DrawFilterUi(extraControls: DrawEditModeGroupByControls);
         ImGui.Spacing();

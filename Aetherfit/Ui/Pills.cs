@@ -18,6 +18,30 @@ internal static class Pills
     public static string TagJobFilterLabel(int count)
         => count == 0 ? "Filter by tag(s), job or mod..." : count == 1 ? "1 tag/job/mod filter active" : $"{count} tag/job/mod filters active";
 
+    // Styled like a combo (frame background, left-aligned hint text, dropdown arrow) so it reads as an
+    // input instead of a stray centered label. Returns true when clicked.
+    public static bool DrawPickerButton(string label, string id, float width)
+    {
+        bool clicked;
+        using (ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f)))
+        using (ImRaii.PushColor(ImGuiCol.Button, ImGui.GetColorU32(ImGuiCol.FrameBg))
+                   .Push(ImGuiCol.ButtonHovered, ImGui.GetColorU32(ImGuiCol.FrameBgHovered))
+                   .Push(ImGuiCol.ButtonActive, ImGui.GetColorU32(ImGuiCol.FrameBgActive))
+                   .Push(ImGuiCol.Text, UiTheme.PlaceholderText))
+            clicked = ImGui.Button($"{label}##{id}", new Vector2(width, 0));
+
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var sz = ImGui.GetFontSize() * 0.35f;
+        var center = new Vector2(max.X - ImGui.GetStyle().FramePadding.X - sz, (min.Y + max.Y) * 0.5f);
+        ImGui.GetWindowDrawList().AddTriangleFilled(
+            center + new Vector2(-sz, -sz * 0.5f),
+            center + new Vector2(sz, -sz * 0.5f),
+            center + new Vector2(0f, sz * 0.75f),
+            ImGui.ColorConvertFloat4ToU32(UiTheme.PlaceholderText));
+        return clicked;
+    }
+
     public static void DrawTagJobFilterList(
         IReadOnlyList<string> availableTags,
         IReadOnlyList<(uint RowId, string Name, JobRole? Role)> availableJobs,
@@ -261,6 +285,19 @@ internal static class Pills
             .Push(ImGuiCol.ButtonHovered, UiTheme.PillHovered)
             .Push(ImGuiCol.ButtonActive, UiTheme.PillActive);
         return ImGui.Button($"{label} ×##pill{id}");
+    }
+
+    // DrawCollapsibleSubheader with its open/closed state keyed into a dictionary instead of a single
+    // ref bool - for grouped views with one section per dynamic key (a tag path, a job id, a source
+    // name) where each section needs its own persisted state. Missing keys default to open.
+    public static bool DrawKeyedSubheader(Dictionary<string, bool> openState, string label, string key)
+    {
+        if (!openState.TryGetValue(key, out var open))
+            open = true;
+        using var id = ImRaii.PushId(key);
+        var result = DrawCollapsibleSubheader(label, ref open);
+        openState[key] = open;
+        return result;
     }
 
     // Custom header to recover CollapsingHeader's framed look while keeping the label near-aligned with the

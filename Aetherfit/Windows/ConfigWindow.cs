@@ -533,9 +533,6 @@ public class ConfigWindow : Window, IDisposable
 
     // Right-aligned on whatever row it's drawn from, matching DrawFilterHeaderOverlay's "N active"/
     // Clear positioning technique. Takes/returns by value (not ref) so it can be called from a lambda.
-    // Unticking excludes that source's designs from browsing, filtering, and random/direct apply
-    // (see Configuration.IsProviderEnabled / DesignApplyService.IsUsable) without touching their
-    // cached local metadata - they reappear intact if re-enabled. On by default.
     private bool DrawRightAlignedCheckbox(string idSuffix, bool enabled, string tooltip, bool integrationOk = true)
     {
         var size = ImGui.GetFrameHeight();

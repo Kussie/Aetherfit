@@ -4,8 +4,7 @@ using System.Collections.Generic;
 namespace Aetherfit.Models;
 
 // What goes inside a ".afgallery" bundle. Separate from Configuration/CachedOutfit on purpose, so we can change the
-// file format without touching the live config. Only carries the basic info (name, description, tags, jobs) and
-// images — no equipment or mods, since the viewer only looks at shared designs, it never applies them.
+// file format without touching the live config.
 [Serializable]
 public sealed class SharedGallery
 {

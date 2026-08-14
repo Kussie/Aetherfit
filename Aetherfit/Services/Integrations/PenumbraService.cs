@@ -76,11 +76,8 @@ public sealed class PenumbraService
         }
     }
 
-    /// <summary>
-    /// The names of the items a mod changes, straight from Penumbra. This is everything the mod could
-    /// touch across all its options, not just what a given design picked, so we can only point at the
-    /// whole mod rather than a specific option. Empty set if Penumbra isn't around or the mod changes nothing.
-    /// </summary>
+    // Every item name a mod could touch across all its options (not just what a design picked) - straight
+    // from Penumbra. Empty if Penumbra isn't around or the mod changes nothing.
     public IReadOnlySet<string> GetChangedItemNames(string directory, string name)
     {
         if (string.IsNullOrEmpty(directory))
