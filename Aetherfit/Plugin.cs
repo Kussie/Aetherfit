@@ -313,6 +313,12 @@ public sealed class Plugin : IDalamudPlugin
         return trimmed[1..^1];
     }
 
+    private void ReportError(string? err)
+    {
+        if (err != null)
+            ChatGui.PrintError($"{ChatPrefix}{err}");
+    }
+
     private void OnCommand(string command, string args)
     {
         var trimmed = args.Trim();
@@ -329,12 +335,8 @@ public sealed class Plugin : IDalamudPlugin
         switch (verb)
         {
             case "random":
-            {
-                var err = MainWindow.ApplyRandomDesign();
-                if (err != null)
-                    ChatGui.PrintError($"{ChatPrefix}{err}");
+                ReportError(MainWindow.ApplyRandomDesign());
                 break;
-            }
 
             case "tag":
             case "tags":
@@ -350,19 +352,13 @@ public sealed class Plugin : IDalamudPlugin
                 }
 
                 var tags = tagArgs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var err = MainWindow.ApplyRandomByTags(tags, favouritesOnly);
-                if (err != null)
-                    ChatGui.PrintError($"{ChatPrefix}{err}");
+                ReportError(MainWindow.ApplyRandomByTags(tags, favouritesOnly));
                 break;
             }
 
             case "job":
-            {
-                var err = MainWindow.ApplyRandomByCurrentJob();
-                if (err != null)
-                    ChatGui.PrintError($"{ChatPrefix}{err}");
+                ReportError(MainWindow.ApplyRandomByCurrentJob());
                 break;
-            }
 
             case "favourite":
             case "favorite":
@@ -375,9 +371,7 @@ public sealed class Plugin : IDalamudPlugin
                     break;
                 }
 
-                var err = MainWindow.ApplyRandomFavourite(matchCurrentJob: option == "job");
-                if (err != null)
-                    ChatGui.PrintError($"{ChatPrefix}{err}");
+                ReportError(MainWindow.ApplyRandomFavourite(matchCurrentJob: option == "job"));
                 break;
             }
 
@@ -390,19 +384,13 @@ public sealed class Plugin : IDalamudPlugin
                     break;
                 }
 
-                var err = MainWindow.ApplyDesignByName(name);
-                if (err != null)
-                    ChatGui.PrintError($"{ChatPrefix}{err}");
+                ReportError(MainWindow.ApplyDesignByName(name));
                 break;
             }
 
             case "last":
-            {
-                var err = MainWindow.ReapplyLastWorn();
-                if (err != null)
-                    ChatGui.PrintError($"{ChatPrefix}{err}");
+                ReportError(MainWindow.ReapplyLastWorn());
                 break;
-            }
 
             case "revert":
                 MainWindow.RevertAppearance();
@@ -421,21 +409,9 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnKeybindUpdate(IFramework framework)
     {
-        CheckKeybind(Configuration.WearRandomKeybind, () =>
-        {
-            var err = MainWindow.ApplyRandomDesign();
-            if (err != null) ChatGui.PrintError($"{ChatPrefix}{err}");
-        });
-        CheckKeybind(Configuration.WearFavouriteKeybind, () =>
-        {
-            var err = MainWindow.ApplyRandomFavourite(matchCurrentJob: false);
-            if (err != null) ChatGui.PrintError($"{ChatPrefix}{err}");
-        });
-        CheckKeybind(Configuration.WearLastKeybind, () =>
-        {
-            var err = MainWindow.ReapplyLastWorn();
-            if (err != null) ChatGui.PrintError($"{ChatPrefix}{err}");
-        });
+        CheckKeybind(Configuration.WearRandomKeybind, () => ReportError(MainWindow.ApplyRandomDesign()));
+        CheckKeybind(Configuration.WearFavouriteKeybind, () => ReportError(MainWindow.ApplyRandomFavourite(matchCurrentJob: false)));
+        CheckKeybind(Configuration.WearLastKeybind, () => ReportError(MainWindow.ReapplyLastWorn()));
         CheckKeybind(Configuration.RevertKeybind, () => MainWindow.RevertAppearance());
         CheckKeybind(Configuration.QuickSearchKeybind, ToggleQuickSearchUi);
     }

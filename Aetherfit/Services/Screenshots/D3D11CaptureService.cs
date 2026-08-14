@@ -8,7 +8,6 @@ using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 namespace Aetherfit.Services.Screenshots;
 
 // Reads the game's backbuffer directly via D3D11, bypassing GDI so it works on Wine/DXVK.
-// I cant remember where i found this solution but it helped me figure out how to do it without wgoing through the GDI
 internal static unsafe class D3D11CaptureService
 {
     private static readonly Guid IID_ID3D11Texture2D = new(

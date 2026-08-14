@@ -540,7 +540,7 @@ public class CachedEquipmentSlot
 [Serializable]
 public class CachedBonusItem
 {
-    // This was annoying to figure out turns out facewear are "BonusItems" not normal slots for Facewear
+    // Facewear turned out to live in Glamourer's BonusItems, not a normal equipment slot - annoying to track down.
     public string Slot { get; set; } = string.Empty;
     public ulong ItemId { get; set; }
     public bool Apply { get; set; }

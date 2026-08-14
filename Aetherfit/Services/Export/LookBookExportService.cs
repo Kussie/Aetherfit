@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Aetherfit.Services.Screenshots;
+using Aetherfit.Utils;
 using PdfSharp;
 using PdfSharp.Drawing;
 using PdfSharp.Fonts;
@@ -99,12 +100,12 @@ public sealed class LookBookExportService
             {
                 using var document = BuildDocument(items, subtitle, heroPath);
                 document.Save(finalPath);
-                PrintOnFramework($"{Plugin.ChatPrefix}Exported look-book with {items.Count} design(s) to {Path.GetFileName(finalPath)}.");
+                FrameworkChat.Print($"{Plugin.ChatPrefix}Exported look-book with {items.Count} design(s) to {Path.GetFileName(finalPath)}.");
             }
             catch (Exception ex)
             {
                 Plugin.Log.Warning(ex, "Failed to export look-book to {Path}", finalPath);
-                PrintErrorOnFramework($"{Plugin.ChatPrefix}Failed to export look-book: {ex.Message}");
+                FrameworkChat.PrintError($"{Plugin.ChatPrefix}Failed to export look-book: {ex.Message}");
             }
             finally
             {
@@ -282,9 +283,4 @@ public sealed class LookBookExportService
 
     private static string LetterSpaced(string s) => string.Join(" ", s.ToCharArray());
 
-    private static void PrintOnFramework(string message)
-        => Plugin.Framework.RunOnFrameworkThread(() => Plugin.ChatGui.Print(message));
-
-    private static void PrintErrorOnFramework(string message)
-        => Plugin.Framework.RunOnFrameworkThread(() => Plugin.ChatGui.PrintError(message));
 }

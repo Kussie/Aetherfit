@@ -13,7 +13,7 @@ namespace Aetherfit.Services.Integrations;
 //
 // Only used for SimpleGlamourSwitcherService's per-outfit template toggling - Aetherfit never assigns or
 // switches a Customize+ profile itself, only enables/disables named templates within whichever profile
-// is already active for the local player (see the plan's "character-level vs outfit-level" reasoning).
+// is already active for the local player.
 public sealed class CustomizePlusService
 {
     // Matches Customize+'s own IPC tuple shape exactly - the in-process IPC call requires the generic

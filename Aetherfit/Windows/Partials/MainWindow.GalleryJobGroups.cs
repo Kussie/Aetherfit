@@ -4,7 +4,6 @@ using System.Linq;
 using Aetherfit.Services.Game;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherfit.Windows;
 
@@ -70,7 +69,7 @@ public partial class MainWindow
         {
             ImGui.Separator();
             var roleKey = $"role{(int)group.Role}";
-            if (!DrawCoverJobSectionHeader(GameDataService.RoleLabel(group.Role), roleKey))
+            if (!Pills.DrawKeyedSubheader(coverJobSectionOpen, GameDataService.RoleLabel(group.Role), roleKey))
                 continue;
 
             ImGui.Indent();
@@ -83,7 +82,7 @@ public partial class MainWindow
         if (cachedCoverUnassignedJob.Count > 0)
         {
             ImGui.Separator();
-            if (DrawCoverJobSectionHeader($"Unassigned ({cachedCoverUnassignedJob.Count})", "unassignedJobs"))
+            if (Pills.DrawKeyedSubheader(coverJobSectionOpen, $"Unassigned ({cachedCoverUnassignedJob.Count})", "unassignedJobs"))
             {
                 ImGui.Spacing();
                 var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
@@ -95,22 +94,12 @@ public partial class MainWindow
 
     private void DrawCoverJobNode(JobInfo job, List<DesignLeaf> designs)
     {
-        if (!DrawCoverJobSectionHeader($"{job.Name} ({designs.Count})", $"job{job.RowId}"))
+        if (!Pills.DrawKeyedSubheader(coverJobSectionOpen, $"{job.Name} ({designs.Count})", $"job{job.RowId}"))
             return;
 
         ImGui.Spacing();
         var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
         DrawCoverGridRange(designs, 0, designs.Count, columns, thumbWidth, thumbHeight);
         ImGui.Spacing();
-    }
-
-    private bool DrawCoverJobSectionHeader(string label, string key)
-    {
-        if (!coverJobSectionOpen.TryGetValue(key, out var open))
-            open = true;
-        using var id = ImRaii.PushId(key);
-        var result = Pills.DrawCollapsibleSubheader(label, ref open);
-        coverJobSectionOpen[key] = open;
-        return result;
     }
 }

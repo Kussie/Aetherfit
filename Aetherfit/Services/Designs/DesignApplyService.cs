@@ -21,6 +21,13 @@ public sealed class DesignApplyService
         public static ApplyResult Fail(string error) => new(null, error);
     }
 
+    // Every no-op guard clause below both logs and returns a failure - one place to do both.
+    private static ApplyResult Fail(string msg)
+    {
+        Plugin.Log.Info(msg);
+        return ApplyResult.Fail(msg);
+    }
+
     public void ApplyDesignById(Guid id, bool recordLastApplied = true)
         => ApplyDesignCore(id,
             applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: true),
@@ -73,12 +80,9 @@ public sealed class DesignApplyService
             && plugin.Configuration.IsProviderEnabled(parentOutfit.Source)
             && plugin.DesignProviders.FirstOrDefault(p => p.Source == parentOutfit.Source) is { } parentProvider)
         {
-            // Sequential Apply: mechanically sets the base state by applying the parent design first, so
-            // slots this variant doesn't itself manage (Apply == false) survive underneath it. Deliberately
-            // NOT routed through ApplyLayer/beforeLayerIds - that's Glamourer-only (see SupportsLayers) and
-            // would silently no-op for a Glamaholic/GlamourPlate/SGS parent. No bookkeeping (RecordLastApplied/
-            // RecordLastWorn, incompatible-item warning) attaches to this parent apply - only the variant's
-            // own apply below counts as the user's actual choice.
+            // Applies the parent first so slots this variant doesn't manage survive underneath it - not
+            // routed through ApplyLayer (Glamourer-only) and doesn't count toward RecordLastApplied/
+            // RecordLastWorn, since only the variant's own apply below is the user's actual choice.
             parentProvider.Apply(parentOutfit.ProviderDesignId, parentOutfit.Name, null, quiet: true);
         }
 
@@ -91,11 +95,8 @@ public sealed class DesignApplyService
 
         ApplyLayers(afterLayerIds, recordLastApplied);
 
-        // Only a genuine active choice counts as "worn" - ReapplyLastWorn is a pure state restore
-        // (login/zone-change) and Batch Screenshot mode is just capturing a preview, neither is the
-        // user newly picking this look, so both opt out via the caller. Gates both the session-level
-        // "recently/last worn" bookkeeping and the per-design last-applied timestamp together, since
-        // they're the same underlying question: did this apply actually count as wearing it.
+        // Only an active pick counts as "worn" - ReapplyLastWorn (restore) and Batch Screenshot (preview)
+        // opt out via this flag, gating both last-worn and last-applied bookkeeping together.
         if (recordLastApplied)
         {
             RecordLastWorn(id, beforeLayerIds, afterLayerIds);
@@ -271,11 +272,7 @@ public sealed class DesignApplyService
             .Where(IsUsable)
             .ToList();
         if (ids.Count == 0)
-        {
-            const string msg = "No cached designs — open Aetherfit and click Refresh first.";
-            Plugin.Log.Info(msg);
-            return ApplyResult.Fail(msg);
-        }
+            return Fail("No cached designs — open Aetherfit and click Refresh first.");
 
         var pick = PickRandomDesign(ids);
         ApplyDesignById(pick);
@@ -285,11 +282,7 @@ public sealed class DesignApplyService
     public ApplyResult ApplyRandomByTags(IReadOnlyCollection<string> tags, bool favouritesOnly = false)
     {
         if (tags.Count == 0)
-        {
-            const string msg = "No tags provided.";
-            Plugin.Log.Info(msg);
-            return ApplyResult.Fail(msg);
-        }
+            return Fail("No tags provided.");
 
         var matching = plugin.Configuration.CachedOutfits
             .Where(kv => IsUsable(kv.Key)
@@ -299,11 +292,7 @@ public sealed class DesignApplyService
             .ToList();
 
         if (matching.Count == 0)
-        {
-            var msg = $"No {(favouritesOnly ? "favourite designs" : "designs")} match tags: {string.Join(", ", tags)}";
-            Plugin.Log.Info(msg);
-            return ApplyResult.Fail(msg);
-        }
+            return Fail($"No {(favouritesOnly ? "favourite designs" : "designs")} match tags: {string.Join(", ", tags)}");
 
         var pick = PickRandomDesign(matching);
         ApplyDesignById(pick);
@@ -317,11 +306,7 @@ public sealed class DesignApplyService
     {
         name = name.Trim();
         if (name.Length == 0)
-        {
-            const string msg = "No design name provided.";
-            Plugin.Log.Info(msg);
-            return ApplyResult.Fail(msg);
-        }
+            return Fail("No design name provided.");
 
         var matches = plugin.Configuration.CachedOutfits
             .Where(kv => IsUsable(kv.Key) && string.Equals(kv.Value.Name, name, StringComparison.OrdinalIgnoreCase))
@@ -329,18 +314,10 @@ public sealed class DesignApplyService
             .ToList();
 
         if (matches.Count == 0)
-        {
-            var msg = $"No design named \"{name}\" found.";
-            Plugin.Log.Info(msg);
-            return ApplyResult.Fail(msg);
-        }
+            return Fail($"No design named \"{name}\" found.");
 
         if (matches.Count > 1)
-        {
-            var msg = $"{matches.Count} designs are named \"{name}\" — can't tell which one you mean.";
-            Plugin.Log.Info(msg);
-            return ApplyResult.Fail(msg);
-        }
+            return Fail($"{matches.Count} designs are named \"{name}\" — can't tell which one you mean.");
 
         var pick = matches[0];
         ApplyDesignById(pick);
@@ -354,20 +331,12 @@ public sealed class DesignApplyService
             .ToList();
 
         if (favourites.Count == 0)
-        {
-            const string msg = "No favourite designs yet — click the ☆ star on a design first.";
-            Plugin.Log.Info(msg);
-            return ApplyResult.Fail(msg);
-        }
+            return Fail("No favourite designs yet — click the ☆ star on a design first.");
 
         if (matchCurrentJob)
         {
             if (!Plugin.PlayerState.IsLoaded)
-            {
-                const string msg = "Log in to a character first.";
-                Plugin.Log.Info(msg);
-                return ApplyResult.Fail(msg);
-            }
+                return Fail("Log in to a character first.");
 
             var jobId = Plugin.PlayerState.ClassJob.RowId;
             favourites = favourites
@@ -377,9 +346,7 @@ public sealed class DesignApplyService
             if (favourites.Count == 0)
             {
                 var jobName = plugin.GameData.ResolveJobName(jobId);
-                var msg = $"No favourite designs associated with your current job ({jobName}).";
-                Plugin.Log.Info(msg);
-                return ApplyResult.Fail(msg);
+                return Fail($"No favourite designs associated with your current job ({jobName}).");
             }
         }
 
@@ -391,11 +358,7 @@ public sealed class DesignApplyService
     public ApplyResult ApplyRandomByCurrentJob()
     {
         if (!Plugin.PlayerState.IsLoaded)
-        {
-            const string msg = "Log in to a character first.";
-            Plugin.Log.Info(msg);
-            return ApplyResult.Fail(msg);
-        }
+            return Fail("Log in to a character first.");
 
         var jobId = Plugin.PlayerState.ClassJob.RowId;
         var matching = plugin.Configuration.DesignJobAssociations
@@ -406,9 +369,7 @@ public sealed class DesignApplyService
         if (matching.Count == 0)
         {
             var jobName = plugin.GameData.ResolveJobName(jobId);
-            var msg = $"No designs associated with your current job ({jobName}).";
-            Plugin.Log.Info(msg);
-            return ApplyResult.Fail(msg);
+            return Fail($"No designs associated with your current job ({jobName}).");
         }
 
         var pick = PickRandomDesign(matching);

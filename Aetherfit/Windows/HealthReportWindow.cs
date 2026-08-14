@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Aetherfit.Services.Designs;
@@ -48,71 +49,22 @@ public sealed class HealthReportWindow : Window, IDisposable
         var incompatible = plugin.HealthReport.FindIncompatibleDesigns();
         var duplicates = plugin.HealthReport.FindDuplicates();
 
-        if (Pills.DrawCollapsibleSubheader($"Missing Mod Associations ({missingMods.Count})", ref missingModsOpen))
+        DrawFindingSection("Missing Mod Associations", ref missingModsOpen, missingMods, finding =>
         {
-            ImGui.Indent();
-            if (missingMods.Count == 0)
-            {
-                ImGui.TextDisabled("No issues found.");
-            }
-            else
-            {
-                foreach (var finding in missingMods)
-                {
-                    var detail = string.Join(", ", finding.MissingMods.Select(DesignAttributionService.ModDisplayName));
-                    DrawFindingRow(finding.Id, finding.Name, detail, HealthReportService.MissingModCheck);
-                }
-            }
-            ImGui.Unindent();
-        }
+            var detail = string.Join(", ", finding.MissingMods.Select(DesignAttributionService.ModDisplayName));
+            DrawFindingRow(finding.Id, finding.Name, detail, HealthReportService.MissingModCheck);
+        });
         ImGui.Spacing();
 
-        if (Pills.DrawCollapsibleSubheader($"Broken Items ({brokenItems.Count})", ref brokenItemsOpen))
-        {
-            ImGui.Indent();
-            if (brokenItems.Count == 0)
-            {
-                ImGui.TextDisabled("No issues found.");
-            }
-            else
-            {
-                foreach (var finding in brokenItems)
-                    DrawFindingRow(finding.Id, finding.Name, string.Join(", ", finding.BrokenSlots), HealthReportService.BrokenItemCheck);
-            }
-            ImGui.Unindent();
-        }
+        DrawFindingSection("Broken Items", ref brokenItemsOpen, brokenItems, finding =>
+            DrawFindingRow(finding.Id, finding.Name, string.Join(", ", finding.BrokenSlots), HealthReportService.BrokenItemCheck));
         ImGui.Spacing();
 
-        if (Pills.DrawCollapsibleSubheader($"Incompatible Items ({incompatible.Count})", ref incompatibleOpen))
-        {
-            ImGui.Indent();
-            if (incompatible.Count == 0)
-            {
-                ImGui.TextDisabled("No issues found.");
-            }
-            else
-            {
-                foreach (var finding in incompatible)
-                    DrawFindingRow(finding.Id, finding.Name, string.Join(", ", finding.IncompatibleSlots), HealthReportService.IncompatibleCheck);
-            }
-            ImGui.Unindent();
-        }
+        DrawFindingSection("Incompatible Items", ref incompatibleOpen, incompatible, finding =>
+            DrawFindingRow(finding.Id, finding.Name, string.Join(", ", finding.IncompatibleSlots), HealthReportService.IncompatibleCheck));
         ImGui.Spacing();
 
-        if (Pills.DrawCollapsibleSubheader($"Duplicate Designs ({duplicates.Count})", ref duplicatesOpen))
-        {
-            ImGui.Indent();
-            if (duplicates.Count == 0)
-            {
-                ImGui.TextDisabled("No issues found.");
-            }
-            else
-            {
-                foreach (var group in duplicates)
-                    DrawDuplicateGroup(group);
-            }
-            ImGui.Unindent();
-        }
+        DrawFindingSection("Duplicate Designs", ref duplicatesOpen, duplicates, DrawDuplicateGroup);
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -130,6 +82,20 @@ public sealed class HealthReportWindow : Window, IDisposable
         {
             plugin.Configuration.ClearIgnoredHealthChecks();
         }
+    }
+
+    private static void DrawFindingSection<T>(string label, ref bool open, IReadOnlyList<T> items, Action<T> drawItem)
+    {
+        if (!Pills.DrawCollapsibleSubheader($"{label} ({items.Count})", ref open))
+            return;
+
+        ImGui.Indent();
+        if (items.Count == 0)
+            ImGui.TextDisabled("No issues found.");
+        else
+            foreach (var item in items)
+                drawItem(item);
+        ImGui.Unindent();
     }
 
     private void DrawFindingRow(Guid id, string name, string detail, string checkType)

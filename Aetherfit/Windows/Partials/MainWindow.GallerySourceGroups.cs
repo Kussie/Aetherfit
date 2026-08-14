@@ -5,7 +5,6 @@ using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherfit.Windows;
 
@@ -68,7 +67,7 @@ public partial class MainWindow
         {
             var total = group.Designs.Count + group.SubGroups.Sum(s => s.Designs.Count);
             ImGui.Separator();
-            if (!DrawCoverSourceSectionHeader($"{group.Label} ({total})", group.Label))
+            if (!Pills.DrawKeyedSubheader(coverSourceSectionOpen, $"{group.Label} ({total})", group.Label))
                 continue;
 
             ImGui.Spacing();
@@ -82,7 +81,7 @@ public partial class MainWindow
 
             foreach (var sub in group.SubGroups)
             {
-                if (!DrawCoverSourceSectionHeader($"{sub.Label} ({sub.Designs.Count})", $"{group.Label}/{sub.Label}"))
+                if (!Pills.DrawKeyedSubheader(coverSourceSectionOpen, $"{sub.Label} ({sub.Designs.Count})", $"{group.Label}/{sub.Label}"))
                     continue;
 
                 ImGui.Spacing();
@@ -95,13 +94,4 @@ public partial class MainWindow
         }
     }
 
-    private bool DrawCoverSourceSectionHeader(string label, string key)
-    {
-        if (!coverSourceSectionOpen.TryGetValue(key, out var open))
-            open = true;
-        using var id = ImRaii.PushId(key);
-        var result = Pills.DrawCollapsibleSubheader(label, ref open);
-        coverSourceSectionOpen[key] = open;
-        return result;
-    }
 }

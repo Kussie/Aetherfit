@@ -19,7 +19,7 @@ public partial class MainWindow
     private const string FilterSlotsPopupId = "FilterSlotsPopup";
 
     private string filterName = string.Empty;
-    private bool searchDesignName = true;   // preserves current default behaviour
+    private bool searchDesignName = true;   // on by default; the mod/equipment scopes below default off
     private bool searchModName;
     private bool searchEquipmentName;
     // true = must have the tag/job, false = must not have it; a key absent from the map is left alone.
@@ -305,31 +305,10 @@ public partial class MainWindow
         cachedAvailableTagsGeneration = designListGeneration;
     }
 
-    // Styled like a combo (frame background, left-aligned hint text, dropdown arrow) so it reads
-    // as an input instead of a stray centered label. Returns true when clicked.
     private bool DrawTagJobPickerButton(float width)
     {
         var count = filterTags.Count + filterJobs.Count + filterMods.Count;
-        var label = Pills.TagJobFilterLabel(count);
-
-        bool clicked;
-        using (ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f)))
-        using (ImRaii.PushColor(ImGuiCol.Button, ImGui.GetColorU32(ImGuiCol.FrameBg))
-                   .Push(ImGuiCol.ButtonHovered, ImGui.GetColorU32(ImGuiCol.FrameBgHovered))
-                   .Push(ImGuiCol.ButtonActive, ImGui.GetColorU32(ImGuiCol.FrameBgActive))
-                   .Push(ImGuiCol.Text, UiTheme.PlaceholderText))
-            clicked = ImGui.Button($"{label}##tagJobPicker", new Vector2(width, 0));
-
-        var min = ImGui.GetItemRectMin();
-        var max = ImGui.GetItemRectMax();
-        var sz = ImGui.GetFontSize() * 0.35f;
-        var center = new Vector2(max.X - ImGui.GetStyle().FramePadding.X - sz, (min.Y + max.Y) * 0.5f);
-        ImGui.GetWindowDrawList().AddTriangleFilled(
-            center + new Vector2(-sz, -sz * 0.5f),
-            center + new Vector2(sz, -sz * 0.5f),
-            center + new Vector2(0f, sz * 0.75f),
-            ImGui.ColorConvertFloat4ToU32(UiTheme.PlaceholderText));
-        return clicked;
+        return Pills.DrawPickerButton(Pills.TagJobFilterLabel(count), "tagJobPicker", width);
     }
 
     // Every tag and job as its own tri-state checkbox row. Tags/jobs stay listed with their current state
@@ -374,25 +353,7 @@ public partial class MainWindow
     {
         var count = filterEquipmentSlots.Count;
         var label = count == 0 ? "Filter by equipment slot..." : count == 1 ? "1 slot filter active" : $"{count} slot filters active";
-
-        bool clicked;
-        using (ImRaii.PushStyle(ImGuiStyleVar.ButtonTextAlign, new Vector2(0f, 0.5f)))
-        using (ImRaii.PushColor(ImGuiCol.Button, ImGui.GetColorU32(ImGuiCol.FrameBg))
-                   .Push(ImGuiCol.ButtonHovered, ImGui.GetColorU32(ImGuiCol.FrameBgHovered))
-                   .Push(ImGuiCol.ButtonActive, ImGui.GetColorU32(ImGuiCol.FrameBgActive))
-                   .Push(ImGuiCol.Text, UiTheme.PlaceholderText))
-            clicked = ImGui.Button($"{label}##slotFilterPicker", new Vector2(width, 0));
-
-        var min = ImGui.GetItemRectMin();
-        var max = ImGui.GetItemRectMax();
-        var sz = ImGui.GetFontSize() * 0.35f;
-        var center = new Vector2(max.X - ImGui.GetStyle().FramePadding.X - sz, (min.Y + max.Y) * 0.5f);
-        ImGui.GetWindowDrawList().AddTriangleFilled(
-            center + new Vector2(-sz, -sz * 0.5f),
-            center + new Vector2(sz, -sz * 0.5f),
-            center + new Vector2(0f, sz * 0.75f),
-            ImGui.ColorConvertFloat4ToU32(UiTheme.PlaceholderText));
-        return clicked;
+        return Pills.DrawPickerButton(label, "slotFilterPicker", width);
     }
 
     // A design matches only if it has real gear in EVERY selected slot (AND, not OR), so this is a

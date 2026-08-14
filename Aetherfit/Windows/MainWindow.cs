@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Services.Designs;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
@@ -595,48 +596,10 @@ public partial class MainWindow : Window, IDisposable
         if (!popup.Success)
             return;
 
-        if (ImGui.BeginMenu("Create Bundle File"))
-        {
-            if (ImGui.MenuItem("All Designs"))
-                OpenExportGalleryDialog();
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Export every cached design.");
-
-            // Filtered export is only meaningful while a filter is narrowing the list.
-            var hasFilter = HasAnyFilter;
-            using (ImRaii.Disabled(!hasFilter))
-            {
-                if (ImGui.MenuItem("Filtered Designs"))
-                    OpenExportGalleryDialog(CollectVisibleDesignIds());
-            }
-            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                ImGui.SetTooltip(hasFilter
-                    ? "Export only the designs currently shown by the active filters."
-                    : "Set a filter first to export only the designs that remain visible.");
-
-            ImGui.EndMenu();
-        }
-
-        if (ImGui.BeginMenu("Export Look Book"))
-        {
-            if (ImGui.MenuItem("All Designs"))
-                OpenExportLookBookDialog();
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("A printable PDF of design covers - for showing off, not re-importing.");
-
-            var hasLookBookFilter = HasAnyFilter;
-            using (ImRaii.Disabled(!hasLookBookFilter))
-            {
-                if (ImGui.MenuItem("Filtered Designs"))
-                    OpenExportLookBookDialog(CollectVisibleDesignIds());
-            }
-            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                ImGui.SetTooltip(hasLookBookFilter
-                    ? "Export only the designs currently shown by the active filters."
-                    : "Set a filter first to export only the designs that remain visible.");
-
-            ImGui.EndMenu();
-        }
+        DrawExportMenu("Create Bundle File", "Export every cached design.",
+            () => OpenExportGalleryDialog(), ids => OpenExportGalleryDialog(ids));
+        DrawExportMenu("Export Look Book", "A printable PDF of design covers - for showing off, not re-importing.",
+            () => OpenExportLookBookDialog(), ids => OpenExportLookBookDialog(ids));
 
         ImGui.Separator();
 
@@ -656,6 +619,32 @@ public partial class MainWindow : Window, IDisposable
                 : plugin.LiveShare.IsBusy
                     ? "Reopen the share in progress."
                     : "Share your gallery directly with another online player.");
+    }
+
+    // "All Designs" / "Filtered Designs" (disabled unless a filter is active), shared by DrawSharePopup's
+    // bundle and look-book export menus.
+    private void DrawExportMenu(string menuLabel, string allTooltip, Action onAll, Action<HashSet<Guid>> onFiltered)
+    {
+        if (!ImGui.BeginMenu(menuLabel))
+            return;
+
+        if (ImGui.MenuItem("All Designs"))
+            onAll();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(allTooltip);
+
+        var hasFilter = HasAnyFilter;
+        using (ImRaii.Disabled(!hasFilter))
+        {
+            if (ImGui.MenuItem("Filtered Designs"))
+                onFiltered(CollectVisibleDesignIds());
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(hasFilter
+                ? "Export only the designs currently shown by the active filters."
+                : "Set a filter first to export only the designs that remain visible.");
+
+        ImGui.EndMenu();
     }
 
     private void DrawBottomButtons()
@@ -806,47 +795,53 @@ public partial class MainWindow : Window, IDisposable
 
     private void ApplyDesignById(Guid id) => plugin.DesignApply.ApplyDesignById(id);
 
-    public string? ReapplyLastWorn(bool quiet = false)
+    // Shared by Edit Mode and Cover Mode's left pane. A source erroring doesn't mean nothing is
+    // available - only block the whole pane when every source failed and there's genuinely nothing to
+    // show (designsCount == 0); otherwise the error is just a heads-up shown alongside whatever other
+    // sources did succeed. Returns true if the caller should stop drawing.
+    private bool DrawDesignsUnavailableBanner()
     {
-        var result = plugin.DesignApply.ReapplyLastWorn(quiet);
+        if (designsError != null && designsCount == 0)
+        {
+            ImGui.TextWrapped("No design sources are currently available.");
+            ImGui.TextDisabled(designsError);
+            return true;
+        }
+
+        if (designsCount == 0)
+        {
+            ImGui.Text("No designs found.");
+            return true;
+        }
+
+        if (designsError != null)
+        {
+            ImGui.TextWrapped(designsError);
+            ImGui.Spacing();
+        }
+
+        return false;
+    }
+
+    // Selecting the applied design in the tree/gallery is common to every Apply* wrapper below.
+    private string? Track(DesignApplyService.ApplyResult result)
+    {
         if (result.DesignId is { } id) selectedDesign = id;
         return result.Error;
     }
 
-    public string? ApplyRandomDesign()
-    {
-        var result = plugin.DesignApply.ApplyRandomDesign();
-        if (result.DesignId is { } id) selectedDesign = id;
-        return result.Error;
-    }
+    public string? ReapplyLastWorn(bool quiet = false) => Track(plugin.DesignApply.ReapplyLastWorn(quiet));
+
+    public string? ApplyRandomDesign() => Track(plugin.DesignApply.ApplyRandomDesign());
 
     public string? ApplyRandomByTags(IReadOnlyCollection<string> tags, bool favouritesOnly = false)
-    {
-        var result = plugin.DesignApply.ApplyRandomByTags(tags, favouritesOnly);
-        if (result.DesignId is { } id) selectedDesign = id;
-        return result.Error;
-    }
+        => Track(plugin.DesignApply.ApplyRandomByTags(tags, favouritesOnly));
 
-    public string? ApplyDesignByName(string name)
-    {
-        var result = plugin.DesignApply.ApplyByName(name);
-        if (result.DesignId is { } id) selectedDesign = id;
-        return result.Error;
-    }
+    public string? ApplyDesignByName(string name) => Track(plugin.DesignApply.ApplyByName(name));
 
-    public string? ApplyRandomFavourite(bool matchCurrentJob)
-    {
-        var result = plugin.DesignApply.ApplyRandomFavourite(matchCurrentJob);
-        if (result.DesignId is { } id) selectedDesign = id;
-        return result.Error;
-    }
+    public string? ApplyRandomFavourite(bool matchCurrentJob) => Track(plugin.DesignApply.ApplyRandomFavourite(matchCurrentJob));
 
-    public string? ApplyRandomByCurrentJob()
-    {
-        var result = plugin.DesignApply.ApplyRandomByCurrentJob();
-        if (result.DesignId is { } id) selectedDesign = id;
-        return result.Error;
-    }
+    public string? ApplyRandomByCurrentJob() => Track(plugin.DesignApply.ApplyRandomByCurrentJob());
 
     private sealed class FolderNode
     {
