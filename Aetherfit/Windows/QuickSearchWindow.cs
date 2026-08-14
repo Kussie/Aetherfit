@@ -18,6 +18,7 @@ public sealed class QuickSearchWindow : Window, IDisposable
 {
     private const int MaxDesignResults = 12;
     private const int MaxTagResults = 5;
+    private const int MaxAllTagResults = 40;
     private const int MaxVisibleRows = 12;
     private const string TagBrowsePrefix = "tag:";
     private const float WidthPt = 480f;

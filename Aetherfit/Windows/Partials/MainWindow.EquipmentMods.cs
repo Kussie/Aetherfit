@@ -6,7 +6,9 @@ using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherfit.Windows;
 
@@ -63,13 +65,13 @@ public partial class MainWindow
         foreach (var (slot, label) in DesignDetailView.SlotDisplay)
         {
             slotMap.TryGetValue(slot, out var entry);
-            DrawEquipmentRow(label, slotLabelWidth, entry, affectedBy, raceGender);
+            DrawEquipmentRow(id, slot, label, slotLabelWidth, entry, affectedBy, raceGender);
         }
 
         foreach (var (slotKey, label) in DesignDetailView.BonusSlotDisplay)
         {
             bonusMap.TryGetValue(slotKey, out var entry);
-            DrawBonusRow(label, slotLabelWidth, entry, affectedBy);
+            DrawBonusRow(id, slotKey, label, slotLabelWidth, entry, affectedBy);
         }
 
         // These flags are Glamourer design metadata - Glamaholic/Glamour Plate designs are relayed
@@ -192,8 +194,8 @@ public partial class MainWindow
         return affected;
     }
 
-    private void DrawEquipmentRow(string label, float labelWidth, CachedEquipmentSlot? entry, AffectedBy affectedBy,
-        (uint RaceRowId, bool IsFemale)? raceGender)
+    private void DrawEquipmentRow(Guid designId, EquipmentSlot slot, string label, float labelWidth,
+        CachedEquipmentSlot? entry, AffectedBy affectedBy, (uint RaceRowId, bool IsFemale)? raceGender)
     {
         var applied = entry?.Apply == true;
         var itemName = entry == null ? null : plugin.GameData.ResolveItemName(entry.ItemId);
@@ -206,9 +208,13 @@ public partial class MainWindow
             wearable, wearableRacesText);
         if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
             HandleAffectedModHover(mod);
+
+        DrawApplySingleSlotButton($"applySlot_{slot}", entry != null, wearable,
+            () => plugin.DesignApply.ApplySingleEquipmentSlot(designId, slot, label));
     }
 
-    private void DrawBonusRow(string label, float labelWidth, CachedBonusItem? entry, AffectedBy affectedBy)
+    private void DrawBonusRow(Guid designId, string slotKey, string label, float labelWidth,
+        CachedBonusItem? entry, AffectedBy affectedBy)
     {
         var applied = entry?.Apply == true;
         var itemName = entry == null ? null : plugin.GameData.ResolveBonusItemName(entry.Slot, entry.ItemId);
@@ -216,6 +222,30 @@ public partial class MainWindow
             stain: 0, stain2: 0, applyStain: false, applied, affectedBy.Items);
         if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
             HandleAffectedModHover(mod);
+
+        DrawApplySingleSlotButton($"applyBonus_{slotKey}", entry != null, wearable: null,
+            () => plugin.DesignApply.ApplySingleBonusItem(designId, slotKey, label));
+    }
+
+    // Right-aligned "apply just this slot" button, same right-align math as HealthReportWindow's
+    // per-row ignore button. Disabled only when the design has nothing saved for this slot at all.
+    private static void DrawApplySingleSlotButton(string idSuffix, bool hasEntry, bool? wearable, Action onClick)
+    {
+        var width = ImGui.GetFrameHeight();
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - width);
+
+        using (ImRaii.Disabled(!hasEntry))
+        {
+            if (ImGuiComponents.IconButton($"##{idSuffix}", FontAwesomeIcon.Check))
+                onClick();
+        }
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(!hasEntry
+                ? "This design has no item saved for this slot."
+                : wearable == false
+                    ? "Apply just this item to your current outfit (not wearable by your current race/gender)"
+                    : "Apply just this item to your current outfit");
     }
 
     private void HandleAffectedModHover(CachedMod mod)

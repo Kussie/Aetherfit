@@ -106,16 +106,17 @@ public sealed class AutomationService : IDisposable
                 return;
 
             plugin.DesignApply.ApplyDesignById(designId);
+            Plugin.ToastGui.ShowNormal($"Automations: now wearing \"{plugin.Configuration.ResolveDesignName(designId)}\"");
         }, TimeSpan.FromSeconds(1));
     }
 
     private readonly record struct MatchContext(uint JobId, uint TerritoryId, bool Mounted, ushort MountId,
         byte WeatherId, int Hour, bool Swimming, bool Diving, GameDataService.HousingState Housing);
 
-    private (AutomationRule? Rule, Guid? DesignId) EvaluateRules(CharacterLoginSettings settings)
+    private MatchContext BuildMatchContext()
     {
         var mounted = Plugin.Condition[ConditionFlag.Mounted];
-        var ctx = new MatchContext(
+        return new MatchContext(
             JobId: Plugin.PlayerState.ClassJob.RowId,
             TerritoryId: Plugin.ClientState.TerritoryType,
             Mounted: mounted,
@@ -125,6 +126,11 @@ public sealed class AutomationService : IDisposable
             Swimming: Plugin.Condition[ConditionFlag.Swimming],
             Diving: Plugin.Condition[ConditionFlag.Diving],
             Housing: plugin.GameData.GetCurrentHousingState());
+    }
+
+    private (AutomationRule? Rule, Guid? DesignId) EvaluateRules(CharacterLoginSettings settings)
+    {
+        var ctx = BuildMatchContext();
 
         foreach (var rule in settings.AutomationRules)
         {
@@ -192,6 +198,58 @@ public sealed class AutomationService : IDisposable
             : plugin.Configuration.CachedOutfits
                 .Where(kv => tags.All(t => TagMatching.AnyMatch(kv.Value.Tags, t)))
                 .Select(kv => kv.Key);
+
+    // Standing configuration problems - not whether the rule currently matches (see PreviewRule), just
+    // whether it's set up in a way that could ever do anything useful.
+    public List<string> GetRuleIssues(AutomationRule rule)
+    {
+        var issues = new List<string>();
+
+        foreach (var condition in rule.Conditions)
+        {
+            if (IsConditionEmpty(condition))
+                issues.Add($"{condition.Type} condition has nothing selected - this rule can never match.");
+        }
+
+        var deletedDesigns = rule.DesignIds.Count(id => !plugin.Configuration.CachedOutfits.ContainsKey(id));
+        if (deletedDesigns > 0)
+            issues.Add($"{deletedDesigns} assigned design(s) no longer exist.");
+
+        var hasUsableDesign = rule.DesignIds.Any(plugin.DesignApply.IsUsable);
+        var hasUsableTagPool = rule.TagPools.Any(p => ResolveTagPool(p).Any(plugin.DesignApply.IsUsable));
+        if (!hasUsableDesign && !hasUsableTagPool)
+            issues.Add("No usable designs assigned - nothing to apply even if this rule matches.");
+
+        foreach (var pool in rule.TagPools.Where(p => !ResolveTagPool(p).Any()))
+            issues.Add($"Tag pool \"{string.Join(" + ", pool)}\" currently matches no designs.");
+
+        return issues;
+    }
+
+    // Mounted and Time are always well-defined even at their default values (MountedValue alone is
+    // meaningful; StartHour == EndHour == 0 means "all day", not "never") - every other condition type
+    // needs at least one selected value to ever match anything.
+    private static bool IsConditionEmpty(AutomationCondition c) => c.Type switch
+    {
+        AutomationConditionType.Job => c.JobIds.Count == 0,
+        AutomationConditionType.Territory => c.TerritoryIds.Count == 0,
+        AutomationConditionType.Weather => c.WeatherIds.Count == 0,
+        AutomationConditionType.Swimming => c.SwimStates.Count == 0,
+        AutomationConditionType.Housing => c.HousingTargets.Count == 0,
+        _ => false,
+    };
+
+    // "Would this rule match right now, on its own" - for the rule editor's dry-run preview. Independent
+    // of rule order/other rules and of Enabled, so a disabled rule can still be previewed before turning it on.
+    public readonly record struct RulePreview(bool WouldApply, List<(AutomationCondition Condition, bool Matches)> ConditionResults);
+
+    public RulePreview PreviewRule(AutomationRule rule)
+    {
+        var ctx = BuildMatchContext();
+        var results = rule.Conditions.Select(c => (c, Matches(c, ctx))).ToList();
+        var wouldApply = results.All(r => r.Item2) && PickDesign(rule, ctx.JobId) != null;
+        return new RulePreview(wouldApply, results);
+    }
 
     // Returns the new enabled state, or null if nobody's logged in. Used by both the hotkey and the UI toggle.
     public bool? ToggleEnabled()

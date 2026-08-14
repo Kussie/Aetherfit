@@ -507,8 +507,8 @@ public partial class MainWindow : Window, IDisposable
             plugin.ToggleBatchScreenshotUi();
         ImGui.SameLine();
 
-        if (IconTextButton(FontAwesomeIcon.Robot, "Automations", warning: HasEmptyAutomations(),
-                warningTooltip: "Automations is on but no rules are configured for this character",
+        if (IconTextButton(FontAwesomeIcon.Robot, "Automations", warning: HasAutomationsIssues(),
+                warningTooltip: "Automations has configuration issues - open it for details",
                 suffix: AutomationsStateSuffix()))
             plugin.ToggleAutomationsUi();
 
@@ -557,11 +557,16 @@ public partial class MainWindow : Window, IDisposable
         }
     }
 
-    private bool HasEmptyAutomations()
-        => Plugin.PlayerState.IsLoaded
-           && plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
-           && settings.AutomationsEnabled
-           && settings.AutomationRules.Count == 0;
+    private bool HasAutomationsIssues()
+    {
+        if (!Plugin.PlayerState.IsLoaded
+            || !plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+            || !settings.AutomationsEnabled)
+            return false;
+
+        return settings.AutomationRules.Count == 0
+            || settings.AutomationRules.Any(r => plugin.Automation.GetRuleIssues(r).Count > 0);
+    }
 
     private static float IconTextButtonWidth(FontAwesomeIcon icon, string label, bool dropdown = false,
         bool warning = false, (string Text, Vector4 Color)? suffix = null)
@@ -758,7 +763,10 @@ public partial class MainWindow : Window, IDisposable
             cachedHasHealthIssues = plugin.HealthReport.FindMissingModAssociations().Count > 0
                 || plugin.HealthReport.FindBrokenItems().Count > 0
                 || plugin.HealthReport.FindIncompatibleDesigns().Count > 0
-                || plugin.HealthReport.FindDuplicates().Count > 0;
+                || plugin.HealthReport.FindDuplicates().Count > 0
+                || (Plugin.PlayerState.IsLoaded
+                    && plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId)
+                        .AutomationRules.Any(r => plugin.Automation.GetRuleIssues(r).Count > 0));
             cachedHealthIssuesGeneration = designListGeneration;
             cachedHealthIssuesIgnoreVersion = plugin.Configuration.HealthCheckIgnoreVersion;
         }

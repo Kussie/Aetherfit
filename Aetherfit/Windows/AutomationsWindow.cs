@@ -40,6 +40,12 @@ public sealed class AutomationsWindow : Window, IDisposable
 
     public void Dispose() { }
 
+    public void OpenRule(Guid ruleId)
+    {
+        expandedRuleId = ruleId;
+        IsOpen = true;
+    }
+
     public override void Draw()
     {
         if (!Plugin.PlayerState.IsLoaded)
@@ -172,8 +178,11 @@ public sealed class AutomationsWindow : Window, IDisposable
                 ImGui.SetTooltip("Enabled");
             ImGui.SameLine();
 
+            var issues = plugin.Automation.GetRuleIssues(rule);
+            var itemSpacing = ImGui.GetStyle().ItemSpacing.X;
             var trashWidth = ImGui.GetFrameHeight();
-            var labelWidth = Math.Max(0f, ImGui.GetContentRegionAvail().X - trashWidth - ImGui.GetStyle().ItemSpacing.X);
+            var warningWidth = issues.Count > 0 ? ImGui.GetFrameHeight() + itemSpacing : 0f;
+            var labelWidth = Math.Max(0f, ImGui.GetContentRegionAvail().X - trashWidth - warningWidth - itemSpacing);
             var expanded = expandedRuleId == rule.Id;
             var chevron = expanded ? "▼" : "▶";
             // The condition/design summary is only useful while collapsed - once expanded, the full
@@ -184,6 +193,14 @@ public sealed class AutomationsWindow : Window, IDisposable
                 : $"{chevron} {rule.Name}  —  {SummarizeConditions(rule)}, {poolCount} design(s)##ruleLabel";
             if (ImGui.Selectable(label, expanded, ImGuiSelectableFlags.None, new Vector2(labelWidth, 0)))
                 expandedRuleId = expanded ? null : rule.Id;
+
+            if (issues.Count > 0)
+            {
+                ImGui.SameLine();
+                DesignDetailView.DrawFontAwesome(FontAwesomeIcon.ExclamationTriangle, UiTheme.ErrorText);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(string.Join("\n", issues));
+            }
 
             ImGui.SameLine();
             if (ImGuiComponents.IconButton(FontAwesomeIcon.Trash))
@@ -238,6 +255,18 @@ public sealed class AutomationsWindow : Window, IDisposable
             plugin.Configuration.Save();
         }
 
+        // Live dry-run against the current game state - independent of rule order/other rules/Enabled,
+        // so this still works to sanity-check a rule before turning it on.
+        var preview = plugin.Automation.PreviewRule(rule);
+
+        ImGui.Spacing();
+        ImGui.TextColored(UiTheme.SectionHeader, "Preview:");
+        ImGui.SameLine();
+        if (preview.WouldApply)
+            ImGui.TextColored(UiTheme.StateOn, "Would apply right now");
+        else
+            ImGui.TextColored(UiTheme.PlaceholderText, "Would not apply right now");
+
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -245,11 +274,11 @@ public sealed class AutomationsWindow : Window, IDisposable
         ImGui.Spacing();
 
         AutomationCondition? toRemoveCondition = null;
-        foreach (var condition in rule.Conditions)
+        foreach (var (condition, matched) in preview.ConditionResults)
         {
             using var condId = ImRaii.PushId(condition.GetHashCode());
             ImGui.AlignTextToFramePadding();
-            ImGui.Bullet();
+            DesignDetailView.DrawFontAwesome(matched ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, matched ? UiTheme.StateOn : UiTheme.StateOff);
             ImGui.SameLine();
             ImGui.TextColored(UiTheme.SectionHeader, condition.Type.ToString());
             ImGui.SameLine();
