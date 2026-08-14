@@ -34,6 +34,62 @@ public sealed class DesignApplyService
             applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false),
             recordLastApplied: recordLastApplied);
 
+    // Applies just one equipment slot from a design onto the character's current outfit, leaving
+    // everything else worn untouched. Bypasses ApplyDesignCore on purpose - none of its "before base
+    // apply" side effects (temp-setting resets, layers, variant inheritance, last-worn bookkeeping)
+    // belong to a single-slot tweak.
+    public void ApplySingleEquipmentSlot(Guid designId, EquipmentSlot slot, string slotLabel)
+    {
+        var name = plugin.Configuration.ResolveDesignName(designId);
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(designId, out var outfit))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel}: design not found.");
+            return;
+        }
+
+        if (!plugin.Configuration.IsProviderEnabled(outfit.Source))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel} from \"{name}\": its source is currently disabled.");
+            return;
+        }
+
+        var slotData = outfit.Equipment.FirstOrDefault(e => e.Slot == slot);
+        if (slotData == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" doesn't have a {slotLabel} item saved.");
+            return;
+        }
+
+        // Applied even if the design's own Apply flag for this slot is off - the user asked for just
+        // this slot specifically, which is a more targeted ask than the design's own default.
+        plugin.Glamourer.ApplySingleEquipmentSlot(designId, slotData, $"{slotLabel} from {name}");
+    }
+
+    public void ApplySingleBonusItem(Guid designId, string bonusSlotKey, string slotLabel)
+    {
+        var name = plugin.Configuration.ResolveDesignName(designId);
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(designId, out var outfit))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel}: design not found.");
+            return;
+        }
+
+        if (!plugin.Configuration.IsProviderEnabled(outfit.Source))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel} from \"{name}\": its source is currently disabled.");
+            return;
+        }
+
+        var bonusData = outfit.BonusItems.FirstOrDefault(b => b.Slot == bonusSlotKey);
+        if (bonusData == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" doesn't have a {slotLabel} item saved.");
+            return;
+        }
+
+        plugin.Glamourer.ApplySingleBonusItem(designId, bonusData, $"{slotLabel} from {name}");
+    }
+
     private void ApplyDesignCore(Guid id, List<Guid> beforeLayerIds, List<Guid> afterLayerIds, bool quiet = false,
         bool recordLastApplied = true)
     {

@@ -37,6 +37,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IKeyState KeyState { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
+    [PluginService] internal static IToastGui ToastGui { get; private set; } = null!;
     [PluginService] internal static ICondition Condition { get; private set; } = null!;
 
     // Prefix on every chat message we print, so players can tell our output apart.
@@ -502,6 +503,7 @@ public sealed class Plugin : IDalamudPlugin
     }
     public void ToggleMainUi() => MainWindow.Toggle();
     public void OpenDesignInMain(Guid id) => MainWindow.OpenDesign(id);
+    public void OpenAutomationRule(Guid ruleId) => AutomationsWindow.OpenRule(ruleId);
 
     public void SetMainWindowHiddenForCapture(bool hide)
     {
