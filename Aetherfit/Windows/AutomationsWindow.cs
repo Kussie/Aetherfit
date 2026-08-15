@@ -4,12 +4,14 @@ using System.Linq;
 using System.Numerics;
 using Aetherfit.Services.Game;
 using Aetherfit.Ui;
+using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
+using Newtonsoft.Json;
 
 namespace Aetherfit.Windows;
 
@@ -69,6 +71,53 @@ public sealed class AutomationsWindow : Window, IDisposable
             settings.AutomationRules.Add(rule);
             plugin.Configuration.Save();
             expandedRuleId = rule.Id;
+        }
+        ImGui.SameLine();
+        DrawImportRuleButton(settings);
+    }
+
+    private string importRuleCode = string.Empty;
+    private string? importRuleError;
+
+    private void DrawImportRuleButton(CharacterLoginSettings settings)
+    {
+        if (ImGui.Button("Import Rule from Code..."))
+        {
+            importRuleCode = string.Empty;
+            importRuleError = null;
+            ImGui.OpenPopup("##importRule");
+        }
+
+        using var popup = ImRaii.Popup("##importRule");
+        if (!popup.Success)
+            return;
+
+        ImGui.TextDisabled("Paste a rule code below. Only conditions come across - you'll assign");
+        ImGui.TextDisabled("your own designs to it afterwards.");
+        ImGui.Spacing();
+
+        if (ImGui.IsWindowAppearing())
+            ImGui.SetKeyboardFocusHere();
+        ImGui.SetNextItemWidth(350 * ImGuiHelpers.GlobalScale);
+        var submitted = ImGui.InputTextWithHint("##importRuleCode", "Paste code here...", ref importRuleCode, 8192,
+            ImGuiInputTextFlags.EnterReturnsTrue);
+
+        if (importRuleError != null)
+            ImGui.TextColored(UiTheme.ErrorText, importRuleError);
+
+        if ((submitted || ImGui.Button("Import")) && !string.IsNullOrWhiteSpace(importRuleCode))
+        {
+            if (AutomationRuleCode.TryDecode(importRuleCode, out var rule, out var error))
+            {
+                settings.AutomationRules.Add(rule!);
+                plugin.Configuration.Save();
+                expandedRuleId = rule!.Id;
+                ImGui.CloseCurrentPopup();
+            }
+            else
+            {
+                importRuleError = error;
+            }
         }
     }
 
@@ -179,10 +228,24 @@ public sealed class AutomationsWindow : Window, IDisposable
             ImGui.SameLine();
 
             var issues = plugin.Automation.GetRuleIssues(rule);
-            var itemSpacing = ImGui.GetStyle().ItemSpacing.X;
-            var trashWidth = ImGui.GetFrameHeight();
-            var warningWidth = issues.Count > 0 ? ImGui.GetFrameHeight() + itemSpacing : 0f;
-            var labelWidth = Math.Max(0f, ImGui.GetContentRegionAvail().X - trashWidth - warningWidth - itemSpacing);
+            var style = ImGui.GetStyle();
+            float warningIconW, copyIconW, shareIconW, trashIconW;
+            using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            {
+                warningIconW = ImGui.CalcTextSize(FontAwesomeIcon.ExclamationTriangle.ToIconString()).X;
+                copyIconW = ImGui.CalcTextSize(FontAwesomeIcon.Copy.ToIconString()).X;
+                shareIconW = ImGui.CalcTextSize(FontAwesomeIcon.Share.ToIconString()).X;
+                trashIconW = ImGui.CalcTextSize(FontAwesomeIcon.Trash.ToIconString()).X;
+            }
+            // IconButton doesn't always come out to exactly glyph width + frame padding, so pad the
+            // reservation a bit rather than clip the buttons if it's off by a couple pixels.
+            var framePad2 = style.FramePadding.X * 2;
+            var buttonsWidth = (copyIconW + framePad2 + style.ItemSpacing.X)
+                + (shareIconW + framePad2 + style.ItemSpacing.X)
+                + (trashIconW + framePad2 + style.ItemSpacing.X)
+                + (8f * ImGuiHelpers.GlobalScale);
+            var warningWidth = issues.Count > 0 ? warningIconW + style.ItemSpacing.X : 0f;
+            var labelWidth = Math.Max(0f, ImGui.GetContentRegionAvail().X - buttonsWidth - warningWidth);
             var expanded = expandedRuleId == rule.Id;
             var chevron = expanded ? "▼" : "▶";
             // The condition/design summary is only useful while collapsed - once expanded, the full
@@ -203,7 +266,30 @@ public sealed class AutomationsWindow : Window, IDisposable
             }
 
             ImGui.SameLine();
-            if (ImGuiComponents.IconButton(FontAwesomeIcon.Trash))
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.Copy))
+            {
+                var clone = JsonConvert.DeserializeObject<AutomationRule>(JsonConvert.SerializeObject(rule))!;
+                clone.Id = Guid.NewGuid();
+                clone.Name += " (Copy)";
+                var insertAt = rules.IndexOf(rule) + 1;
+                pendingEdit = () => rules.Insert(insertAt, clone);
+                expandedRuleId = clone.Id;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Duplicate this rule");
+
+            ImGui.SameLine();
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.Share))
+            {
+                ImGui.SetClipboardText(AutomationRuleCode.Encode(rule));
+                Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Copied a shareable code for \"{rule.Name}\" to your clipboard.");
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Copy a shareable code for this rule's conditions - assigned designs "
+                    + "aren't included, since they wouldn't mean anything on someone else's install.");
+
+            ImGui.SameLine();
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.Trash) && ImGui.GetIO().KeyShift)
             {
                 var toRemove = rule;
                 pendingEdit = () =>
@@ -214,7 +300,7 @@ public sealed class AutomationsWindow : Window, IDisposable
                 };
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Delete this rule");
+                ImGui.SetTooltip("Hold Shift and click to delete this rule.");
 
             if (expanded)
             {
@@ -274,21 +360,50 @@ public sealed class AutomationsWindow : Window, IDisposable
         ImGui.Spacing();
 
         AutomationCondition? toRemoveCondition = null;
+        AutomationCondition? toDuplicateCondition = null;
         foreach (var (condition, matched) in preview.ConditionResults)
         {
             using var condId = ImRaii.PushId(condition.GetHashCode());
+
+            // A framed header bar per condition, same visual language as the panel headers elsewhere
+            // (Pills.DrawCollapsibleSubheader) - makes it obvious at a glance where one condition ends
+            // and the next begins, instead of the type name just blending into the row above/below it.
+            var rowStart = ImGui.GetCursorScreenPos();
+            var rowWidth = ImGui.GetContentRegionAvail().X;
+            var rowHeight = ImGui.GetFrameHeight();
+            ImGui.GetWindowDrawList().AddRectFilled(rowStart, rowStart + new Vector2(rowWidth, rowHeight),
+                ImGui.GetColorU32(ImGuiCol.Header), ImGui.GetStyle().FrameRounding);
+            ImGui.SetCursorScreenPos(rowStart + new Vector2(ImGui.GetStyle().FramePadding.X, 0));
+
             ImGui.AlignTextToFramePadding();
             DesignDetailView.DrawFontAwesome(matched ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, matched ? UiTheme.StateOn : UiTheme.StateOff);
             ImGui.SameLine();
             ImGui.TextColored(UiTheme.SectionHeader, condition.Type.ToString());
             ImGui.SameLine();
-            if (ImGuiComponents.IconButton(FontAwesomeIcon.Trash))
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.Copy))
+                toDuplicateCondition = condition;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Duplicate this condition");
+            ImGui.SameLine();
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.Trash) && ImGui.GetIO().KeyShift)
                 toRemoveCondition = condition;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Hold Shift and click to delete this condition.");
 
+            ImGui.Spacing();
             ImGui.Indent();
             DrawConditionEditor(condition);
             ImGui.Unindent();
             ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+        }
+
+        if (toDuplicateCondition != null)
+        {
+            var clone = JsonConvert.DeserializeObject<AutomationCondition>(JsonConvert.SerializeObject(toDuplicateCondition))!;
+            rule.Conditions.Insert(rule.Conditions.IndexOf(toDuplicateCondition) + 1, clone);
+            plugin.Configuration.Save();
         }
 
         if (toRemoveCondition != null)

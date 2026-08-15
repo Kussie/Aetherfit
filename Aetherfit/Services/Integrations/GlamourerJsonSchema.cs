@@ -199,6 +199,36 @@ internal static class GlamourerJsonSchema
         target["Apply"] = true;
     }
 
+    // Same idea for a single Customize-section entry. Toggle keys are stored by Glamourer as either a
+    // plain bool (e.g. Wetness) or a numeric flag byte (0/128) depending on the key, with no way to tell
+    // which from CachedCustomization alone - so this matches whatever shape the live entry already has
+    // rather than guessing.
+    public static void ApplySingleCustomization(JObject state, CachedCustomization customization)
+    {
+        var customize = state["Customize"] as JObject ?? (JObject)(state["Customize"] = new JObject());
+
+        foreach (var (key, _, _) in CustomizeDisplay)
+        {
+            if (key == customization.Key || customize[key] is not JObject other)
+                continue;
+            other["Apply"] = false;
+        }
+
+        if (customize[customization.Key] is not JObject entry)
+            customize[customization.Key] = entry = new JObject();
+
+        if (customization.IsToggle)
+        {
+            var on = customization.Value == "On";
+            entry["Value"] = entry["Value"]?.Type == JTokenType.Boolean ? on : (on ? 128 : 0);
+        }
+        else
+        {
+            entry["Value"] = customization.RawValue;
+        }
+        entry["Apply"] = true;
+    }
+
     private static void ZeroApplyFlags(JObject? section)
     {
         if (section == null)

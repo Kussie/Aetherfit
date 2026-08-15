@@ -6,7 +6,6 @@ using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
-using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 
@@ -108,6 +107,9 @@ public partial class MainWindow
 
         foreach (var c in details.Customizations)
         {
+            var rowStart = ImGui.GetCursorScreenPos();
+            var rowWidth = ImGui.GetContentRegionAvail().X;
+
             var rowStartX = ImGui.GetCursorPosX();
             ImGui.TextColored(AppliedTextColor, c.Label);
             ImGui.SameLine();
@@ -123,9 +125,12 @@ public partial class MainWindow
                 DrawCustomizationColorSwatch(c, details);
             }
 
-            if (c.Key == "Hairstyle" && hairstyleMod != null
-                && DesignDetailView.DrawAffectedByText(DesignAttributionService.ModDisplayName(hairstyleMod)))
-                HandleAffectedModHover(hairstyleMod);
+            var modHovered = c.Key == "Hairstyle" && hairstyleMod != null
+                && DesignDetailView.DrawAffectedByText(DesignAttributionService.ModDisplayName(hairstyleMod));
+            if (modHovered)
+                HandleAffectedModHover(hairstyleMod!);
+
+            DrawCustomizationContextMenu(id, c, rowStart, rowWidth, modHovered);
         }
 
         ImGui.Unindent();
@@ -143,6 +148,28 @@ public partial class MainWindow
         ImGui.ColorButton($"##cust_{c.Key}", DesignDetailView.StainColorToVec4(rgb, 1.0f),
             ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoDragDrop | ImGuiColorEditFlags.NoInputs,
             size);
+    }
+
+    // Right-click anywhere on a customization row to apply just that value - same shape as
+    // DrawSlotContextMenu, just adapted since customization rows don't go through DrawSlotRow.
+    private void DrawCustomizationContextMenu(Guid designId, CachedCustomization customization,
+        Vector2 rowStart, float rowWidth, bool modHovered)
+    {
+        var popupId = $"##cust_{customization.Key}Menu";
+        if (!modHovered && !ImGui.IsPopupOpen(popupId))
+        {
+            var rowEnd = new Vector2(rowStart.X + rowWidth, ImGui.GetCursorScreenPos().Y);
+            if (ImGui.IsMouseHoveringRect(rowStart, rowEnd))
+            {
+                ImGui.SetTooltip("Right-click to apply just this to your current outfit.");
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                    ImGui.OpenPopup(popupId);
+            }
+        }
+
+        using var popup = ImRaii.Popup(popupId);
+        if (popup.Success && ImGui.MenuItem("Apply Just This"))
+            plugin.DesignApply.ApplySingleCustomization(designId, customization.Key, customization.Label);
     }
 
     // The label column width, shared by the Equipment and Customizations panels so their values line up.
@@ -203,14 +230,15 @@ public partial class MainWindow
             ? plugin.GameData.IsItemWearableBy(entry.ItemId, rg.RaceRowId, rg.IsFemale)
             : null;
         var wearableRacesText = wearable == false ? plugin.GameData.DescribeWearableRaces(entry!.ItemId) : null;
+
+        var rowStart = ImGui.GetCursorScreenPos();
+        var rowWidth = ImGui.GetContentRegionAvail().X;
         var modHovered = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
             entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, applied, affectedBy.Items,
             wearable, wearableRacesText);
-        if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
-            HandleAffectedModHover(mod);
 
-        DrawApplySingleSlotButton($"applySlot_{slot}", entry != null, wearable,
-            () => plugin.DesignApply.ApplySingleEquipmentSlot(designId, slot, label));
+        DrawSlotContextMenu($"slot_{slot}", rowStart, rowWidth, entry != null, modHovered,
+            itemName, affectedBy, () => plugin.DesignApply.ApplySingleEquipmentSlot(designId, slot, label));
     }
 
     private void DrawBonusRow(Guid designId, string slotKey, string label, float labelWidth,
@@ -218,34 +246,40 @@ public partial class MainWindow
     {
         var applied = entry?.Apply == true;
         var itemName = entry == null ? null : plugin.GameData.ResolveBonusItemName(entry.Slot, entry.ItemId);
+
+        var rowStart = ImGui.GetCursorScreenPos();
+        var rowWidth = ImGui.GetContentRegionAvail().X;
         var modHovered = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
             stain: 0, stain2: 0, applyStain: false, applied, affectedBy.Items);
-        if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
-            HandleAffectedModHover(mod);
 
-        DrawApplySingleSlotButton($"applyBonus_{slotKey}", entry != null, wearable: null,
-            () => plugin.DesignApply.ApplySingleBonusItem(designId, slotKey, label));
+        DrawSlotContextMenu($"bonus_{slotKey}", rowStart, rowWidth, entry != null, modHovered,
+            itemName, affectedBy, () => plugin.DesignApply.ApplySingleBonusItem(designId, slotKey, label));
     }
 
-    // Right-aligned "apply just this slot" button, same right-align math as HealthReportWindow's
-    // per-row ignore button. Disabled only when the design has nothing saved for this slot at all.
-    private static void DrawApplySingleSlotButton(string idSuffix, bool hasEntry, bool? wearable, Action onClick)
+    // Right-click anywhere on the row (when it actually has an item) to apply just that item - the
+    // existing "affected by mod" hover/click behavior still wins when that specific text is hovered.
+    private void DrawSlotContextMenu(string idSuffix, Vector2 rowStart, float rowWidth, bool hasEntry,
+        bool modHovered, string? itemName, AffectedBy affectedBy, Action onApply)
     {
-        var width = ImGui.GetFrameHeight();
-        ImGui.SameLine(ImGui.GetContentRegionMax().X - width);
-
-        using (ImRaii.Disabled(!hasEntry))
+        var popupId = $"##{idSuffix}Menu";
+        if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
         {
-            if (ImGuiComponents.IconButton($"##{idSuffix}", FontAwesomeIcon.Check))
-                onClick();
+            HandleAffectedModHover(mod);
+        }
+        else if (hasEntry && !ImGui.IsPopupOpen(popupId))
+        {
+            var rowEnd = new Vector2(rowStart.X + rowWidth, ImGui.GetCursorScreenPos().Y);
+            if (ImGui.IsMouseHoveringRect(rowStart, rowEnd))
+            {
+                ImGui.SetTooltip("Right-click to apply just this item to your current outfit.");
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                    ImGui.OpenPopup(popupId);
+            }
         }
 
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(!hasEntry
-                ? "This design has no item saved for this slot."
-                : wearable == false
-                    ? "Apply just this item to your current outfit (not wearable by your current race/gender)"
-                    : "Apply just this item to your current outfit");
+        using var popup = ImRaii.Popup(popupId);
+        if (popup.Success && ImGui.MenuItem("Apply Just This"))
+            onApply();
     }
 
     private void HandleAffectedModHover(CachedMod mod)
