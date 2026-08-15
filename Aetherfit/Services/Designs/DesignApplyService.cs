@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Utils;
+using Penumbra.Api.Enums;
 
 namespace Aetherfit.Services.Designs;
 
@@ -34,6 +35,115 @@ public sealed class DesignApplyService
             applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false),
             recordLastApplied: recordLastApplied);
 
+    // Applies just one equipment slot from a design onto the character's current outfit, leaving
+    // everything else worn untouched. Bypasses ApplyDesignCore on purpose - none of its "before base
+    // apply" side effects (temp-setting resets, layers, variant inheritance, last-worn bookkeeping)
+    // belong to a single-slot tweak.
+    public void ApplySingleEquipmentSlot(Guid designId, EquipmentSlot slot, string slotLabel)
+    {
+        var name = plugin.Configuration.ResolveDesignName(designId);
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(designId, out var outfit))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel}: design not found.");
+            return;
+        }
+
+        if (!plugin.Configuration.IsProviderEnabled(outfit.Source))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel} from \"{name}\": its source is currently disabled.");
+            return;
+        }
+
+        var slotData = outfit.Equipment.FirstOrDefault(e => e.Slot == slot);
+        if (slotData == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" doesn't have a {slotLabel} item saved.");
+            return;
+        }
+
+        // Applied even if the design's own Apply flag for this slot is off - the user asked for just
+        // this slot specifically, which is a more targeted ask than the design's own default.
+        var itemName = plugin.GameData.ResolveItemName(slotData.ItemId);
+        ApplySingleSlotMod(plugin.Attribution.Build(outfit).Items.GetValueOrDefault(itemName));
+        plugin.Glamourer.ApplySingleEquipmentSlot(designId, slotData, $"{slotLabel} from {name}");
+    }
+
+    public void ApplySingleBonusItem(Guid designId, string bonusSlotKey, string slotLabel)
+    {
+        var name = plugin.Configuration.ResolveDesignName(designId);
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(designId, out var outfit))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel}: design not found.");
+            return;
+        }
+
+        if (!plugin.Configuration.IsProviderEnabled(outfit.Source))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel} from \"{name}\": its source is currently disabled.");
+            return;
+        }
+
+        var bonusData = outfit.BonusItems.FirstOrDefault(b => b.Slot == bonusSlotKey);
+        if (bonusData == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" doesn't have a {slotLabel} item saved.");
+            return;
+        }
+
+        var itemName = plugin.GameData.ResolveBonusItemName(bonusData.Slot, bonusData.ItemId);
+        ApplySingleSlotMod(plugin.Attribution.Build(outfit).Items.GetValueOrDefault(itemName));
+        plugin.Glamourer.ApplySingleBonusItem(designId, bonusData, $"{slotLabel} from {name}");
+    }
+
+    public void ApplySingleCustomization(Guid designId, string customizeKey, string slotLabel)
+    {
+        var name = plugin.Configuration.ResolveDesignName(designId);
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(designId, out var outfit))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel}: design not found.");
+            return;
+        }
+
+        if (!plugin.Configuration.IsProviderEnabled(outfit.Source))
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to apply {slotLabel} from \"{name}\": its source is currently disabled.");
+            return;
+        }
+
+        var customization = outfit.Customizations.FirstOrDefault(c => c.Key == customizeKey);
+        if (customization == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" doesn't have {slotLabel} saved.");
+            return;
+        }
+
+        ApplySingleSlotMod(customizeKey == "Hairstyle" ? plugin.Attribution.Build(outfit).Hairstyle : null);
+        plugin.Glamourer.ApplySingleCustomization(designId, customization, $"{slotLabel} from {name}");
+    }
+
+    // Own lock key, distinct from Glamourer's own two (-1610/-6160, see GlamourerService.TemporarySettingsKeys)
+    // and SGS's per-slot range (SimpleGlamourSwitcherService.KeyBase) - only ever one slot at a time here,
+    // so a single fixed key is enough.
+    private const int SingleSlotModKey = -0x41455301;
+
+    // ApplyEquipmentState/ApplySingleEquipmentSlot never gets Glamourer's own automatic mod-association
+    // handling the way a full ApplyDesign(by GUID) does, so the associated mod has to be pushed to
+    // Penumbra ourselves first - same mechanism SimpleGlamourSwitcherService.ApplySlotMods already uses.
+    private void ApplySingleSlotMod(CachedMod? mod)
+    {
+        plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(SingleSlotModKey);
+
+        if (mod == null)
+            return;
+
+        var settings = mod.Settings.ToDictionary(kv => kv.Key,
+            kv => (IReadOnlyList<string>)kv.Value.Split(", ", StringSplitOptions.RemoveEmptyEntries));
+        var result = plugin.Penumbra.SetTemporaryModSettingsPlayer(mod.Directory, true, mod.Priority,
+            settings, "Aetherfit (single-slot apply)", SingleSlotModKey);
+        if (result != PenumbraApiEc.Success)
+            Plugin.Log.Warning("Failed to apply associated mod {Mod} for single-slot apply: {Result}", mod.Directory, result);
+    }
+
     private void ApplyDesignCore(Guid id, List<Guid> beforeLayerIds, List<Guid> afterLayerIds, bool quiet = false,
         bool recordLastApplied = true)
     {
@@ -63,6 +173,9 @@ public sealed class DesignApplyService
             plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();
             plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
         }
+
+        // A leftover single-slot mod association should never bleed into an unrelated full apply.
+        plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(SingleSlotModKey);
 
         if (plugin.Configuration.ResetTemporarySettingsBeforeApply(outfit.Source))
         {
@@ -261,7 +374,7 @@ public sealed class DesignApplyService
            && plugin.DesignProviders.FirstOrDefault(p => p.Source == outfit.Source) is { } provider
            && provider.Capabilities.HasFlag(DesignProviderCapabilities.Layers);
 
-    private bool IsUsable(Guid id)
+    public bool IsUsable(Guid id)
         => !plugin.Configuration.HiddenDesigns.Contains(id)
            && plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
            && plugin.Configuration.IsProviderEnabled(outfit.Source);

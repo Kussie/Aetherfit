@@ -378,7 +378,7 @@ public partial class MainWindow
         var avail = ImGui.GetContentRegionAvail();
 
         var iconDir = Plugin.PluginInterface.AssemblyLocation.DirectoryName;
-        var iconPath = iconDir != null ? Path.Combine(iconDir, "icon.png") : null;
+        var iconPath = iconDir != null ? Path.Combine(iconDir, "icon-square.png") : null;
         var tex = iconPath != null && File.Exists(iconPath)
             ? Plugin.TextureProvider.GetFromFile(iconPath).GetWrapOrEmpty()
             : null;

@@ -49,12 +49,6 @@ public sealed class GlamourerService : IDisposable
 
     public static readonly (int Major, int Minor) MinApiVersion = (1, 8);
 
-    // Glamourer's own mod-association temp settings are locked under one of these two keys (confirmed
-    // from its source: github.com/Ottermandias/Glamourer, Interop/Penumbra/PenumbraService.cs -
-    // KeyFixed for automation-triggered applies, KeyManual for everything else). Negative keys are an
-    // "identification lock" - Penumbra lets anyone remove them if they use the same key, they just don't
-    // block other plugins from setting their own. Not a published API, so this could silently break if
-    // Glamourer ever changes these constants.
     public static readonly int[] TemporarySettingsKeys = { -1610, -6160 };
 
     public PluginIntegrationInfo CheckIntegration()
@@ -77,10 +71,6 @@ public sealed class GlamourerService : IDisposable
 
     private void OnStateFinalized(nint actor, StateFinalizationType type)
     {
-        // Glamourer raises this for our own IPC calls too: the flag catches synchronous delivery,
-        // the grace window catches anything Glamourer defers past our call. Deferred redraws can
-        // take several seconds when many mods are still loading (e.g. right after login), so the
-        // window has to be generous or our own apply gets misread as an external change.
         if (invokingOwnChange)
             return;
 
@@ -178,8 +168,6 @@ public sealed class GlamourerService : IDisposable
         }
     }
 
-    // Applies an additional design layer on top of an already-applied base, without the chat line or sound -
-    // the base's apply already announced it.
     public void ApplyLayer(Guid id)
     {
         try
@@ -301,6 +289,24 @@ public sealed class GlamourerService : IDisposable
         Plugin.Log.Info("Applied {Provider} design {Name} ({Id})", providerLabel, designName, nativeId);
         return true;
     }
+
+    // Applies just one equipment slot from a cached design's data onto the current live state,
+    // leaving every other slot untouched - same relay shape as everything else above, just with a
+    // narrower mutation.
+    public bool ApplySingleEquipmentSlot(Guid designNativeId, CachedEquipmentSlot slotData, string label)
+        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-slot",
+            state => GlamourerJsonSchema.ApplySingleSlot(state, slotData), state => ApplyEquipmentState(state));
+
+    public bool ApplySingleBonusItem(Guid designNativeId, CachedBonusItem bonusData, string label)
+        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-slot",
+            state => GlamourerJsonSchema.ApplySingleBonusItem(state, bonusData), state => ApplyEquipmentState(state));
+
+    public GlamourerApiEc ApplyCustomizationState(JObject state, int objectIndex = 0)
+        => InvokeOwnChange(() => applyState.Invoke(state, objectIndex, 0, ApplyFlag.Customization));
+
+    public bool ApplySingleCustomization(Guid designNativeId, CachedCustomization customization, string label)
+        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-slot",
+            state => GlamourerJsonSchema.ApplySingleCustomization(state, customization), state => ApplyCustomizationState(state));
 
     private static CachedOutfit ParseOutfit(JObject j)
     {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
@@ -9,6 +10,7 @@ using Dalamud.Plugin;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.UI;
+using Aetherfit.Services.Automation;
 using Aetherfit.Services.Designs;
 using Aetherfit.Services.Export;
 using Aetherfit.Services.Game;
@@ -35,6 +37,8 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IKeyState KeyState { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
+    [PluginService] internal static IToastGui ToastGui { get; private set; } = null!;
+    [PluginService] internal static ICondition Condition { get; private set; } = null!;
 
     // Prefix on every chat message we print, so players can tell our output apart.
     public const string ChatPrefix = "[Aetherfit] ";
@@ -66,6 +70,7 @@ public sealed class Plugin : IDalamudPlugin
     public GalleryLiveShareService LiveShare { get; init; }
     public RestoreSequenceService Restore { get; init; }
     public DesignApplyService DesignApply { get; init; }
+    public AutomationService Automation { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
@@ -73,6 +78,7 @@ public sealed class Plugin : IDalamudPlugin
     private QuickSearchWindow QuickSearchWindow { get; init; }
     private BatchScreenshotWindow BatchScreenshotWindow { get; init; }
     private ChangelogWindow ChangelogWindow { get; init; }
+    private AutomationsWindow AutomationsWindow { get; init; }
     internal MainWindow MainWindow { get; init; }
     public ImageViewerWindow ImageViewer { get; init; }
     public ScreenshotSetupWindow ScreenshotSetup { get; init; }
@@ -190,6 +196,7 @@ public sealed class Plugin : IDalamudPlugin
         TagSuggestions = new TagSuggestionService(TagModel, Configuration);
         LiveShare = new GalleryLiveShareService(this);
         DesignApply = new DesignApplyService(this);
+        Automation = new AutomationService(this);
 
         // Clean up any imported-gallery images or in-flight captures a previous session left behind
         // (e.g. if we crashed before tidying up).
@@ -202,6 +209,7 @@ public sealed class Plugin : IDalamudPlugin
         QuickSearchWindow = new QuickSearchWindow(this);
         BatchScreenshotWindow = new BatchScreenshotWindow(this);
         ChangelogWindow = new ChangelogWindow(this);
+        AutomationsWindow = new AutomationsWindow(this);
         MainWindow = new MainWindow(this);
         ImageViewer = new ImageViewerWindow();
         ScreenshotSetup = new ScreenshotSetupWindow(this);
@@ -214,6 +222,7 @@ public sealed class Plugin : IDalamudPlugin
         WindowSystem.AddWindow(QuickSearchWindow);
         WindowSystem.AddWindow(BatchScreenshotWindow);
         WindowSystem.AddWindow(ChangelogWindow);
+        WindowSystem.AddWindow(AutomationsWindow);
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ImageViewer);
         WindowSystem.AddWindow(ScreenshotSetup);
@@ -238,6 +247,7 @@ public sealed class Plugin : IDalamudPlugin
         Glamourer.OnExternalStateFinalized += OnGlamourerStateFinalized;
         Glamourer.OnAnyStateFinalized += OnGlamourerAnyStateFinalized;
         Framework.Update += OnKeybindUpdate;
+        Framework.Update += Automation.OnFrameworkTick;
 
         if (Configuration.LastSeenChangelogRevision < ChangelogData.LatestRevision)
             ChangelogWindow.IsOpen = true;
@@ -255,6 +265,8 @@ public sealed class Plugin : IDalamudPlugin
         Glamourer.OnExternalStateFinalized -= OnGlamourerStateFinalized;
         Glamourer.OnAnyStateFinalized -= OnGlamourerAnyStateFinalized;
         Framework.Update -= OnKeybindUpdate;
+        Framework.Update -= Automation.OnFrameworkTick;
+        Automation.Dispose();
         Glamourer.Dispose();
         TagSuggestions.Dispose();
         TagModel.Dispose();
@@ -268,6 +280,7 @@ public sealed class Plugin : IDalamudPlugin
         QuickSearchWindow.Dispose();
         BatchScreenshotWindow.Dispose();
         ChangelogWindow.Dispose();
+        AutomationsWindow.Dispose();
         MainWindow.Dispose();
         ImageViewer.Dispose();
         ScreenshotSetup.Dispose();
@@ -414,6 +427,19 @@ public sealed class Plugin : IDalamudPlugin
         CheckKeybind(Configuration.WearLastKeybind, () => ReportError(MainWindow.ReapplyLastWorn()));
         CheckKeybind(Configuration.RevertKeybind, () => MainWindow.RevertAppearance());
         CheckKeybind(Configuration.QuickSearchKeybind, ToggleQuickSearchUi);
+        CheckKeybind(Configuration.AutomationsToggleKeybind, ToggleAutomationsEnabled);
+    }
+
+    private void ToggleAutomationsEnabled()
+    {
+        var enabled = Automation.ToggleEnabled();
+        if (enabled == null)
+        {
+            ChatGui.PrintError($"{ChatPrefix}Log in to a character first.");
+            return;
+        }
+
+        ChatGui.Print($"{ChatPrefix}Automations {(enabled.Value ? "enabled" : "disabled")}.");
     }
 
     // Edge-triggered (via bind.WasDown, not a plain "is it down" check) so a held key fires once, not
@@ -464,6 +490,7 @@ public sealed class Plugin : IDalamudPlugin
     public void ToggleConfigUi() => ConfigWindow.Toggle();
     public void ToggleHealthReportUi() => HealthReportWindow.Toggle();
     public void ToggleBatchScreenshotUi() => BatchScreenshotWindow.Toggle();
+    public void ToggleAutomationsUi() => AutomationsWindow.Toggle();
 
     // Not a plain Toggle() - opening needs to reset the search text and recompute the popup's
     // on-screen position each time, not just flip visibility.
@@ -476,6 +503,7 @@ public sealed class Plugin : IDalamudPlugin
     }
     public void ToggleMainUi() => MainWindow.Toggle();
     public void OpenDesignInMain(Guid id) => MainWindow.OpenDesign(id);
+    public void OpenAutomationRule(Guid ruleId) => AutomationsWindow.OpenRule(ruleId);
 
     public void SetMainWindowHiddenForCapture(bool hide)
     {

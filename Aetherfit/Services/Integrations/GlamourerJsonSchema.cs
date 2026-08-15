@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -158,6 +159,74 @@ internal static class GlamourerJsonSchema
         ZeroApplyFlags(design["Customize"] as JObject);
         ZeroApplyFlags(design["Bonus"] as JObject);
         return design;
+    }
+
+    // Mutates state's own "Equipment" section in place: only slotData.Slot's item/stain will apply,
+    // every other slot's Apply/ApplyStain is forced off. Hat/Weapon/Visor meta entries are left alone.
+    public static void ApplySingleSlot(JObject state, CachedEquipmentSlot slotData)
+    {
+        var equipment = state["Equipment"] as JObject ?? (JObject)(state["Equipment"] = new JObject());
+        var targetKey = slotData.Slot.ToString();
+
+        foreach (EquipmentSlot slot in Enum.GetValues<EquipmentSlot>())
+        {
+            var key = slot.ToString();
+            if (key == targetKey || equipment[key] is not JObject entry)
+                continue;
+            entry["Apply"] = false;
+            entry["ApplyStain"] = false;
+        }
+
+        equipment[targetKey] = new JObject
+        {
+            ["ItemId"] = slotData.ItemId,
+            ["Stain"] = slotData.Stain,
+            ["Stain2"] = slotData.Stain2,
+            ["Apply"] = true,
+            ["ApplyStain"] = slotData.ApplyStain,
+        };
+    }
+
+    // Same idea for a single Bonus-section item (Glasses/Facewear) - no stains, so ZeroApplyFlags covers it.
+    public static void ApplySingleBonusItem(JObject state, CachedBonusItem bonusData)
+    {
+        var bonus = state["Bonus"] as JObject ?? (JObject)(state["Bonus"] = new JObject());
+        ZeroApplyFlags(bonus);
+
+        if (bonus[bonusData.Slot] is not JObject target)
+            bonus[bonusData.Slot] = target = new JObject();
+        target["BonusId"] = bonusData.ItemId;
+        target["Apply"] = true;
+    }
+
+    // Same idea for a single Customize-section entry. Toggle keys are stored by Glamourer as either a
+    // plain bool (e.g. Wetness) or a numeric flag byte (0/128) depending on the key, with no way to tell
+    // which from CachedCustomization alone - so this matches whatever shape the live entry already has
+    // rather than guessing.
+    public static void ApplySingleCustomization(JObject state, CachedCustomization customization)
+    {
+        var customize = state["Customize"] as JObject ?? (JObject)(state["Customize"] = new JObject());
+
+        foreach (var (key, _, _) in CustomizeDisplay)
+        {
+            if (key == customization.Key || customize[key] is not JObject other)
+                continue;
+            other["Apply"] = false;
+        }
+
+        if (customize[customization.Key] is not JObject entry)
+            customize[customization.Key] = entry = new JObject();
+
+        if (customization.IsToggle)
+        {
+            var on = customization.Value == "On";
+            entry["Value"] = entry["Value"]?.Type == JTokenType.Boolean ? on : (on ? 128 : 0);
+        }
+        else
+        {
+            entry["Value"] = customization.RawValue;
+        }
+        entry["Apply"] = true;
     }
 
     private static void ZeroApplyFlags(JObject? section)
