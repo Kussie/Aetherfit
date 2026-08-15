@@ -144,7 +144,10 @@ public sealed class RestoreSequenceService
             if (ShouldAbort(gen))
                 return;
 
-            if (Plugin.ObjectTable.LocalPlayer == null)
+            // ObjectTable.LocalPlayer and PlayerState.IsLoaded don't necessarily flip true on the same
+            // tick - RunLoginAction requires the latter, so wait for both here rather than letting it
+            // fire too early and silently bail with no retry.
+            if (Plugin.ObjectTable.LocalPlayer == null || !Plugin.PlayerState.IsLoaded)
             {
                 if (attemptsLeft > 0)
                 {
@@ -153,7 +156,7 @@ public sealed class RestoreSequenceService
                 else
                 {
                     phase = Phase.Idle;
-                    Plugin.Log.Warning("Local player never spawned; skipping the restore action.");
+                    Plugin.Log.Warning("Local player never finished loading; skipping the restore action.");
                     if (isLoginFlow)
                         Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Skipped the login action: the character never finished loading.");
                 }
