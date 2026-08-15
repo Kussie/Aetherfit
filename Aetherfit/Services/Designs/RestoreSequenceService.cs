@@ -204,6 +204,13 @@ public sealed class RestoreSequenceService
         // The new character's race/gender feeds mod attribution, so drop anything cached.
         plugin.MainWindow.InvalidateAttributionCache();
 
+        var world = Plugin.PlayerState.HomeWorld.ValueNullable?.Name.ExtractText();
+        var displayName = string.IsNullOrEmpty(world)
+            ? Plugin.PlayerState.CharacterName.ToString()
+            : $"{Plugin.PlayerState.CharacterName} @ {world}";
+        plugin.Configuration.CharacterDisplayNames[Plugin.PlayerState.ContentId] = displayName;
+        plugin.Configuration.Save();
+
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
         if (settings.AutomationsEnabled || settings.LoginAction == LoginAction.None)
             return;

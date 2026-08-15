@@ -162,6 +162,52 @@ public sealed class AutomationsWindow : Window, IDisposable
             ImGui.TextColored(UiTheme.StateOn, $"On — currently applying \"{activeName}\"");
         else
             ImGui.TextColored(UiTheme.GoldAccent, "On — no rule currently matches");
+
+        ImGui.Spacing();
+        using (ImRaii.Disabled(settings.AutomationRules.Count == 0))
+        {
+            if (ImGui.Button("Copy Rules to Another Character..."))
+                ImGui.OpenPopup(CopyRulesPopupId);
+        }
+        DrawCopyRulesPopup(settings);
+    }
+
+    private const string CopyRulesPopupId = "##copyRulesToCharacter";
+
+    private void DrawCopyRulesPopup(CharacterLoginSettings settings)
+    {
+        using var popup = ImRaii.Popup(CopyRulesPopupId);
+        if (!popup.Success)
+            return;
+
+        var others = plugin.Configuration.CharacterLoginSettings.Keys
+            .Where(id => id != Plugin.PlayerState.ContentId)
+            .ToList();
+        if (others.Count == 0)
+        {
+            ImGui.TextDisabled("No other characters have logged in with Aetherfit yet.");
+            return;
+        }
+
+        ImGui.TextDisabled($"Copy this character's {settings.AutomationRules.Count} rule(s) to:");
+        ImGui.Separator();
+        foreach (var contentId in others)
+        {
+            var label = plugin.Configuration.CharacterDisplayNames.GetValueOrDefault(contentId, $"Unknown ({contentId})");
+            if (!ImGui.Selectable(label))
+                continue;
+
+            var target = plugin.Configuration.GetOrCreateLoginSettings(contentId);
+            foreach (var rule in settings.AutomationRules)
+            {
+                var clone = JsonConvert.DeserializeObject<AutomationRule>(JsonConvert.SerializeObject(rule))!;
+                clone.Id = Guid.NewGuid();
+                target.AutomationRules.Add(clone);
+            }
+            plugin.Configuration.Save();
+            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Copied {settings.AutomationRules.Count} rule(s) to {label}.");
+            ImGui.CloseCurrentPopup();
+        }
     }
 
     private void DrawRuleList(CharacterLoginSettings settings)
