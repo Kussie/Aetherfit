@@ -301,6 +301,13 @@ public sealed class GlamourerService : IDisposable
         => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-slot",
             state => GlamourerJsonSchema.ApplySingleBonusItem(state, bonusData), state => ApplyEquipmentState(state));
 
+    public GlamourerApiEc ApplyCustomizationState(JObject state, int objectIndex = 0)
+        => InvokeOwnChange(() => applyState.Invoke(state, objectIndex, 0, ApplyFlag.Customization));
+
+    public bool ApplySingleCustomization(Guid designNativeId, CachedCustomization customization, string label)
+        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-slot",
+            state => GlamourerJsonSchema.ApplySingleCustomization(state, customization), state => ApplyCustomizationState(state));
+
     private static CachedOutfit ParseOutfit(JObject j)
     {
         var customize = j["Customize"] as JObject;
