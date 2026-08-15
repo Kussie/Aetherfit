@@ -52,6 +52,7 @@ public sealed class RestoreSequenceService
 
         // Read-only lookup on purpose: don't create/save settings from an event firing every zone.
         if (!plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+            || settings.AutomationsEnabled
             || !settings.ReapplyOnZoneChange
             || settings.LastWornDesign == null)
             return;
@@ -143,7 +144,10 @@ public sealed class RestoreSequenceService
             if (ShouldAbort(gen))
                 return;
 
-            if (Plugin.ObjectTable.LocalPlayer == null)
+            // ObjectTable.LocalPlayer and PlayerState.IsLoaded don't necessarily flip true on the same
+            // tick - RunLoginAction requires the latter, so wait for both here rather than letting it
+            // fire too early and silently bail with no retry.
+            if (Plugin.ObjectTable.LocalPlayer == null || !Plugin.PlayerState.IsLoaded)
             {
                 if (attemptsLeft > 0)
                 {
@@ -152,7 +156,7 @@ public sealed class RestoreSequenceService
                 else
                 {
                     phase = Phase.Idle;
-                    Plugin.Log.Warning("Local player never spawned; skipping the restore action.");
+                    Plugin.Log.Warning("Local player never finished loading; skipping the restore action.");
                     if (isLoginFlow)
                         Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Skipped the login action: the character never finished loading.");
                 }
@@ -200,8 +204,15 @@ public sealed class RestoreSequenceService
         // The new character's race/gender feeds mod attribution, so drop anything cached.
         plugin.MainWindow.InvalidateAttributionCache();
 
+        var world = Plugin.PlayerState.HomeWorld.ValueNullable?.Name.ExtractText();
+        var displayName = string.IsNullOrEmpty(world)
+            ? Plugin.PlayerState.CharacterName.ToString()
+            : $"{Plugin.PlayerState.CharacterName} @ {world}";
+        plugin.Configuration.CharacterDisplayNames[Plugin.PlayerState.ContentId] = displayName;
+        plugin.Configuration.Save();
+
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-        if (settings.LoginAction == LoginAction.None)
+        if (settings.AutomationsEnabled || settings.LoginAction == LoginAction.None)
             return;
 
         string? err = settings.LoginAction switch

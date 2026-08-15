@@ -22,6 +22,7 @@ public sealed class HealthReportWindow : Window, IDisposable
     private bool brokenItemsOpen = true;
     private bool incompatibleOpen = true;
     private bool duplicatesOpen = true;
+    private bool automationsIssuesOpen = true;
 
     public HealthReportWindow(Plugin plugin)
         : base("Health Report##AetherfitHealthReport")
@@ -65,6 +66,9 @@ public sealed class HealthReportWindow : Window, IDisposable
         ImGui.Spacing();
 
         DrawFindingSection("Duplicate Designs", ref duplicatesOpen, duplicates, DrawDuplicateGroup);
+        ImGui.Spacing();
+
+        DrawAutomationsIssuesSection();
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -82,6 +86,48 @@ public sealed class HealthReportWindow : Window, IDisposable
         {
             plugin.Configuration.ClearIgnoredHealthChecks();
         }
+    }
+
+    // Automations rules are per-character, unlike the other sections above, so this doesn't reuse
+    // DrawFindingSection<T> - it also has no ignore button, since a rule's issues are fixed by editing
+    // the rule, not dismissed.
+    private void DrawAutomationsIssuesSection()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        var flagged = settings.AutomationRules
+            .Select(rule => (Rule: rule, Issues: plugin.Automation.GetRuleIssues(rule)))
+            .Where(r => r.Issues.Count > 0)
+            .ToList();
+
+        if (!Pills.DrawCollapsibleSubheader($"Automations Issues ({flagged.Count})", ref automationsIssuesOpen))
+            return;
+
+        ImGui.Indent();
+        if (flagged.Count == 0)
+        {
+            ImGui.TextDisabled("No issues found.");
+        }
+        else
+        {
+            foreach (var (rule, issues) in flagged)
+            {
+                using var rowId = ImRaii.PushId(rule.Id.ToString());
+                DesignDetailView.TextColoredUnformatted(UiTheme.ModLink, rule.Name);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                    ImGui.SetTooltip("Click to open in Automations");
+                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                        plugin.OpenAutomationRule(rule.Id);
+                }
+                ImGui.SameLine();
+                ImGui.TextDisabled($"— {string.Join("; ", issues)}");
+            }
+        }
+        ImGui.Unindent();
     }
 
     private static void DrawFindingSection<T>(string label, ref bool open, IReadOnlyList<T> items, Action<T> drawItem)

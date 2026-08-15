@@ -424,6 +424,7 @@ public class ConfigWindow : Window, IDisposable
         DrawKeybindRow("Wear Last", cfg.WearLastKeybind);
         DrawKeybindRow("Revert", cfg.RevertKeybind);
         DrawKeybindRow("Quick Search", cfg.QuickSearchKeybind);
+        DrawKeybindRow("Toggle Automations", cfg.AutomationsToggleKeybind);
 
         if (recordingKeybind != null)
             CaptureKeybind();

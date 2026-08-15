@@ -79,7 +79,7 @@ jobs:
               if: steps.vars.outputs.is_testing == 'true'
               uses: softprops/action-gh-release@v3
               with:
-                  tag_name: testing
+                  tag_name: testing-${{ steps.version.outputs.version }}
                   name: v${{ steps.version.outputs.version }}-Testing Build
                   files: ${{ steps.vars.outputs.zip_name }}
                   generate_release_notes: true
@@ -87,6 +87,21 @@ jobs:
                   prerelease: true
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Prune old testing releases
+              if: steps.vars.outputs.is_testing == 'true'
+              shell: pwsh
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'User-Agent' = 'Aetherfit-release-workflow' }
+                  $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/Kussie/Aetherfit/releases?per_page=100" -Headers $headers
+                  $old = $releases | Where-Object { $_.tag_name -like 'testing-*' } | Sort-Object -Property created_at -Descending | Select-Object -Skip 1
+                  foreach ($r in $old) {
+                      Write-Host "Deleting old testing release $($r.tag_name) (id=$($r.id))"
+                      Invoke-RestMethod -Uri "https://api.github.com/repos/Kussie/Aetherfit/releases/$($r.id)" -Headers $headers -Method Delete
+                      Invoke-RestMethod -Uri "https://api.github.com/repos/Kussie/Aetherfit/git/refs/tags/$($r.tag_name)" -Headers $headers -Method Delete
+                  }
 
             - name: Update repo.json (stable)
               if: steps.vars.outputs.is_testing == 'false'
@@ -114,6 +129,7 @@ jobs:
                   $entries = @(Get-Content "repo.json" -Raw | ConvertFrom-Json)
                   $entry = $entries | Where-Object { $_.InternalName -eq 'Aetherfit' }
                   $entry.TestingAssemblyVersion = "${{ steps.version.outputs.version }}"
+                  $entry.DownloadLinkTesting = "https://github.com/Kussie/Aetherfit/releases/download/testing-${{ steps.version.outputs.version }}/latest-testing.zip"
                   $json = (ConvertTo-Json -InputObject $entries -Depth 10) -replace '(?m)^(\s+)', '$1$1'
                   Set-Content -Path "repo.json" -Value $json -Encoding utf8NoBOM
 

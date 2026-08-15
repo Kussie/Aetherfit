@@ -21,6 +21,13 @@ internal static class ChangelogData
             "Batch Screenshot mode: pick a set of designs by tag, job or source and Aetherfit applies each one in turn, waits, captures it with a fixed centered crop, and saves it as that design's cover - unattended.",
             "New equipment slot filters in design and gallery views.",
         }),
+        new(2, "Automation and Slot Based Applications", new[]
+        {
+            "Added a robust automation system to automatically equip designs based on specific conditions",
+            "Added the ability to select a one or more slots on a design to apply",
+            "Added ability to do bulk tagging of designs in the gallery view",
+            "Hopefully fixed a race condition that prevented the last known design from being applied on login at times"
+        }),
     };
 
     public static int LatestRevision => Entries.Length == 0 ? 0 : Entries.Max(e => e.Revision);

@@ -43,11 +43,17 @@ public sealed class GameDataService
     private readonly ExcelSheet<Glasses>? glassesSheet;
     private readonly ExcelSheet<ClassJobCategory>? classJobCategorySheet;
     private readonly ExcelSheet<EquipRaceCategory>? equipRaceCategorySheet;
+    private readonly ExcelSheet<TerritoryType>? territoryTypeSheet;
+    private readonly ExcelSheet<Weather>? weatherSheet;
+    private readonly ExcelSheet<Mount>? mountSheet;
     private readonly DictJob dictJob;
 
     private readonly ConcurrentDictionary<ulong, string> itemNameCache = new();
     private readonly ConcurrentDictionary<byte, (string Name, uint Color)> stainCache = new();
     private readonly ConcurrentDictionary<ulong, string> glassesNameCache = new();
+    private readonly ConcurrentDictionary<uint, string> territoryNameCache = new();
+    private readonly ConcurrentDictionary<byte, string> weatherNameCache = new();
+    private readonly ConcurrentDictionary<uint, string> mountNameCache = new();
 
     // ClassJob RowId, for the jobs we surface as associations. The job list is fixed, so a curated set is more
     // reliable than taking every DictJob entry: that would include pre-job-stone base classes (Gladiator, etc.)
@@ -79,6 +85,9 @@ public sealed class GameDataService
         glassesSheet = TryLoadSheet<Glasses>();
         classJobCategorySheet = TryLoadSheet<ClassJobCategory>();
         equipRaceCategorySheet = TryLoadSheet<EquipRaceCategory>();
+        territoryTypeSheet = TryLoadSheet<TerritoryType>();
+        weatherSheet = TryLoadSheet<Weather>();
+        mountSheet = TryLoadSheet<Mount>();
         dictJob = new DictJob(Plugin.DataManager);
     }
 
@@ -237,6 +246,96 @@ public sealed class GameDataService
     };
 
     public bool IsKnownJob(uint rowId) => SelectableJobIds.Contains(rowId);
+
+    public string ResolveTerritoryName(uint territoryId) => Resolve(territoryNameCache, territoryId, LookupTerritoryName);
+
+    private string LookupTerritoryName(uint territoryId)
+    {
+        if (territoryTypeSheet == null || !territoryTypeSheet.TryGetRow(territoryId, out var row))
+            return $"Zone {territoryId}";
+
+        var name = row.PlaceName.ValueNullable?.Name.ExtractText();
+        return string.IsNullOrWhiteSpace(name) ? $"Zone {territoryId}" : name;
+    }
+
+    public string ResolveWeatherName(byte weatherId) => Resolve(weatherNameCache, weatherId, LookupWeatherName);
+
+    private string LookupWeatherName(byte weatherId)
+    {
+        if (weatherSheet == null || !weatherSheet.TryGetRow(weatherId, out var row))
+            return $"Weather {weatherId}";
+
+        var name = row.Name.ExtractText();
+        return string.IsNullOrWhiteSpace(name) ? $"Weather {weatherId}" : name;
+    }
+
+    // The sheet has far more rows than distinct weather types - the same name (e.g. "Clear Skies") shows
+    // up under several row ids, one per zone/context it's used in. Grouped by name so the checkbox list
+    // shows each weather once; picking it adds every id sharing that name to the condition.
+    public List<(List<byte> Ids, string Name)> GetAllWeathers()
+        => weatherSheet?.Where(w => w.RowId > 0 && !string.IsNullOrWhiteSpace(w.Name.ExtractText()))
+            .GroupBy(w => w.Name.ExtractText(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Select(w => (byte)w.RowId).ToList(), g.Key))
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? new List<(List<byte>, string)>();
+
+    public string ResolveMountName(uint mountId) => Resolve(mountNameCache, mountId, LookupMountName);
+
+    private string LookupMountName(uint mountId)
+    {
+        if (mountSheet == null || !mountSheet.TryGetRow(mountId, out var row))
+            return $"Mount {mountId}";
+
+        var name = row.Singular.ExtractText();
+        return string.IsNullOrWhiteSpace(name) ? $"Mount {mountId}" : name;
+    }
+
+    // WeatherManager has no Dalamud-level wrapper - same situation RaptureAtkModule was in (see Plugin.cs).
+    public unsafe byte GetCurrentWeatherId()
+    {
+        var weatherManager = FFXIVClientStructs.FFXIV.Client.Game.WeatherManager.Instance();
+        return weatherManager != null ? weatherManager->GetCurrentWeather() : (byte)0;
+    }
+
+    // EorzeaTime is the game's own Unix-style timestamp already expressed on Eorzea's clock, not a
+    // hand-rolled real-time-to-Eorzea conversion.
+    public unsafe int GetCurrentEorzeaHour()
+    {
+        var framework = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework.Instance();
+        if (framework == null)
+            return 0;
+
+        return DateTimeOffset.FromUnixTimeSeconds(framework->ClientTime.EorzeaTime).UtcDateTime.Hour;
+    }
+
+    public unsafe ushort GetCurrentMountId()
+    {
+        if (Plugin.ObjectTable.LocalPlayer is not { } localPlayer)
+            return 0;
+
+        var character = (FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)localPlayer.Address;
+        return character->Mount.MountId;
+    }
+
+    // Ward is -1 (sentinel) whenever the player isn't anywhere in a housing area at all - the gate for
+    // the rest of the fields. IsApartment comes straight off HouseId rather than being inferred from
+    // the room number, since that's exactly what it's for.
+    public readonly record struct HousingState(bool InHousing, bool IsApartment, uint TerritoryTypeId, int Ward, int Plot, int Room);
+
+    public unsafe HousingState GetCurrentHousingState()
+    {
+        var housingManager = FFXIVClientStructs.FFXIV.Client.Game.HousingManager.Instance();
+        if (housingManager == null)
+            return default;
+
+        var ward = housingManager->GetCurrentWard();
+        if (ward < 0)
+            return default;
+
+        var houseId = housingManager->GetCurrentHouseId();
+        return new HousingState(true, houseId.IsApartment, Plugin.ClientState.TerritoryType,
+            ward, housingManager->GetCurrentPlot(), housingManager->GetCurrentRoom());
+    }
 
     public IDalamudTextureWrap? GetJobIcon(uint rowId)
     {
