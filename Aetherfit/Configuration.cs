@@ -197,6 +197,11 @@ public class Configuration : IPluginConfiguration
     // Per-character login settings, indexed by FFXIV ContentId.  This at least stays the same even on name changes and world transfers.
     public Dictionary<ulong, CharacterLoginSettings> CharacterLoginSettings { get; set; } = new();
 
+    // ContentId -> "Name @ World", recorded on every login so a character can still be identified
+    // later even while offline (e.g. picking an Automations copy-to target). Best-effort - entries
+    // from before this field existed won't have a name until that character logs in again.
+    public Dictionary<ulong, string> CharacterDisplayNames { get; set; } = new();
+
     public bool TagSuggestionEnabled { get; set; } = true;
 
     public float TagSuggestionThreshold { get; set; } = 0.35f;

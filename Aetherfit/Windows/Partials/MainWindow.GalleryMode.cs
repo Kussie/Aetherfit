@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using Aetherfit.Services.Export;
 using Aetherfit.Services.Integrations;
@@ -19,7 +20,13 @@ public partial class MainWindow
 {
     private enum GallerySortField { Name, LastModified, Created, LastWorn }
 
+    private const string BulkAddTagPopupId = "BulkAddDesignTagPopup";
+
     private bool coverMode;
+    private bool bulkSelectMode;
+    private readonly HashSet<Guid> bulkSelectedIds = new();
+    private string bulkAddTagSearchText = string.Empty;
+    private bool bulkAddTagReclaimFocus;
     private readonly Dictionary<Guid, int> galleryImageIndex = new();
     // Which variant is currently fronted in a parent's card stack - 0 = the parent itself, 1..n =
     // GetVisibleVariantsFor(parent)[n-1]. Same resolve-and-clamp shape as galleryImageIndex.
@@ -79,12 +86,41 @@ public partial class MainWindow
         if (IsGalleryCacheStale())
             RebuildGalleryCache();
 
+        DrawBulkSelectControls();
         DrawGallerySortControls();
         ImGui.Spacing();
 
         using var gridChild = ImRaii.Child("CoverGridScroll", Vector2.Zero, false);
         if (gridChild.Success)
             DrawCoverGrid();
+    }
+
+    private void DrawBulkSelectControls()
+    {
+        var label = bulkSelectMode ? $"Done Selecting ({bulkSelectedIds.Count})" : "Select Designs";
+        if (IconTextButton(FontAwesomeIcon.Tags, label))
+        {
+            bulkSelectMode = !bulkSelectMode;
+            if (!bulkSelectMode)
+                bulkSelectedIds.Clear();
+        }
+        if (bulkSelectMode)
+        {
+            ImGui.SameLine();
+            using (ImRaii.Disabled(bulkSelectedIds.Count == 0))
+            {
+                if (ImGui.Button("Add Tag to Selected..."))
+                    ImGui.OpenPopup(BulkAddTagPopupId);
+            }
+            ImGui.SameLine();
+            using (ImRaii.Disabled(bulkSelectedIds.Count == 0))
+            {
+                if (ImGui.Button("Clear Selection"))
+                    bulkSelectedIds.Clear();
+            }
+        }
+        DrawBulkAddTagPopup();
+        ImGui.Spacing();
     }
 
     // onlyIds null = export everything; otherwise just those designs (the currently filtered list).
@@ -575,47 +611,80 @@ public partial class MainWindow
         if (imageHovered)
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+
+            if (bulkSelectMode)
             {
-                if (overStar)
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !overLeft && !overRight)
                 {
-                    if (isFavourite)
-                        plugin.Configuration.FavouriteDesigns.Remove(design.Id);
-                    else
-                        plugin.Configuration.FavouriteDesigns.Add(design.Id);
-                    plugin.Configuration.Save();
-                    favouriteVersion++;
+                    // A stacked card represents the parent + all its variants - select/deselect the whole
+                    // family together, not just whichever variant happens to be fronted right now.
+                    var stackIds = new List<Guid> { parentDesign.Id };
+                    stackIds.AddRange(variants.Select(v => v.Id));
+                    var anySelected = stackIds.Any(bulkSelectedIds.Contains);
+                    foreach (var stackId in stackIds)
+                    {
+                        if (anySelected)
+                            bulkSelectedIds.Remove(stackId);
+                        else
+                            bulkSelectedIds.Add(stackId);
+                    }
                 }
-                else if (overEye)
+                if (!overLeft && !overRight)
                 {
-                    // Visible cells are never hidden, so a click here always hides the design (it then drops
-                    // out of the gallery). Unhiding happens from the detail header.
-                    plugin.Configuration.HiddenDesigns.Add(design.Id);
-                    plugin.Configuration.Save();
-                    hiddenVersion++;
+                    ImGui.SetTooltip(bulkSelectedIds.Contains(design.Id)
+                        ? (variants.Count > 0 ? "Click to deselect (whole stack)" : "Click to deselect")
+                        : (variants.Count > 0 ? "Click to select (whole stack)" : "Click to select"));
                 }
-                else if (overLeft)
-                    galleryImageIndex[design.Id] = imgIdx - 1;
-                else if (overRight)
-                    galleryImageIndex[design.Id] = imgIdx + 1;
-                else if (ImGui.GetIO().KeyShift)
-                    shiftClicked = true;
-                else
-                    clicked = true;
             }
-            if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && !overLeft && !overRight && !overStar && !overEye)
-                rightClicked = true;
-            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !overLeft && !overRight && !overStar && !overEye)
-                doubleClicked = true;
-            if (overStar)
-                ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
-            else if (overEye)
-                ImGui.SetTooltip("Click to hide from the gallery and exports");
-            else if (!overLeft && !overRight)
-                DrawCoverCellTooltip(design);
+            else
+            {
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                {
+                    if (overStar)
+                    {
+                        if (isFavourite)
+                            plugin.Configuration.FavouriteDesigns.Remove(design.Id);
+                        else
+                            plugin.Configuration.FavouriteDesigns.Add(design.Id);
+                        plugin.Configuration.Save();
+                        favouriteVersion++;
+                    }
+                    else if (overEye)
+                    {
+                        // Visible cells are never hidden, so a click here always hides the design (it then drops
+                        // out of the gallery). Unhiding happens from the detail header.
+                        plugin.Configuration.HiddenDesigns.Add(design.Id);
+                        plugin.Configuration.Save();
+                        hiddenVersion++;
+                    }
+                    else if (overLeft)
+                        galleryImageIndex[design.Id] = imgIdx - 1;
+                    else if (overRight)
+                        galleryImageIndex[design.Id] = imgIdx + 1;
+                    else if (ImGui.GetIO().KeyShift)
+                        shiftClicked = true;
+                    else
+                        clicked = true;
+                }
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && !overLeft && !overRight && !overStar && !overEye)
+                    rightClicked = true;
+                if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !overLeft && !overRight && !overStar && !overEye)
+                    doubleClicked = true;
+                if (overStar)
+                    ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
+                else if (overEye)
+                    ImGui.SetTooltip("Click to hide from the gallery and exports");
+                else if (!overLeft && !overRight)
+                    DrawCoverCellTooltip(design);
+            }
         }
 
-        if (selectedDesign == design.Id)
+        if (bulkSelectMode && bulkSelectedIds.Contains(design.Id))
+        {
+            ImGui.GetWindowDrawList().AddRect(thumbStart, cellMax,
+                ImGui.ColorConvertFloat4ToU32(UiTheme.StateOn), 4f, ImDrawFlags.None, 2.5f);
+        }
+        else if (selectedDesign == design.Id)
         {
             var dl = ImGui.GetWindowDrawList();
             var hl = ImGui.ColorConvertFloat4ToU32(UiTheme.GoldAccent);
@@ -756,6 +825,71 @@ public partial class MainWindow
         var fitted = TextFit.Ellipsize(label, width);
         cellLabelCache[id] = (label, width, fitted);
         return fitted;
+    }
+
+    private void DrawBulkAddTagPopup()
+    {
+        using var popup = ImRaii.Popup(BulkAddTagPopupId);
+        if (!popup.Success)
+            return;
+
+        if (ImGui.IsWindowAppearing() || bulkAddTagReclaimFocus)
+        {
+            ImGui.SetKeyboardFocusHere();
+            bulkAddTagReclaimFocus = false;
+        }
+
+        ImGui.TextDisabled($"Adding to {bulkSelectedIds.Count} selected design(s).");
+        ImGui.SetNextItemWidth(220 * ImGuiHelpers.GlobalScale);
+        var submitted = ImGui.InputTextWithHint("##bulkAddTagSearch", "Type or search a tag...",
+            ref bulkAddTagSearchText, 64, ImGuiInputTextFlags.EnterReturnsTrue);
+
+        var trimmed = bulkAddTagSearchText.Trim();
+        var existingTags = plugin.Configuration.DistinctSortedTags()
+            .Where(t => trimmed.Length == 0 || t.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var isNewTag = trimmed.Length > 0 && !existingTags.Contains(trimmed, StringComparer.OrdinalIgnoreCase);
+
+        void ApplyTag(string tag)
+        {
+            foreach (var selectedId in bulkSelectedIds)
+                if (plugin.Configuration.CachedOutfits.TryGetValue(selectedId, out var outfit))
+                    plugin.Configuration.AddTag(selectedId, outfit, tag);
+            bulkAddTagSearchText = string.Empty;
+            bulkAddTagReclaimFocus = true;
+        }
+
+        if (submitted)
+        {
+            if (trimmed.Length > 0)
+                ApplyTag(trimmed);
+            else
+                ImGui.CloseCurrentPopup();
+        }
+
+        ImGui.Separator();
+
+        if (isNewTag && ImGui.Selectable($"Add new tag \"{trimmed}\""))
+            ApplyTag(trimmed);
+
+        if (existingTags.Count == 0)
+        {
+            if (!isNewTag)
+                ImGui.TextDisabled(trimmed.Length > 0 ? "No matching tags." : "No tags yet.");
+            return;
+        }
+
+        if (isNewTag)
+            ImGui.Separator();
+
+        var listHeight = Math.Min(existingTags.Count, 8) * ImGui.GetTextLineHeightWithSpacing();
+        using var scroll = ImRaii.Child("BulkAddTagList", new Vector2(220 * ImGuiHelpers.GlobalScale, listHeight), false);
+        if (!scroll.Success)
+            return;
+
+        foreach (var tag in existingTags)
+            if (ImGui.Selectable(tag))
+                ApplyTag(tag);
     }
 
     private void DrawCoverCellTooltip(DesignLeaf design)

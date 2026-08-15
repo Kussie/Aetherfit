@@ -24,7 +24,9 @@ internal static class ChangelogData
         new(2, "Automation and Slot Based Applications", new[]
         {
             "Added a robust automation system to automatically equip designs based on specific conditions",
-            "Added the ability to select a one or more slots on a design to apply"
+            "Added the ability to select a one or more slots on a design to apply",
+            "Added ability to do bulk tagging of designs in the gallery view",
+            "Hopefully fixed a race condition that prevented the last known design from being applied on login at times"
         }),
     };
 
