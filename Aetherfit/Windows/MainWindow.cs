@@ -273,7 +273,7 @@ public partial class MainWindow : Window, IDisposable
 
     public bool IsRefreshing => activeRefresh != null;
 
-    private void RefreshDesigns()
+    internal void RefreshDesigns()
     {
         var entries = new List<(IDesignProvider Provider, Guid NativeId, Guid AetherfitId)>();
         var leaves = new List<DesignLeaf>();
@@ -493,9 +493,10 @@ public partial class MainWindow : Window, IDisposable
         DrawSharePopup();
         ImGui.SameLine();
 
-        if (IconTextButton(FontAwesomeIcon.FolderOpen, "Open Shared Gallery", dropdown: true))
+        if (IconTextButton(FontAwesomeIcon.FolderOpen, "Import", dropdown: true))
             ImGui.OpenPopup("##openGalleryPopup");
         DrawOpenGalleryPopup();
+        DrawImportDesignCodePopup();
         ImGui.SameLine();
 
         if (IconTextButton(FontAwesomeIcon.Stethoscope, "Health Report", warning: HasHealthIssues(),

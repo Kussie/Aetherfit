@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using Aetherfit.Services.Export;
+using Aetherfit.Services.Game;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Sharing;
 using Aetherfit.Ui;
@@ -783,6 +784,8 @@ public partial class MainWindow
             ApplyDesignById(design.Id);
         }
 
+        DrawApplySingleSlotSubmenu(design);
+
         var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
         if (ImGui.MenuItem(isFavourite ? "Remove from Favourites" : "Add to Favourites"))
         {
@@ -804,7 +807,7 @@ public partial class MainWindow
 
         ImGui.Separator();
 
-        if (ImGui.MenuItem("Show in the tree"))
+        if (ImGui.MenuItem("Open in Edit Mode"))
         {
             selectedDesign = design.Id;
             RevealDesignInTree(design.Id);
@@ -814,6 +817,43 @@ public partial class MainWindow
             && outfit.Source == DesignSource.Glamourer
             && ImGui.MenuItem("Open in Glamourer"))
             plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
+    }
+
+    // Same "Apply Just This" mechanism the design detail pane's equipment rows already use, just
+    // reachable straight from the gallery grid without opening the design first.
+    private void DrawApplySingleSlotSubmenu(DesignLeaf design)
+    {
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var outfit))
+            return;
+
+        var slotMap = outfit.Equipment.ToDictionary(e => e.Slot);
+        var bonusMap = outfit.BonusItems.ToDictionary(b => b.Slot);
+
+        // ItemId == 0 alone misses Glamourer's other "empty slot" sentinels (its "nothing"/
+        // "smallclothes" ids, up near uint.MaxValue) - checking the resolved name against
+        // NothingItemName catches every case ResolveItemName/ResolveBonusItemName already know about.
+        var equipmentSlots = DesignDetailView.SlotDisplay
+            .Where(s => slotMap.ContainsKey(s.Slot))
+            .Select(s => (s.Slot, s.Label, ItemName: plugin.GameData.ResolveItemName(slotMap[s.Slot].ItemId)))
+            .Where(s => s.ItemName != GameDataService.NothingItemName)
+            .ToList();
+        var bonusSlots = DesignDetailView.BonusSlotDisplay
+            .Where(b => bonusMap.ContainsKey(b.SlotKey))
+            .Select(b => (b.SlotKey, b.Label, ItemName: plugin.GameData.ResolveBonusItemName(b.SlotKey, bonusMap[b.SlotKey].ItemId)))
+            .Where(b => b.ItemName != GameDataService.NothingItemName)
+            .ToList();
+
+        using var subMenu = ImRaii.Menu("Apply Single Slot", equipmentSlots.Count > 0 || bonusSlots.Count > 0);
+        if (!subMenu.Success)
+            return;
+
+        foreach (var (slot, label, itemName) in equipmentSlots)
+            if (ImGui.MenuItem($"{label}: {itemName}"))
+                plugin.DesignApply.ApplySingleEquipmentSlot(design.Id, slot, label);
+
+        foreach (var (slotKey, label, itemName) in bonusSlots)
+            if (ImGui.MenuItem($"{label}: {itemName}"))
+                plugin.DesignApply.ApplySingleBonusItem(design.Id, slotKey, label);
     }
 
     private string FitCellLabel(Guid id, string label, float width)

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Aetherfit.Services.Integrations;
+using Aetherfit.Services.Persistence;
 using Aetherfit.Services.Tagging;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
@@ -10,6 +11,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
+using Dalamud.Interface.ImGuiFileDialog;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
@@ -21,8 +23,14 @@ public class ConfigWindow : Window, IDisposable
     private readonly Plugin plugin;
     private const string LoginTagsPopupId = "LoginTagsPopup";
     private const string DeleteAllImagesPopupId = "Delete All Images?##deleteAllImagesConfirm";
+    private const string ImportBackupConfirmPopupId = "Import Settings Backup?##importBackupConfirm";
     private string loginTagSearchText = string.Empty;
     private List<string> availableLoginTags = [];
+    private readonly FileDialogManager fileDialog = new();
+    private Configuration? pendingBackupConfirm;
+    private Configuration? pendingDesignDataImport;
+    private string? backupStatusMessage;
+    private string? backupError;
 
     public ConfigWindow(Plugin plugin)
         : base("Aetherfit Settings###AetherfitConfig")
@@ -43,16 +51,21 @@ public class ConfigWindow : Window, IDisposable
         DrawCharacterLine();
         ImGui.Spacing();
 
-        using var tabBar = ImRaii.TabBar("##settingsTabs");
-        if (!tabBar.Success)
-            return;
+        using (var tabBar = ImRaii.TabBar("##settingsTabs"))
+        {
+            if (tabBar.Success)
+            {
+                DrawTab("General", DrawGeneralTab);
+                DrawTab("Login & Zoning", DrawLoginSection);
+                DrawTab("Tag Suggestions", DrawTagSuggestionsSection);
+                DrawTab("Commands", DrawCommandsSection);
+                DrawTab("Keybinds", DrawKeybindsSection);
+                DrawTab("Integrations", DrawIntegrationsTab);
+                DrawTab("Backup & Restore", DrawBackupTab);
+            }
+        }
 
-        DrawTab("General", DrawGeneralTab);
-        DrawTab("Login & Zoning", DrawLoginSection);
-        DrawTab("Tag Suggestions", DrawTagSuggestionsSection);
-        DrawTab("Commands", DrawCommandsSection);
-        DrawTab("Keybinds", DrawKeybindsSection);
-        DrawTab("Integrations", DrawIntegrationsTab);
+        fileDialog.Draw();
     }
 
     private static void DrawTab(string label, Action drawContent)
@@ -530,6 +543,108 @@ public class ConfigWindow : Window, IDisposable
             extra: plugin.Configuration.SimpleGlamourSwitcherEnabled ? () =>
                 plugin.Configuration.SimpleGlamourSwitcherResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
                     "SimpleGlamourSwitcher", plugin.Configuration.SimpleGlamourSwitcherResetTemporarySettingsBeforeApply) : null);
+        ImGui.Spacing();
+
+        var wardrobeInfo = plugin.Wardrobe.CheckIntegration();
+        DrawIntegrationRow("Wardrobe", wardrobeInfo,
+            rightAligned: () => plugin.Configuration.WardrobeEnabled = DrawRightAlignedCheckbox(
+                "Wardrobe", plugin.Configuration.WardrobeEnabled, "Source designs from Wardrobe",
+                wardrobeInfo.Status == PluginIntegrationStatus.Ok),
+            extra: plugin.Configuration.WardrobeEnabled ? () =>
+                plugin.Configuration.WardrobeResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
+                    "Wardrobe", plugin.Configuration.WardrobeResetTemporarySettingsBeforeApply) : null);
+    }
+
+    private void DrawBackupTab()
+    {
+        ImGui.TextWrapped("Back up Aetherfit's own data - tags, descriptions, favourites, job "
+            + "associations, Automations rules, and general settings. Designs themselves aren't "
+            + "included; they're always sourced fresh from Glamourer/Glamaholic/etc, so there's "
+            + "nothing to restore there.");
+        ImGui.Spacing();
+
+        if (ImGui.Button("Export Backup..."))
+        {
+            backupError = null;
+            var defaultName = "Aetherfit Backup" + SettingsBackupService.FileExtension;
+            fileDialog.SaveFileDialog(
+                "Export Settings Backup",
+                $"Aetherfit Backup{{{SettingsBackupService.FileExtension}}}",
+                defaultName,
+                SettingsBackupService.FileExtension,
+                (success, path) =>
+                {
+                    if (!success || string.IsNullOrEmpty(path))
+                        return;
+                    plugin.SettingsBackup.ExportToFile(plugin.Configuration, path);
+                    Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Exported settings backup to {path}");
+                });
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button("Import Backup..."))
+        {
+            backupError = null;
+            fileDialog.OpenFileDialog(
+                "Import Settings Backup",
+                $"Aetherfit Backup{{{SettingsBackupService.FileExtension}}}",
+                (success, paths) =>
+                {
+                    if (!success || paths.Count == 0)
+                        return;
+                    if (plugin.SettingsBackup.TryReadBackup(paths[0], out var imported, out var error))
+                    {
+                        pendingBackupConfirm = imported;
+                        ImGui.OpenPopup(ImportBackupConfirmPopupId);
+                    }
+                    else
+                    {
+                        backupError = error;
+                    }
+                },
+                1);
+        }
+
+        if (backupError != null)
+            ImGui.TextColored(UiTheme.ErrorText, backupError);
+
+        if (backupStatusMessage != null)
+            ImGui.TextWrapped(backupStatusMessage);
+
+        if (pendingBackupConfirm != null)
+        {
+            if (ConfirmDialog.Draw(ImportBackupConfirmPopupId,
+                    "This will overwrite your general settings and each character's Automations rules, "
+                    + "and add tags/favourites/job associations/etc. back onto any designs that still "
+                    + "exist. This can't be undone.",
+                    "Import", holdToConfirm: true))
+            {
+                var imported = pendingBackupConfirm;
+                pendingBackupConfirm = null;
+
+                plugin.Configuration.ApplySettingsBackup(imported!);
+                plugin.Configuration.ApplyCharacterDataBackup(imported!);
+                plugin.Configuration.Save();
+                plugin.MainWindow.RefreshDesigns();
+                pendingDesignDataImport = imported;
+                backupStatusMessage = "Settings restored. Reconciling tags/favourites against your current designs...";
+            }
+            else if (!ImGui.IsPopupOpen(ImportBackupConfirmPopupId))
+            {
+                pendingBackupConfirm = null;
+            }
+        }
+
+        // Waits for the refresh kicked off above to finish - ApplyDesignDataBackup needs a post-refresh
+        // CachedOutfits to know what still exists.
+        if (pendingDesignDataImport != null && !plugin.MainWindow.IsRefreshing)
+        {
+            var (matched, skipped) = plugin.Configuration.ApplyDesignDataBackup(pendingDesignDataImport);
+            plugin.Configuration.Save();
+            backupStatusMessage = $"Settings restored. Applied tags/favourites/etc. to {matched} "
+                + $"design(s) still present; skipped {skipped} no longer found.";
+            pendingDesignDataImport = null;
+        }
     }
 
     // Right-aligned on whatever row it's drawn from, matching DrawFilterHeaderOverlay's "N active"/

@@ -32,7 +32,10 @@ public partial class MainWindow
     private bool filterVanillaOnly;
     private bool filterModdedOnly;
     private bool filterNeverWorn;
-    private bool filterMissingModAssociation;
+    private bool filterHealthReportIssues;
+    private HashSet<Guid> cachedFlaggedDesignIds = new();
+    private int cachedFlaggedGeneration = -1;
+    private int cachedFlaggedIgnoreVersion = -1;
     // A design must have real gear (Apply on, item not empty) in every selected slot - AND, not OR.
     private readonly HashSet<EquipmentSlot> filterEquipmentSlots = new();
     private List<string> availableTagsForFilter = new();
@@ -49,7 +52,7 @@ public partial class MainWindow
                               || filterVanillaOnly
                               || filterModdedOnly
                               || filterNeverWorn
-                              || filterMissingModAssociation
+                              || filterHealthReportIssues
                               || filterEquipmentSlots.Count > 0;
 
     private int ActiveFilterCount => (filterName.Length > 0 ? 1 : 0)
@@ -61,7 +64,7 @@ public partial class MainWindow
                                    + (filterVanillaOnly ? 1 : 0)
                                    + (filterModdedOnly ? 1 : 0)
                                    + (filterNeverWorn ? 1 : 0)
-                                   + (filterMissingModAssociation ? 1 : 0)
+                                   + (filterHealthReportIssues ? 1 : 0)
                                    + filterEquipmentSlots.Count;
 
 
@@ -75,12 +78,12 @@ public partial class MainWindow
         bool VanillaOnly,
         bool ModdedOnly,
         bool NeverWorn,
-        bool MissingModAssociation);
+        bool HealthReportIssues);
 
     private FilterSnapshot CaptureFilterSnapshot() => new(
         filterName, searchDesignName, searchModName, searchEquipmentName,
         filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly,
-        filterNeverWorn, filterMissingModAssociation);
+        filterNeverWorn, filterHealthReportIssues);
 
     // extraControls renders view-specific rows (e.g. the "Group by..." checkboxes) inside the same
     // collapsible Filters panel, after the shared controls - each view owns its own grouping state,
@@ -152,7 +155,7 @@ public partial class MainWindow
         filterVanillaOnly = false;
         filterModdedOnly = false;
         filterNeverWorn = false;
-        filterMissingModAssociation = false;
+        filterHealthReportIssues = false;
         filterEquipmentSlots.Clear();
     }
 
@@ -211,9 +214,9 @@ public partial class MainWindow
     private const string VanillaToggleLabel = "Vanilla";
     private const string ModdedToggleLabel = "Modded";
     private const string NeverWornToggleLabel = "Never Worn";
-    private const string MissingModToggleLabel = "⚠ Broken Mods";
+    private const string HealthReportToggleLabel = "⚠ Health Issues";
 
-    // Favourites / Vanilla / Modded / Never Worn / Broken Mods as pill toggles, matching the D/M/E
+    // Favourites / Vanilla / Modded / Never Worn / Health Issues as pill toggles, matching the D/M/E
     // scope style. In the narrow pane they wrap instead of overflowing.
     private void DrawQuickToggles(bool wide)
     {
@@ -236,8 +239,8 @@ public partial class MainWindow
             DrawModdedToggle();
             Pills.PlaceItem(PillWidth(NeverWornToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
             DrawNeverWornToggle();
-            Pills.PlaceItem(PillWidth(MissingModToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
-            DrawMissingModAssociationToggle();
+            Pills.PlaceItem(PillWidth(HealthReportToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
+            DrawHealthReportIssuesToggle();
             return;
         }
 
@@ -249,7 +252,7 @@ public partial class MainWindow
         ImGui.SameLine();
         DrawNeverWornToggle();
         ImGui.SameLine();
-        DrawMissingModAssociationToggle();
+        DrawHealthReportIssuesToggle();
     }
 
     private void DrawFavouritesToggle()
@@ -272,12 +275,12 @@ public partial class MainWindow
             ImGui.SetTooltip("Show only designs that have never been applied");
     }
 
-    private void DrawMissingModAssociationToggle()
+    private void DrawHealthReportIssuesToggle()
     {
-        if (Pills.DrawToggle(MissingModToggleLabel, "missingModFilter", filterMissingModAssociation))
-            filterMissingModAssociation = !filterMissingModAssociation;
+        if (Pills.DrawToggle(HealthReportToggleLabel, "healthReportFilter", filterHealthReportIssues))
+            filterHealthReportIssues = !filterHealthReportIssues;
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Show only designs whose mod associations reference an uninstalled mod");
+            ImGui.SetTooltip("Show only designs flagged in the Health Report");
     }
 
     // Compact letter toggle (D/M/E) standing in for a long checkbox label; the full meaning lives in the tooltip.
@@ -412,6 +415,21 @@ public partial class MainWindow
         return false;
     }
 
+    private HashSet<Guid> FlaggedDesignIds()
+    {
+        if (cachedFlaggedGeneration != designListGeneration || cachedFlaggedIgnoreVersion != plugin.Configuration.HealthCheckIgnoreVersion)
+        {
+            cachedFlaggedDesignIds = plugin.HealthReport.FindMissingModAssociations().Select(f => f.Id)
+                .Concat(plugin.HealthReport.FindBrokenItems().Select(f => f.Id))
+                .Concat(plugin.HealthReport.FindIncompatibleDesigns().Select(f => f.Id))
+                .Concat(plugin.HealthReport.FindDuplicates().SelectMany(g => g.Designs.Select(d => d.Id)))
+                .ToHashSet();
+            cachedFlaggedGeneration = designListGeneration;
+            cachedFlaggedIgnoreVersion = plugin.Configuration.HealthCheckIgnoreVersion;
+        }
+        return cachedFlaggedDesignIds;
+    }
+
     private bool DesignMatchesFilters(DesignLeaf design, CachedOutfit? cached)
     {
         if (cached != null && !plugin.Configuration.IsProviderEnabled(cached.Source))
@@ -455,7 +473,7 @@ public partial class MainWindow
         if (filterNeverWorn && cached?.LastAppliedAt != null)
             return false;
 
-        if (filterMissingModAssociation && (cached == null || !plugin.Attribution.HasMissingModAssociation(cached)))
+        if (filterHealthReportIssues && !FlaggedDesignIds().Contains(design.Id))
             return false;
 
         if (filterEquipmentSlots.Count > 0)

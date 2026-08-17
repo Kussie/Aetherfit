@@ -136,24 +136,28 @@ public class Configuration : IPluginConfiguration
     public bool GlamaholicEnabled { get; set; } = true;
     public bool GlamourPlateEnabled { get; set; } = true;
     public bool SimpleGlamourSwitcherEnabled { get; set; } = true;
+    public bool WardrobeEnabled { get; set; } = true;
 
     public bool IsProviderEnabled(DesignSource source) => source switch
     {
         DesignSource.Glamaholic => GlamaholicEnabled,
         DesignSource.GlamourPlate => GlamourPlateEnabled,
         DesignSource.SimpleGlamourSwitcher => SimpleGlamourSwitcherEnabled,
+        DesignSource.Wardrobe => WardrobeEnabled,
         _ => true, // Glamourer (and any future required source) has no toggle
     };
 
     public bool GlamaholicResetTemporarySettingsBeforeApply { get; set; }
     public bool GlamourPlateResetTemporarySettingsBeforeApply { get; set; }
     public bool SimpleGlamourSwitcherResetTemporarySettingsBeforeApply { get; set; }
+    public bool WardrobeResetTemporarySettingsBeforeApply { get; set; }
 
     public bool ResetTemporarySettingsBeforeApply(DesignSource source) => source switch
     {
         DesignSource.Glamaholic => GlamaholicResetTemporarySettingsBeforeApply,
         DesignSource.GlamourPlate => GlamourPlateResetTemporarySettingsBeforeApply,
         DesignSource.SimpleGlamourSwitcher => SimpleGlamourSwitcherResetTemporarySettingsBeforeApply,
+        DesignSource.Wardrobe => WardrobeResetTemporarySettingsBeforeApply,
         _ => false,
     };
 
@@ -244,6 +248,89 @@ public class Configuration : IPluginConfiguration
 
     [Newtonsoft.Json.JsonExtensionData]
     private IDictionary<string, Newtonsoft.Json.Linq.JToken>? ExtensionData { get; set; }
+
+    // Design content and install-specific bookkeeping never travel in a backup - the per-design/
+    // per-character fields are restored separately below with their own filtering, not a blind copy.
+    private static readonly HashSet<string> BackupExcludedProperties = new(StringComparer.Ordinal)
+    {
+        nameof(Version), nameof(LastSeenChangelogRevision), nameof(LiveShareInstallId),
+        nameof(CachedOutfits), nameof(OutfitImages), nameof(OutfitAdditionalImages),
+        nameof(DesignMeta), nameof(FavouriteDesigns), nameof(HiddenDesigns), nameof(DesignJobAssociations),
+        nameof(DesignLayerSlots), nameof(DesignVariants), nameof(IgnoredHealthChecks),
+        nameof(CharacterLoginSettings), nameof(CharacterDisplayNames),
+    };
+
+    public string BuildBackupJson()
+    {
+        var clone = JsonConvert.DeserializeObject<Configuration>(JsonConvert.SerializeObject(this))!;
+        clone.CachedOutfits.Clear();
+        clone.OutfitImages.Clear();
+        clone.OutfitAdditionalImages.Clear();
+        clone.Version = 0;
+        clone.LastSeenChangelogRevision = 0;
+        clone.LiveShareInstallId = string.Empty;
+        return JsonConvert.SerializeObject(clone, Formatting.Indented);
+    }
+
+    // Reflection rather than a hand-maintained field list, so a new Configuration property is backed
+    // up by default instead of silently missing until someone remembers to add it here.
+    public void ApplySettingsBackup(Configuration imported)
+    {
+        foreach (var prop in typeof(Configuration).GetProperties())
+        {
+            if (!prop.CanRead || !prop.CanWrite || BackupExcludedProperties.Contains(prop.Name))
+                continue;
+            prop.SetValue(this, prop.GetValue(imported));
+        }
+    }
+
+    // Only touches designs that still exist locally; nothing already present is ever removed.
+    public (int Matched, int Skipped) ApplyDesignDataBackup(Configuration imported)
+    {
+        var matched = 0;
+        var total = 0;
+        bool Exists(Guid id) => CachedOutfits.ContainsKey(id);
+
+        void UpsertDict<T>(Dictionary<Guid, T> target, Dictionary<Guid, T> source)
+        {
+            foreach (var (id, value) in source)
+            {
+                total++;
+                if (!Exists(id)) continue;
+                target[id] = value;
+                matched++;
+            }
+        }
+        void UpsertSet(HashSet<Guid> target, HashSet<Guid> source)
+        {
+            foreach (var id in source)
+            {
+                total++;
+                if (!Exists(id)) continue;
+                target.Add(id);
+                matched++;
+            }
+        }
+
+        UpsertDict(DesignMeta, imported.DesignMeta);
+        UpsertDict(DesignJobAssociations, imported.DesignJobAssociations);
+        UpsertDict(DesignLayerSlots, imported.DesignLayerSlots);
+        UpsertDict(DesignVariants, imported.DesignVariants);
+        UpsertDict(IgnoredHealthChecks, imported.IgnoredHealthChecks);
+        UpsertSet(FavouriteDesigns, imported.FavouriteDesigns);
+        UpsertSet(HiddenDesigns, imported.HiddenDesigns);
+
+        return (matched, total - matched);
+    }
+
+    // Upserted by ContentId - a character missing from the backup is left untouched.
+    public void ApplyCharacterDataBackup(Configuration imported)
+    {
+        foreach (var (contentId, settings) in imported.CharacterLoginSettings)
+            CharacterLoginSettings[contentId] = settings;
+        foreach (var (contentId, name) in imported.CharacterDisplayNames)
+            CharacterDisplayNames[contentId] = name;
+    }
 
     [NonSerialized]
     private Services.Persistence.ConfigurationSaver? saver;
