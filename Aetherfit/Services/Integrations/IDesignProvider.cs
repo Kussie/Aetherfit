@@ -12,6 +12,7 @@ public enum DesignSource
     Glamaholic = 1,
     GlamourPlate = 2,
     SimpleGlamourSwitcher = 3,
+    Wardrobe = 4,
 }
 
 [Flags]

@@ -55,6 +55,7 @@ public sealed class Plugin : IDalamudPlugin
     public GlamaholicService Glamaholic { get; init; }
     public GlamourPlateService GlamourPlate { get; init; }
     public SimpleGlamourSwitcherService SimpleGlamourSwitcher { get; init; }
+    public WardrobeService Wardrobe { get; init; }
     public IReadOnlyList<IDesignProvider> DesignProviders { get; init; }
     public PenumbraService Penumbra { get; init; }
     public CustomizePlusService CustomizePlus { get; init; }
@@ -71,6 +72,7 @@ public sealed class Plugin : IDalamudPlugin
     public RestoreSequenceService Restore { get; init; }
     public DesignApplyService DesignApply { get; init; }
     public AutomationService Automation { get; init; }
+    public SettingsBackupService SettingsBackup { get; init; }
 
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
@@ -184,7 +186,8 @@ public sealed class Plugin : IDalamudPlugin
         Penumbra = new PenumbraService();
         CustomizePlus = new CustomizePlusService();
         SimpleGlamourSwitcher = new SimpleGlamourSwitcherService(Glamourer, Penumbra, CustomizePlus);
-        DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer), Glamaholic, GlamourPlate, SimpleGlamourSwitcher };
+        Wardrobe = new WardrobeService(Glamourer, Penumbra);
+        DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer), Glamaholic, GlamourPlate, SimpleGlamourSwitcher, Wardrobe };
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);
         HealthReport = new HealthReportService(Configuration, GameData, Attribution);
@@ -197,6 +200,7 @@ public sealed class Plugin : IDalamudPlugin
         LiveShare = new GalleryLiveShareService(this);
         DesignApply = new DesignApplyService(this);
         Automation = new AutomationService(this);
+        SettingsBackup = new SettingsBackupService();
 
         // Clean up any imported-gallery images or in-flight captures a previous session left behind
         // (e.g. if we crashed before tidying up).

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Aetherfit.Services.Designs;
+using Aetherfit.Services.Game;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
@@ -237,7 +238,9 @@ public partial class MainWindow
             entry?.Stain ?? 0, entry?.Stain2 ?? 0, entry?.ApplyStain ?? false, applied, affectedBy.Items,
             wearable, wearableRacesText);
 
-        DrawSlotContextMenu($"slot_{slot}", rowStart, rowWidth, entry != null, modHovered,
+        // Nothing to single-apply if the slot isn't equipped, or the design leaves it disabled.
+        var canApply = applied && itemName != GameDataService.NothingItemName;
+        DrawSlotContextMenu($"slot_{slot}", rowStart, rowWidth, canApply, modHovered,
             itemName, affectedBy, () => plugin.DesignApply.ApplySingleEquipmentSlot(designId, slot, label));
     }
 
@@ -252,13 +255,14 @@ public partial class MainWindow
         var modHovered = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
             stain: 0, stain2: 0, applyStain: false, applied, affectedBy.Items);
 
-        DrawSlotContextMenu($"bonus_{slotKey}", rowStart, rowWidth, entry != null, modHovered,
+        var canApply = applied && itemName != GameDataService.NothingItemName;
+        DrawSlotContextMenu($"bonus_{slotKey}", rowStart, rowWidth, canApply, modHovered,
             itemName, affectedBy, () => plugin.DesignApply.ApplySingleBonusItem(designId, slotKey, label));
     }
 
-    // Right-click anywhere on the row (when it actually has an item) to apply just that item - the
+    // Right-click anywhere on the row (when it's actually equipped) to apply just that item - the
     // existing "affected by mod" hover/click behavior still wins when that specific text is hovered.
-    private void DrawSlotContextMenu(string idSuffix, Vector2 rowStart, float rowWidth, bool hasEntry,
+    private void DrawSlotContextMenu(string idSuffix, Vector2 rowStart, float rowWidth, bool canApply,
         bool modHovered, string? itemName, AffectedBy affectedBy, Action onApply)
     {
         var popupId = $"##{idSuffix}Menu";
@@ -266,7 +270,7 @@ public partial class MainWindow
         {
             HandleAffectedModHover(mod);
         }
-        else if (hasEntry && !ImGui.IsPopupOpen(popupId))
+        else if (canApply && !ImGui.IsPopupOpen(popupId))
         {
             var rowEnd = new Vector2(rowStart.X + rowWidth, ImGui.GetCursorScreenPos().Y);
             if (ImGui.IsMouseHoveringRect(rowStart, rowEnd))

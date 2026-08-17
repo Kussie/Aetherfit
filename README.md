@@ -7,7 +7,9 @@
 
 **Optional:** [Simple Glamour Switcher](https://github.com/Caraxi/SimpleGlamourSwitcher) — if installed, Aetherfit can also browse and apply your SGS designs.
 
-Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit builds on top of it with a more intuitive, gallery-style frontend for browsing and applying designs. Designs no longer have to live in Glamourer itself, either — Aetherfit can pull them in from **Glamaholic**, **Simple Glamour Switcher** and the game's own **Glamour Plates** too, showing everything together in one unified gallery regardless of where it's actually saved. Glamourer remains required either way, since it's still the engine Aetherfit uses to actually apply an outfit to your character, no matter which source a design came from.
+**Optional:** [Wardrobe](https://github.com/ThatKwistine/WardrobePlugin) — if installed, Aetherfit can also browse and apply your Wardrobe outfits, mods and all (see the temporary-settings note below).
+
+Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit builds on top of it with a more intuitive, gallery-style frontend for browsing and applying designs. Designs no longer have to live in Glamourer itself, either — Aetherfit can pull them in from **Glamaholic**, **Simple Glamour Switcher**, **Wardrobe**, and the game's own **Glamour Plates** too, showing everything together in one unified gallery regardless of where it's actually saved. Glamourer remains required either way, since it's still the engine Aetherfit uses to actually apply an outfit to your character, no matter which source a design came from.
 
 Aetherfit is meant to be a lightweight, easy-to-use alternative to the default Glamourer interface — making it much easier to quickly find and apply the perfect design for any occasion. You'll still use Glamourer itself (or Glamaholic, or the game's own Glamour Dresser) to create, edit, and manage your actual designs; Aetherfit is focused purely on making it quick and easy to choose which design to switch to quickly.
 
@@ -15,8 +17,10 @@ It also provides a quick and easy way to preview your designs with screenshots a
 
 > **Tip:** this isn't required, but if your designs rely on mods through Penumbra, the ideal setup is to use mod associations with temporary settings on your Glamourer designs, rather than enabling everything all the time. That way the relevant mods are automatically turned on and off as you switch between designs. See [this guide](https://docs.google.com/document/d/1WxaNWRRTlm5o6KShM_so54yoD5RDPIpFg2UqSid71ek/edit?tab=t.nb010xi108ph#heading=h.o8utyg3da3rc) for a brief explanation of mod associations and temporary settings.
 
+> **Temporary settings aren't just a Glamourer thing:** Simple Glamour Switcher and Wardrobe designs don't exist as real Glamourer designs, so Glamourer has nothing of its own to manage mods through for them. For those two sources, Aetherfit applies each item's mods itself using the same Penumbra temporary-settings mechanism the tip above describes — automatically enabled when you apply the design and automatically cleared when you switch to something else, so nothing is ever left on by accident and nothing in your actual Penumbra collection is changed permanently.
+
 It adds the following functionality:
-- Source designs from Glamourer, Glamaholic, Simple Glamour Switcher, and the game's own Glamour Plates, all in one gallery
+- Source designs from Glamourer, Glamaholic, Simple Glamour Switcher, Wardrobe, and the game's own Glamour Plates, all in one gallery
 - Browse designs by tags
 - Add screenshots to designs
 - Get AI-suggested tags for a design based on its own screenshots, powered by a local, on-device image tagger — nothing is ever uploaded anywhere

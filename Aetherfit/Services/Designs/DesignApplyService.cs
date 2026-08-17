@@ -174,6 +174,9 @@ public sealed class DesignApplyService
             plugin.SimpleGlamourSwitcher.RevertCustomizePlusTemplates();
         }
 
+        if (outfit.Source != DesignSource.Wardrobe && plugin.Configuration.IsProviderEnabled(DesignSource.Wardrobe))
+            plugin.Wardrobe.ClearAllTemporaryModSettings();
+
         // A leftover single-slot mod association should never bleed into an unrelated full apply.
         plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(SingleSlotModKey);
 

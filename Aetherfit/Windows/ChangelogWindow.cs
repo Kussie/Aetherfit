@@ -28,6 +28,13 @@ internal static class ChangelogData
             "Added ability to do bulk tagging of designs in the gallery view",
             "Hopefully fixed a race condition that prevented the last known design from being applied on login at times"
         }),
+        new(3, "Small changes and additions", new[]
+        {
+            "Added ability to pull in designs from Wardrobe",
+            "Added backup and restore settings functionality",
+            "Added ability to apply a specific layer from the gallery view",
+            "Added ability to share designs with an importable string",
+        }),
     };
 
     public static int LatestRevision => Entries.Length == 0 ? 0 : Entries.Max(e => e.Revision);

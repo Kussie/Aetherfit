@@ -13,6 +13,7 @@ using Newtonsoft.Json.Linq;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Screenshots;
 using Aetherfit.Ui;
+using Aetherfit.Utils;
 
 namespace Aetherfit.Windows;
 
@@ -447,9 +448,11 @@ public partial class MainWindow
 
                 // Measure the action cluster first so the title can be ellipsized to the space that remains.
                 var frameH = ImGui.GetFrameHeight();
-                float starW, eyeW, revealW, linkW, syncW, importW, bulkLayerW, variantW;
+                float starW, eyeW, revealW, linkW, syncW, importW, bulkLayerW, variantW, shareW;
                 using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
                 {
+                    shareW = ImGui.CalcTextSize(FontAwesomeIcon.Share.ToIconString()).X
+                          + (style.FramePadding.X * 2);
                     starW = ImGui.CalcTextSize(FontAwesomeIcon.Star.ToIconString()).X
                           + (style.FramePadding.X * 2);
                     eyeW = ImGui.CalcTextSize((isHidden ? FontAwesomeIcon.EyeSlash : FontAwesomeIcon.Eye).ToIconString()).X
@@ -534,6 +537,17 @@ public partial class MainWindow
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(currentVariant != null ? "Change this design's variant parent" : "Add as Variant");
                 DrawAddVariantPopup(id);
+
+                // Unlike the Import-to-Glamourer button below, this works for every source - it only
+                // reads from CachedOutfit.Equipment, which every provider already fills in the same way.
+                ImGui.SameLine(0, inner);
+                if (HeaderIconButton("shareDesignCode", FontAwesomeIcon.Share, null, new Vector2(shareW, frameH)))
+                {
+                    ImGui.SetClipboardText(DesignShareCode.Encode(details.Name, details.Equipment));
+                    Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Copied \"{details.Name}\" as a shareable design code.");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Copy as a shareable design code (gear only)");
 
                 if (isGlamourer)
                 {

@@ -149,6 +149,27 @@ internal static class GlamourerJsonSchema
         return result;
     }
 
+    // All 12 slots, Apply=true only for the ones present - the rest stays whatever it already is when
+    // this design gets applied.
+    public static JObject BuildEquipmentSection(IEnumerable<CachedEquipmentSlot> slots)
+    {
+        var bySlot = slots.ToDictionary(s => s.Slot);
+        var result = new JObject();
+        foreach (EquipmentSlot slot in Enum.GetValues<EquipmentSlot>())
+        {
+            var has = bySlot.TryGetValue(slot, out var entry);
+            result[slot.ToString()] = new JObject
+            {
+                ["ItemId"] = has ? (long)entry!.ItemId : 0L,
+                ["Stain"] = has ? entry!.Stain : (byte)0,
+                ["Stain2"] = has ? entry!.Stain2 : (byte)0,
+                ["Apply"] = has,
+                ["ApplyStain"] = has,
+            };
+        }
+        return result;
+    }
+
     // Used to build a gear-only design for Glamourer's AddDesign IPC (import from Glamaholic/Glamour
     // Plate) - Customize/Bonus Apply flags are zeroed since those providers have no face/body concept,
     // and carrying the importer's live customize into a saved design would be surprising.
