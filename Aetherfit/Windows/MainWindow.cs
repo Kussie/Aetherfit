@@ -273,6 +273,10 @@ public partial class MainWindow : Window, IDisposable
 
     public bool IsRefreshing => activeRefresh != null;
 
+    // Bumps whenever the design list changes - other windows use this to know when their own cached
+    // per-design work (e.g. HealthReportWindow's findings) needs recomputing.
+    internal int DesignListGeneration => designListGeneration;
+
     internal void RefreshDesigns()
     {
         var entries = new List<(IDesignProvider Provider, Guid NativeId, Guid AetherfitId)>();

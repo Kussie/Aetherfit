@@ -40,32 +40,60 @@ public sealed class HealthReportWindow : Window, IDisposable
 
     public void Dispose() { }
 
+    private List<HealthReportService.MissingModFinding> cachedMissingMods = new();
+    private List<HealthReportService.BrokenItemFinding> cachedBrokenItems = new();
+    private List<HealthReportService.IncompatibleItemFinding> cachedIncompatible = new();
+    private List<HealthReportService.DuplicateGroup> cachedDuplicates = new();
+    private int cachedFindingsGeneration = -1;
+    private int cachedFindingsIgnoreVersion = -1;
+    private (uint RaceRowId, bool IsFemale) cachedRaceGender;
+
+    // Each check walks every cached design (FindDuplicates in particular runs DesignAttributionService.Build
+    // per design, which is real work) - only worth redoing when the design list, the ignored-checks list,
+    // or the live character's race/gender has actually changed, not on every frame this window happens to
+    // be open. Race/gender gets its own key rather than folding into DesignListGeneration because
+    // FindIncompatibleDesigns reads it live (GameDataService.ResolveEffectiveRaceGender) and a race-changing
+    // potion or character switch doesn't otherwise touch the design list at all - installed-mod staleness
+    // for FindMissingModAssociations doesn't need the same treatment, since PenumbraService only ever
+    // refreshes its installed-mod snapshot alongside the same design-list refresh that bumps DesignListGeneration.
+    private void RefreshFindingsIfStale()
+    {
+        var generation = plugin.MainWindow.DesignListGeneration;
+        var ignoreVersion = plugin.Configuration.HealthCheckIgnoreVersion;
+        var raceGender = plugin.GameData.CurrentCharacterRaceGenderFingerprint();
+        if (cachedFindingsGeneration == generation && cachedFindingsIgnoreVersion == ignoreVersion
+            && cachedRaceGender == raceGender)
+            return;
+
+        cachedMissingMods = plugin.HealthReport.FindMissingModAssociations();
+        cachedBrokenItems = plugin.HealthReport.FindBrokenItems();
+        cachedIncompatible = plugin.HealthReport.FindIncompatibleDesigns();
+        cachedDuplicates = plugin.HealthReport.FindDuplicates();
+        cachedFindingsGeneration = generation;
+        cachedFindingsIgnoreVersion = ignoreVersion;
+        cachedRaceGender = raceGender;
+    }
+
     public override void Draw()
     {
-        // Recomputed every frame while this window is open (not while it's closed - see the plain,
-        // un-badged toolbar button in MainWindow.DrawTopToolbar). Each check is cheap hash-set/
-        // dictionary work over what's already cached in memory; revisit only if that stops being true.
-        var missingMods = plugin.HealthReport.FindMissingModAssociations();
-        var brokenItems = plugin.HealthReport.FindBrokenItems();
-        var incompatible = plugin.HealthReport.FindIncompatibleDesigns();
-        var duplicates = plugin.HealthReport.FindDuplicates();
+        RefreshFindingsIfStale();
 
-        DrawFindingSection("Missing Mod Associations", ref missingModsOpen, missingMods, finding =>
+        DrawFindingSection("Missing Mod Associations", ref missingModsOpen, cachedMissingMods, finding =>
         {
             var detail = string.Join(", ", finding.MissingMods.Select(DesignAttributionService.ModDisplayName));
             DrawFindingRow(finding.Id, finding.Name, detail, HealthReportService.MissingModCheck);
         });
         ImGui.Spacing();
 
-        DrawFindingSection("Broken Items", ref brokenItemsOpen, brokenItems, finding =>
+        DrawFindingSection("Broken Items", ref brokenItemsOpen, cachedBrokenItems, finding =>
             DrawFindingRow(finding.Id, finding.Name, string.Join(", ", finding.BrokenSlots), HealthReportService.BrokenItemCheck));
         ImGui.Spacing();
 
-        DrawFindingSection("Incompatible Items", ref incompatibleOpen, incompatible, finding =>
+        DrawFindingSection("Incompatible Items", ref incompatibleOpen, cachedIncompatible, finding =>
             DrawFindingRow(finding.Id, finding.Name, string.Join(", ", finding.IncompatibleSlots), HealthReportService.IncompatibleCheck));
         ImGui.Spacing();
 
-        DrawFindingSection("Duplicate Designs", ref duplicatesOpen, duplicates, DrawDuplicateGroup);
+        DrawFindingSection("Duplicate Designs", ref duplicatesOpen, cachedDuplicates, DrawDuplicateGroup);
         ImGui.Spacing();
 
         DrawAutomationsIssuesSection();
