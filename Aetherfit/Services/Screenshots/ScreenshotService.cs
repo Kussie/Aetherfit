@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Aetherfit.Services.Screenshots;
 
@@ -21,12 +22,17 @@ public sealed class ScreenshotService
         void CaptureOnNextDraw()
         {
             Plugin.PluginInterface.UiBuilder.Draw -= CaptureOnNextDraw;
+            _ = CaptureAndFinishAsync();
+        }
+
+        async Task CaptureAndFinishAsync()
+        {
             try
             {
-                var (png, _, _) = ScreenshotCaptureService.CaptureGameWindow();
+                var (png, _, _) = await ScreenshotCaptureService.CaptureGameWindowAsync();
                 var dir = EnsureTempDir();
                 var path = Path.Combine(dir, $"capture_{Guid.NewGuid():N}.png");
-                File.WriteAllBytes(path, png);
+                await File.WriteAllBytesAsync(path, png);
                 onAfterCapture();
                 onTempReady(path);
             }

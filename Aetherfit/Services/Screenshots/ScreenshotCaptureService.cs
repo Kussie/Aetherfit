@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
@@ -8,8 +9,8 @@ namespace Aetherfit.Services.Screenshots;
 
 internal static class ScreenshotCaptureService
 {
-    public static (byte[] Png, int Width, int Height) CaptureGameWindow()
-        => D3D11CaptureService.CaptureFrame();
+    public static Task<(byte[] Png, int Width, int Height)> CaptureGameWindowAsync()
+        => DalamudViewportCaptureService.CaptureFrameAsync();
 
     // Shrinks an image to maxDimension on its longest side and saves it as JPEG. Used for shared-gallery previews,
     // where a full-size PNG screenshot is way more than anyone needs.
