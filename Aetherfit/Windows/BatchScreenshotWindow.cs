@@ -54,6 +54,7 @@ public sealed class BatchScreenshotWindow : Window, IDisposable
     private readonly HashSet<DesignSource> filterSources = new();
     private bool skipAlreadyCovered = true;
     private readonly HashSet<Guid> selectedIds = new();
+    private string filterName = string.Empty;
     private string tagSearchText = string.Empty;
     private bool showFramingGuide;
     // How long to wait after applying a design before capturing it - adjustable since how long mods
@@ -103,8 +104,9 @@ public sealed class BatchScreenshotWindow : Window, IDisposable
 
     private void DrawSetup()
     {
+        var enabledProviders = plugin.DesignProviders.Where(p => plugin.Configuration.IsProviderEnabled(p.Source)).ToList();
         if (filterSources.Count == 0)
-            foreach (var provider in plugin.DesignProviders)
+            foreach (var provider in enabledProviders)
                 filterSources.Add(provider.Source);
 
         ImGui.TextWrapped("Pick a set of designs below, then start the batch. Aetherfit will apply "
@@ -123,9 +125,12 @@ public sealed class BatchScreenshotWindow : Window, IDisposable
         }
         DrawFilterPopup();
 
+        ImGui.SetNextItemWidth(220 * ImGuiHelpers.GlobalScale);
+        ImGui.InputTextWithHint("##batchNameFilter", "Filter by name...", ref filterName, 64);
+
         ImGui.Spacing();
         ImGui.TextDisabled("Sources:");
-        foreach (var provider in plugin.DesignProviders)
+        foreach (var provider in enabledProviders)
         {
             var on = filterSources.Contains(provider.Source);
             if (ImGui.Checkbox($"{provider.DisplayName}##batchSource{provider.Source}", ref on))
@@ -144,6 +149,7 @@ public sealed class BatchScreenshotWindow : Window, IDisposable
         var candidates = plugin.Configuration.CachedOutfits
             .Where(kv => plugin.Configuration.IsProviderEnabled(kv.Value.Source)
                       && filterSources.Contains(kv.Value.Source)
+                      && (filterName.Length == 0 || kv.Value.Name.Contains(filterName, StringComparison.OrdinalIgnoreCase))
                       && filterTags.MatchesFilter((IReadOnlyCollection<string>?)kv.Value.Tags ?? Array.Empty<string>())
                       && filterJobs.MatchesFilter(plugin.Configuration.GetJobAssociations(kv.Key))
                       && (!skipAlreadyCovered || !plugin.ImageStorage.HasCover(kv.Key)))
