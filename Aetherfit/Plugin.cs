@@ -426,12 +426,14 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnKeybindUpdate(IFramework framework)
     {
-        CheckKeybind(Configuration.WearRandomKeybind, () => ReportError(MainWindow.ApplyRandomDesign()));
-        CheckKeybind(Configuration.WearFavouriteKeybind, () => ReportError(MainWindow.ApplyRandomFavourite(matchCurrentJob: false)));
-        CheckKeybind(Configuration.WearLastKeybind, () => ReportError(MainWindow.ReapplyLastWorn()));
-        CheckKeybind(Configuration.RevertKeybind, () => MainWindow.RevertAppearance());
-        CheckKeybind(Configuration.QuickSearchKeybind, ToggleQuickSearchUi);
-        CheckKeybind(Configuration.AutomationsToggleKeybind, ToggleAutomationsEnabled);
+        var textInputActive = ImGui.GetIO().WantTextInput || IsGameTextInputActive();
+
+        CheckKeybind(Configuration.WearRandomKeybind, textInputActive, () => ReportError(MainWindow.ApplyRandomDesign()));
+        CheckKeybind(Configuration.WearFavouriteKeybind, textInputActive, () => ReportError(MainWindow.ApplyRandomFavourite(matchCurrentJob: false)));
+        CheckKeybind(Configuration.WearLastKeybind, textInputActive, () => ReportError(MainWindow.ReapplyLastWorn()));
+        CheckKeybind(Configuration.RevertKeybind, textInputActive, () => MainWindow.RevertAppearance());
+        CheckKeybind(Configuration.QuickSearchKeybind, textInputActive, ToggleQuickSearchUi);
+        CheckKeybind(Configuration.AutomationsToggleKeybind, textInputActive, ToggleAutomationsEnabled);
     }
 
     private void ToggleAutomationsEnabled()
@@ -446,17 +448,9 @@ public sealed class Plugin : IDalamudPlugin
         ChatGui.Print($"{ChatPrefix}Automations {(enabled.Value ? "enabled" : "disabled")}.");
     }
 
-    // Edge-triggered (via bind.WasDown, not a plain "is it down" check) so a held key fires once, not
-    // every tick it stays down. WasDown lives on the KeyBind itself - see Configuration.cs - so
-    // ConfigWindow's key-capture UI can seed it directly and avoid the recording key-press also
-    // registering as the hotkey's first trigger.
-    private void CheckKeybind(KeyBind bind, Action action)
+    private void CheckKeybind(KeyBind bind, bool textInputActive, Action action)
     {
-        // Never fire while a text field has keyboard focus - either an ImGui one (e.g. typing in a tag
-        // search box) or the game's own (chat, a naming dialog, etc, via RaptureAtkModule - ImGui's
-        // WantTextInput only knows about ImGui's own widgets, not the game's native UI). A hotkey firing
-        // mid-typing would be surprising and impossible to type around either way.
-        if (!bind.IsSet || ImGui.GetIO().WantTextInput || IsGameTextInputActive())
+        if (!bind.IsSet || textInputActive)
         {
             bind.WasDown = false;
             return;

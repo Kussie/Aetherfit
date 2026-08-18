@@ -122,15 +122,14 @@ public sealed class GameDataService
         return race is { } r && female is { } f ? (r, f) : null;
     }
 
+    public (uint RaceRowId, bool IsFemale) CurrentCharacterRaceGenderFingerprint()
+        => (CurrentPlayerRace() ?? 0, CurrentPlayerIsFemale() ?? false);
+
     public bool? IsItemWearableByCurrentCharacter(ulong itemId, CachedOutfit details)
         => ResolveEffectiveRaceGender(details) is { } rg ? IsItemWearableBy(itemId, rg.RaceRowId, rg.IsFemale) : null;
 
     public bool DesignHasAnyIncompatibleItems(CachedOutfit details) => GetIncompatibleItems(details).Count > 0;
 
-    // Per-slot breakdown of the above - which applied slots are a *known* mismatch for the design's
-    // effective race/gender (see ResolveEffectiveRaceGender: a design that customizes race/gender as
-    // part of itself is checked against that, not the live character). An unresolvable item never
-    // counts (see IsItemWearableBy's null case), and an unapplied slot can never actually be worn.
     public List<string> GetIncompatibleItems(CachedOutfit details)
     {
         var result = new List<string>();
