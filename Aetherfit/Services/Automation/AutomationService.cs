@@ -9,8 +9,9 @@ using Dalamud.Plugin.Services;
 namespace Aetherfit.Services.Automation;
 
 // Polls the current character's automation rules roughly once a second and applies the first matching
-// one's design pick, gated on combat/duty state and a short "Glamourer has gone quiet" wait (same shape
-// as RestoreSequenceService's own settle wait, just simpler - there's no login/zone retry logic here).
+// one's design pick, gated on combat/duty state, a manual snooze, and a short "Glamourer has gone quiet"
+// wait (same shape as RestoreSequenceService's own settle wait, just simpler - there's no login/zone
+// retry logic here).
 public sealed class AutomationService : IDisposable
 {
     private readonly Plugin plugin;
@@ -21,8 +22,36 @@ public sealed class AutomationService : IDisposable
     // Bumped whenever a new quiet-wait starts so a stale RunOnTick chain from a since-superseded rule falls out silently.
     private int generation;
 
+    private DateTime? snoozeUntilUtc;
+    private ulong snoozedContentId;
+
     public Guid? CurrentRuleId { get; private set; }
     public string? CurrentRuleName { get; private set; }
+
+    // Null once expired or cancelled, not just clamped to zero - callers shouldn't have to also check
+    // "is this actually still in the future" themselves.
+    public TimeSpan? SnoozeRemaining
+    {
+        get
+        {
+            if (snoozeUntilUtc is not { } until || !Plugin.PlayerState.IsLoaded || snoozedContentId != Plugin.PlayerState.ContentId)
+                return null;
+            var remaining = until - DateTime.UtcNow;
+            return remaining > TimeSpan.Zero ? remaining : null;
+        }
+    }
+
+    public bool IsSnoozed => SnoozeRemaining != null;
+
+    public void StartSnooze(TimeSpan duration)
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+        snoozedContentId = Plugin.PlayerState.ContentId;
+        snoozeUntilUtc = DateTime.UtcNow + duration;
+    }
+
+    public void CancelSnooze() => snoozeUntilUtc = null;
 
     public AutomationService(Plugin plugin)
     {
@@ -68,8 +97,13 @@ public sealed class AutomationService : IDisposable
         BeginApply(pick.Value);
     }
 
-    private static bool CanApplyNow(CharacterLoginSettings settings)
+    // Combat blocks unconditionally - there's no setting to override it, since changing appearance
+    // mid-fight is never something Automations should do regardless of what a rule matches.
+    private bool CanApplyNow(CharacterLoginSettings settings)
     {
+        if (IsSnoozed)
+            return false;
+
         if (Plugin.Condition[ConditionFlag.InCombat])
             return false;
 
@@ -111,7 +145,8 @@ public sealed class AutomationService : IDisposable
     }
 
     private readonly record struct MatchContext(uint JobId, uint TerritoryId, bool Mounted, ushort MountId,
-        byte WeatherId, int Hour, bool Swimming, bool Diving, GameDataService.HousingState Housing);
+        byte WeatherId, int Hour, bool Swimming, bool Diving, GameDataService.HousingState Housing,
+        GroupType GroupType, uint OnlineStatusId);
 
     private MatchContext BuildMatchContext()
     {
@@ -125,7 +160,24 @@ public sealed class AutomationService : IDisposable
             Hour: plugin.GameData.GetCurrentEorzeaHour(),
             Swimming: Plugin.Condition[ConditionFlag.Swimming],
             Diving: Plugin.Condition[ConditionFlag.Diving],
-            Housing: plugin.GameData.GetCurrentHousingState());
+            Housing: plugin.GameData.GetCurrentHousingState(),
+            GroupType: ResolveGroupType(),
+            OnlineStatusId: Plugin.ObjectTable.LocalPlayer?.OnlineStatus.RowId ?? 0);
+    }
+
+    // Party/Raid boundary matches what "raid comp" colloquially means (a full 8-man party) rather than
+    // any game-exposed threshold - Dalamud's party list only ever gives us Length + IsAlliance.
+    private static GroupType ResolveGroupType()
+    {
+        if (Plugin.PartyList.IsAlliance)
+            return GroupType.Alliance;
+
+        return Plugin.PartyList.Length switch
+        {
+            0 => GroupType.Solo,
+            <= 4 => GroupType.Party,
+            _ => GroupType.Raid,
+        };
     }
 
     private (AutomationRule? Rule, Guid? DesignId) EvaluateRules(CharacterLoginSettings settings)
@@ -159,6 +211,8 @@ public sealed class AutomationService : IDisposable
         AutomationConditionType.Swimming => (c.SwimStates.Contains(SwimState.Swimming) && ctx.Swimming)
             || (c.SwimStates.Contains(SwimState.Diving) && ctx.Diving),
         AutomationConditionType.Housing => ctx.Housing.InHousing && c.HousingTargets.Any(t => MatchesHousing(t, ctx.Housing)),
+        AutomationConditionType.Group => c.GroupTypes.Contains(ctx.GroupType),
+        AutomationConditionType.OnlineStatus => c.OnlineStatuses.Any(s => (uint)s == ctx.OnlineStatusId),
         _ => false,
     };
 
@@ -236,6 +290,8 @@ public sealed class AutomationService : IDisposable
         AutomationConditionType.Weather => c.WeatherIds.Count == 0,
         AutomationConditionType.Swimming => c.SwimStates.Count == 0,
         AutomationConditionType.Housing => c.HousingTargets.Count == 0,
+        AutomationConditionType.Group => c.GroupTypes.Count == 0,
+        AutomationConditionType.OnlineStatus => c.OnlineStatuses.Count == 0,
         _ => false,
     };
 
