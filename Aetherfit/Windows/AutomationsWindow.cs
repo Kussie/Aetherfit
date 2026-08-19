@@ -26,6 +26,7 @@ public sealed class AutomationsWindow : Window, IDisposable
     private string tagPoolPickerFilter = string.Empty;
     private readonly HashSet<string> tagPoolPickerSelected = new(StringComparer.OrdinalIgnoreCase);
     private int draggedRuleIndex = -1;
+    private int snoozeMinutes = 15;
 
     public AutomationsWindow(Plugin plugin)
         : base("Automations##AetherfitAutomations")
@@ -136,8 +137,11 @@ public sealed class AutomationsWindow : Window, IDisposable
 
         ImGui.Indent();
         using (ImRaii.PushColor(ImGuiCol.Text, ImGui.GetColorU32(ImGuiCol.TextDisabled)))
+        {
             ImGui.TextWrapped("Turn off Glamourer's own Automations for this character - Aetherfit's Automations "
                 + "can't detect whether Glamourer's is still active, and the two will fight over what to apply.");
+            ImGui.TextWrapped("Automations never changes your appearance while you're in combat, regardless of the rules below.");
+        }
 
         if (settings.AutomationsEnabled)
         {
@@ -150,6 +154,9 @@ public sealed class AutomationsWindow : Window, IDisposable
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Dungeons, trials, raids, alliance raids, etc. Automations never changes your "
                     + "appearance in combat regardless of this setting.");
+
+            ImGui.Spacing();
+            DrawSnoozeControls();
         }
         ImGui.Unindent();
 
@@ -171,6 +178,45 @@ public sealed class AutomationsWindow : Window, IDisposable
         }
         DrawCopyRulesPopup(settings);
     }
+
+    // Snooze is deliberately not persisted (see AutomationService) - it's an in-the-moment "leave me
+    // alone for a bit" toggle, not a setting worth surviving a relog.
+    private void DrawSnoozeControls()
+    {
+        ImGui.TextColored(UiTheme.SectionHeader, "Snooze:");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Temporarily pauses Automations without turning it off - rules stay configured "
+                + "and resume automatically once the timer runs out.");
+        ImGui.SameLine();
+
+        var snoozed = plugin.Automation.IsSnoozed;
+        using (ImRaii.Disabled(snoozed))
+        {
+            ImGui.SetNextItemWidth(80 * ImGuiHelpers.GlobalScale);
+            if (ImGui.InputInt("minutes##snoozeMinutes", ref snoozeMinutes))
+                snoozeMinutes = Math.Clamp(snoozeMinutes, 1, 1440);
+        }
+
+        ImGui.SameLine();
+        if (snoozed)
+        {
+            if (ImGui.Button("Cancel Snooze"))
+                plugin.Automation.CancelSnooze();
+        }
+        else if (ImGui.Button("Start Snooze"))
+        {
+            plugin.Automation.StartSnooze(TimeSpan.FromMinutes(snoozeMinutes));
+        }
+
+        if (snoozed && plugin.Automation.SnoozeRemaining is { } remaining)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(UiTheme.GoldAccent, $"Resuming in {FormatSnoozeRemaining(remaining)}");
+        }
+    }
+
+    private static string FormatSnoozeRemaining(TimeSpan remaining)
+        => remaining.TotalMinutes >= 1 ? $"{(int)remaining.TotalMinutes}m {remaining.Seconds}s" : $"{remaining.Seconds}s";
 
     private const string CopyRulesPopupId = "##copyRulesToCharacter";
 
@@ -524,6 +570,8 @@ public sealed class AutomationsWindow : Window, IDisposable
             case AutomationConditionType.Time: DrawTimeConditionEditor(condition); break;
             case AutomationConditionType.Swimming: DrawSwimmingConditionEditor(condition); break;
             case AutomationConditionType.Housing: DrawHousingConditionEditor(condition); break;
+            case AutomationConditionType.Group: DrawGroupConditionEditor(condition); break;
+            case AutomationConditionType.OnlineStatus: DrawOnlineStatusConditionEditor(condition); break;
         }
     }
 
@@ -746,6 +794,50 @@ public sealed class AutomationsWindow : Window, IDisposable
         HousingTargetType.SpecificApartmentRoom =>
             $"{plugin.GameData.ResolveTerritoryName(target.TerritoryTypeId)} — Ward {target.Ward + 1}, Room {target.Room}",
         _ => "Unknown",
+    };
+
+    private void DrawGroupConditionEditor(AutomationCondition condition)
+    {
+        DrawGroupTypeCheckbox(condition, GroupType.Solo, "Solo");
+        ImGui.SameLine();
+        DrawGroupTypeCheckbox(condition, GroupType.Party, "Party (2-4)");
+        ImGui.SameLine();
+        DrawGroupTypeCheckbox(condition, GroupType.Raid, "Raid (5-8)");
+        ImGui.SameLine();
+        DrawGroupTypeCheckbox(condition, GroupType.Alliance, "Alliance (24)");
+    }
+
+    private void DrawGroupTypeCheckbox(AutomationCondition condition, GroupType type, string label)
+    {
+        var on = condition.GroupTypes.Contains(type);
+        if (ImGui.Checkbox($"{label}##group{type}", ref on))
+        {
+            if (on) condition.GroupTypes.Add(type); else condition.GroupTypes.Remove(type);
+            plugin.Configuration.Save();
+        }
+    }
+
+    private void DrawOnlineStatusConditionEditor(AutomationCondition condition)
+    {
+        foreach (var status in Enum.GetValues<CharacterOnlineStatus>())
+        {
+            var on = condition.OnlineStatuses.Contains(status);
+            if (ImGui.Checkbox($"{DescribeOnlineStatus(status)}##status{status}", ref on))
+            {
+                if (on) condition.OnlineStatuses.Add(status); else condition.OnlineStatuses.Remove(status);
+                plugin.Configuration.Save();
+            }
+        }
+    }
+
+    private static string DescribeOnlineStatus(CharacterOnlineStatus status) => status switch
+    {
+        CharacterOnlineStatus.Busy => "Busy",
+        CharacterOnlineStatus.AwayFromKeyboard => "Away from Keyboard",
+        CharacterOnlineStatus.LookingToMeldMateria => "Looking to Meld Materia",
+        CharacterOnlineStatus.RolePlaying => "Role-playing",
+        CharacterOnlineStatus.LookingForParty => "Looking for Party",
+        _ => status.ToString(),
     };
 
     private void DrawAddDesignButton(AutomationRule rule)

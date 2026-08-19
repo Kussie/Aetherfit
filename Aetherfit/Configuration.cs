@@ -34,12 +34,34 @@ public enum AutomationConditionType
     // Appended, not inserted - these enums serialize by ordinal, so an earlier position would
     // reshuffle every already-saved condition type.
     Housing,
+    Group,
+    OnlineStatus,
 }
 
 public enum SwimState
 {
     Swimming,
     Diving,
+}
+
+public enum GroupType
+{
+    Solo,
+    Party,
+    Raid,
+    Alliance,
+}
+
+// The handful of OnlineStatus sheet rows relevant to a "what am I doing right now" automation
+// condition - not every status the game has (most are login-queue/GM/mentor states nobody would
+// gate an outfit on). Values are the sheet's own row ids, so they're stable across patches.
+public enum CharacterOnlineStatus : uint
+{
+    Busy = 12,
+    AwayFromKeyboard = 17,
+    LookingToMeldMateria = 21,
+    RolePlaying = 22,
+    LookingForParty = 23,
 }
 
 public enum HousingTargetType
@@ -84,6 +106,9 @@ public class AutomationCondition
     public List<SwimState> SwimStates { get; set; } = new() { SwimState.Swimming, SwimState.Diving };
 
     public List<HousingTarget> HousingTargets { get; set; } = new();
+
+    public List<GroupType> GroupTypes { get; set; } = new();
+    public List<CharacterOnlineStatus> OnlineStatuses { get; set; } = new();
 }
 
 [Serializable]
