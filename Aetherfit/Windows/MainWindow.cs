@@ -503,9 +503,10 @@ public partial class MainWindow : Window, IDisposable
         DrawImportDesignCodePopup();
         ImGui.SameLine();
 
-        if (IconTextButton(FontAwesomeIcon.Stethoscope, "Health Report", warning: HasHealthIssues(),
+        if (IconTextButton(FontAwesomeIcon.Stethoscope, "Reports", dropdown: true, warning: HasHealthIssues(),
                 warningTooltip: "Some designs have health issues"))
-            plugin.ToggleHealthReportUi();
+            ImGui.OpenPopup("##reportsPopup");
+        DrawReportsPopup();
         ImGui.SameLine();
 
         if (IconTextButton(FontAwesomeIcon.Images, "Batch Screenshot"))
@@ -627,7 +628,10 @@ public partial class MainWindow : Window, IDisposable
         {
             x += style.ItemInnerSpacing.X;
             using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            {
                 dl.AddText(new Vector2(x, textY), ImGui.GetColorU32(UiTheme.ErrorText), FontAwesomeIcon.ExclamationTriangle.ToIconString());
+                x += ImGui.CalcTextSize(FontAwesomeIcon.ExclamationTriangle.ToIconString()).X;
+            }
         }
 
         if (dropdown)
@@ -645,6 +649,31 @@ public partial class MainWindow : Window, IDisposable
             ImGui.SetTooltip(warningTooltip);
 
         return clicked;
+    }
+
+    // The "Reports" dropdown: Health Report keeps its own at-a-glance warning icon/tooltip when it has
+    // issues, matching the same signal already shown on the toolbar button itself.
+    private void DrawReportsPopup()
+    {
+        using var popup = ImRaii.Popup("##reportsPopup");
+        if (!popup.Success)
+            return;
+
+        var hasHealthIssues = HasHealthIssues();
+        var healthClicked = ImGui.MenuItem("Health Report");
+        var healthHovered = ImGui.IsItemHovered();
+        if (hasHealthIssues)
+        {
+            ImGui.SameLine();
+            DesignDetailView.DrawFontAwesome(FontAwesomeIcon.ExclamationTriangle, UiTheme.ErrorText);
+        }
+        if (healthHovered && hasHealthIssues)
+            ImGui.SetTooltip("Some designs have health issues");
+        if (healthClicked)
+            plugin.ToggleHealthReportUi();
+
+        if (ImGui.MenuItem("Design Layer Report"))
+            plugin.ToggleDesignLayerReportUi();
     }
 
     // The "Share your Designs" dropdown: export everything, or just the designs left after the active filters.

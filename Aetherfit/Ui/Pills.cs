@@ -338,7 +338,9 @@ internal static class Pills
         var rectMin = ImGui.GetCursorScreenPos();
         var rectMax = new Vector2(rectMin.X + avail, rectMin.Y + rectH);
 
-        if (ImGui.InvisibleButton($"##sub_{label}", new Vector2(avail, rectH)))
+        // Shift is left for a caller-defined secondary action on the header (e.g. Shift+click to open
+        // the underlying item elsewhere) - a plain click is the only thing that toggles collapse.
+        if (ImGui.InvisibleButton($"##sub_{label}", new Vector2(avail, rectH)) && !ImGui.GetIO().KeyShift)
             open = !open;
 
         var bg = ImGui.IsItemActive() ? ImGuiCol.HeaderActive

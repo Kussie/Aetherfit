@@ -64,6 +64,7 @@ public sealed class Plugin : IDalamudPlugin
     public GameDataService GameData { get; init; }
     public DesignAttributionService Attribution { get; init; }
     public HealthReportService HealthReport { get; init; }
+    public DesignLayerReportService LayerReport { get; init; }
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
@@ -80,6 +81,7 @@ public sealed class Plugin : IDalamudPlugin
     public readonly WindowSystem WindowSystem = new("Aetherfit");
     private ConfigWindow ConfigWindow { get; init; }
     private HealthReportWindow HealthReportWindow { get; init; }
+    private DesignLayerReportWindow DesignLayerReportWindow { get; init; }
     private QuickSearchWindow QuickSearchWindow { get; init; }
     private BatchScreenshotWindow BatchScreenshotWindow { get; init; }
     private ChangelogWindow ChangelogWindow { get; init; }
@@ -194,6 +196,7 @@ public sealed class Plugin : IDalamudPlugin
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);
         HealthReport = new HealthReportService(Configuration, GameData, Attribution);
+        LayerReport = new DesignLayerReportService(this);
         ImageStorage = new ImageStorageService(Configuration);
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
@@ -214,6 +217,7 @@ public sealed class Plugin : IDalamudPlugin
 
         ConfigWindow = new ConfigWindow(this);
         HealthReportWindow = new HealthReportWindow(this);
+        DesignLayerReportWindow = new DesignLayerReportWindow(this);
         QuickSearchWindow = new QuickSearchWindow(this);
         BatchScreenshotWindow = new BatchScreenshotWindow(this);
         ChangelogWindow = new ChangelogWindow(this);
@@ -227,6 +231,7 @@ public sealed class Plugin : IDalamudPlugin
         ReceiveLiveWindow = new ReceiveLiveWindow(this);
         WindowSystem.AddWindow(ConfigWindow);
         WindowSystem.AddWindow(HealthReportWindow);
+        WindowSystem.AddWindow(DesignLayerReportWindow);
         WindowSystem.AddWindow(QuickSearchWindow);
         WindowSystem.AddWindow(BatchScreenshotWindow);
         WindowSystem.AddWindow(ChangelogWindow);
@@ -285,6 +290,7 @@ public sealed class Plugin : IDalamudPlugin
 
         ConfigWindow.Dispose();
         HealthReportWindow.Dispose();
+        DesignLayerReportWindow.Dispose();
         QuickSearchWindow.Dispose();
         BatchScreenshotWindow.Dispose();
         ChangelogWindow.Dispose();
@@ -491,6 +497,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void ToggleConfigUi() => ConfigWindow.Toggle();
     public void ToggleHealthReportUi() => HealthReportWindow.Toggle();
+    public void ToggleDesignLayerReportUi() => DesignLayerReportWindow.Toggle();
     public void ToggleBatchScreenshotUi() => BatchScreenshotWindow.Toggle();
     public void ToggleAutomationsUi() => AutomationsWindow.Toggle();
 
