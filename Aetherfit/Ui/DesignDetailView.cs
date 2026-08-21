@@ -7,9 +7,6 @@ using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherfit.Ui;
 
-// Rendering shared by the local design-detail panel (MainWindow) and the read-only shared-gallery popup
-// (ForeignGalleryWindow). The two used to carry near-identical copies of these helpers; the only real
-// difference is the source data type, so callers resolve names/values and hand primitives to these methods.
 internal static class DesignDetailView
 {
     public static readonly (EquipmentSlot Slot, string Label)[] SlotDisplay =
@@ -33,13 +30,9 @@ internal static class DesignDetailView
         ("Glasses", "Facewear Accessory"),
     };
 
-    // One equipment/bonus row: a label column then the item name, dye swatches and "(affected by mod)" suffix.
-    // itemName == null means the slot isn't in the design (greyed "(not in design)"). Bonus rows pass stain 0.
-    // wearableByCurrentCharacter is null when not checked (or unknown); false draws a warning icon after the
-    // item name. Returns true while the affected-by mod name is hovered.
-    public static bool DrawSlotRow(GameDataService gameData, string label, float labelWidth, string? itemName,
-        byte stain, byte stain2, bool applyStain, bool applied, IReadOnlyDictionary<string, string> affected,
-        bool? wearableByCurrentCharacter = null, string? wearableRacesText = null)
+    public static (bool ModHovered, bool StainHovered) DrawSlotRow(GameDataService gameData, string label,
+        float labelWidth, string? itemName, byte stain, byte stain2, bool applyStain, bool applied,
+        IReadOnlyDictionary<string, string> affected, bool? wearableByCurrentCharacter = null, string? wearableRacesText = null)
     {
         var labelColor = applied ? UiTheme.AppliedText : UiTheme.StateUnset;
 
@@ -51,7 +44,7 @@ internal static class DesignDetailView
         if (itemName == null)
         {
             ImGui.TextColored(UiTheme.StateUnset, "(not in design)");
-            return false;
+            return (false, false);
         }
 
         ImGui.TextColored(labelColor, itemName);
@@ -62,9 +55,10 @@ internal static class DesignDetailView
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip($"Not wearable by your current race/gender - only {wearableRacesText ?? "some races"}.");
         }
-        DrawStainSwatch(gameData, stain, applyStain && applied);
-        DrawStainSwatch(gameData, stain2, applyStain && applied);
-        return DrawAffectedSuffix(affected, applied, itemName);
+        var stainHovered = DrawStainSwatch(gameData, stain, applyStain && applied);
+        stainHovered |= DrawStainSwatch(gameData, stain2, applyStain && applied);
+        var modHovered = DrawAffectedSuffix(affected, applied, itemName);
+        return (modHovered, stainHovered);
     }
 
     // "(Appearance affected by {mod})" with the mod name tinted so it stands out. The mod name is rendered
@@ -118,10 +112,12 @@ internal static class DesignDetailView
             $"(also contested by a random layer pick among {candidateCount} designs)");
     }
 
-    public static void DrawStainSwatch(GameDataService gameData, byte stainId, bool active)
+    // Returns true while hovered, so a caller with its own whole-row tooltip (e.g. "right-click to
+    // apply") knows to suppress it rather than fight this swatch's own dye-name tooltip for the frame.
+    public static bool DrawStainSwatch(GameDataService gameData, byte stainId, bool active)
     {
         if (stainId == 0)
-            return;
+            return false;
 
         var (name, color) = gameData.ResolveStain(stainId);
         var v4 = StainColorToVec4(color, active ? 1.0f : 0.4f);
@@ -131,8 +127,10 @@ internal static class DesignDetailView
         ImGui.ColorButton($"##stain{stainId}", v4,
             ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoDragDrop | ImGuiColorEditFlags.NoInputs,
             size);
-        if (ImGui.IsItemHovered())
+        var hovered = ImGui.IsItemHovered();
+        if (hovered)
             ImGui.SetTooltip(active ? name : $"{name} (not applied)");
+        return hovered;
     }
 
     public static void DrawModStateIcon(ModState state)
