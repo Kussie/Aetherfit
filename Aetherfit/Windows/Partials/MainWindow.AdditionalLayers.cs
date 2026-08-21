@@ -29,6 +29,7 @@ public partial class MainWindow
     private readonly LayerPickerState beforeLayerPicker = new();
     private readonly LayerPickerState afterLayerPicker = new();
     private string slotPickerFilter = string.Empty;
+    private string baseLayerOverrideFilter = string.Empty;
 
     // Index state for an in-flight drag; the payload itself is just a marker. Only read while a drop of the
     // matching payload type is being delivered, so stale values from a finished drag are never consumed.
@@ -56,6 +57,13 @@ public partial class MainWindow
             ImGui.TextDisabled("When several designs in a layer match, one is picked at random. Drag a layer onto another to reorder it within its section.");
             ImGui.Spacing();
         }
+
+        DrawSubheader("Base Design Layer");
+        ImGui.Indent();
+        ImGui.TextDisabled("Applied before this design and before its Applied Before layers.");
+        DrawBaseDesignLayerOverridePicker(id);
+        ImGui.Unindent();
+        ImGui.Spacing();
 
         // A design can only be used as one layer per base design - in Before or After, not both.
         var usedDesignIds = allSlots.SelectMany(s => s.Designs).Select(l => l.DesignId).ToHashSet();
@@ -207,6 +215,73 @@ public partial class MainWindow
                 });
                 picker.Selection = null;
                 picker.Filter = string.Empty;
+            }
+        }
+    }
+
+    // Inherit (default, absent from the dict) / None (present, null) / a specific design (present, set).
+    private void DrawBaseDesignLayerOverridePicker(Guid id)
+    {
+        var cfg = plugin.Configuration;
+        var hasOverride = cfg.DesignBaseLayerOverrides.TryGetValue(id, out var overrideValue);
+
+        string preview;
+        if (!hasOverride)
+        {
+            var inherited = cfg.BaseDesignLayerId is { } inheritedId ? ResolveLinkedDesignName(inheritedId) : "None";
+            preview = $"Inherit ({inherited})";
+        }
+        else
+        {
+            preview = overrideValue is { } specific ? ResolveLinkedDesignName(specific) : "None";
+        }
+
+        ImGui.SetNextItemWidth(280 * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("##baseDesignLayerOverride", preview))
+        {
+            if (combo.Success)
+            {
+                if (ImGui.IsWindowAppearing())
+                    ImGui.SetKeyboardFocusHere();
+                ImGui.SetNextItemWidth(-1);
+                ImGui.InputTextWithHint("##baseLayerOverrideFilter", "Filter by name...", ref baseLayerOverrideFilter, 64);
+                ImGui.Separator();
+
+                if (ImGui.Selectable("Inherit", !hasOverride))
+                {
+                    cfg.DesignBaseLayerOverrides.Remove(id);
+                    cfg.Save();
+                }
+                if (ImGui.Selectable("None", hasOverride && overrideValue == null))
+                {
+                    cfg.DesignBaseLayerOverrides[id] = null;
+                    cfg.Save();
+                }
+                ImGui.Separator();
+
+                var matches = AllDesignsSorted()
+                    .Where(d => d.Id != id
+                                && (baseLayerOverrideFilter.Length == 0
+                                    || d.Name.Contains(baseLayerOverrideFilter, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+
+                if (matches.Count == 0)
+                {
+                    ImGui.TextDisabled("No matching designs.");
+                }
+                else
+                {
+                    var listHeight = Math.Min(matches.Count, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
+                    using var scroll = ImRaii.Child("##baseLayerOverrideList", new Vector2(-1, listHeight), false);
+                    foreach (var (designId, name) in matches)
+                    {
+                        if (ImGui.Selectable($"{name}##baseLayerOverride{designId}", hasOverride && overrideValue == designId))
+                        {
+                            cfg.DesignBaseLayerOverrides[id] = designId;
+                            cfg.Save();
+                        }
+                    }
+                }
             }
         }
     }
@@ -550,6 +625,21 @@ public partial class MainWindow
             slots.RemoveAll(s => s.Designs.Count == 0);
             if (slots.Count == 0)
                 plugin.Configuration.DesignLayerSlots.Remove(baseId);
+        }
+
+        if (plugin.Configuration.BaseDesignLayerId is { } globalBaseLayer && !validIds.Contains(globalBaseLayer))
+            plugin.Configuration.BaseDesignLayerId = null;
+
+        foreach (var baseId in plugin.Configuration.DesignBaseLayerOverrides.Keys.ToList())
+        {
+            if (!validIds.Contains(baseId))
+            {
+                plugin.Configuration.DesignBaseLayerOverrides.Remove(baseId);
+                continue;
+            }
+
+            if (plugin.Configuration.DesignBaseLayerOverrides[baseId] is { } overrideId && !validIds.Contains(overrideId))
+                plugin.Configuration.DesignBaseLayerOverrides.Remove(baseId);
         }
     }
 }

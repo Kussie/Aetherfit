@@ -24,11 +24,13 @@ public sealed class QuickSearchWindow : Window, IDisposable
     private const float WidthPt = 480f;
     private const float ThumbnailMaxPt = 160f;
 
-    // Exactly one of DesignId/Tag is set - a specific design to apply, or a tag to apply a random match for.
-    private readonly record struct SearchResult(string Label, Guid? DesignId, string? Tag)
+    // Exactly one of DesignId/Tag/Command is set - a specific design to apply, a tag to apply a random
+    // match for, or a system command to run outright.
+    private readonly record struct SearchResult(string Label, Guid? DesignId, string? Tag, Action? Command = null, string? Description = null)
     {
         public static SearchResult ForDesign(Guid id, string name) => new(name, id, null);
         public static SearchResult ForTag(string tag) => new($"Tag: {tag} (random pick)", null, tag);
+        public static SearchResult ForCommand(string label, string description, Action command) => new(label, null, null, command, description);
     }
 
     private readonly Plugin plugin;
@@ -120,12 +122,18 @@ public sealed class QuickSearchWindow : Window, IDisposable
 
         ImGui.Spacing();
 
-        if (string.IsNullOrWhiteSpace(query))
-            ImGui.TextDisabled("Type to search your designs or tags. Type \"tag:\" to browse every tag.");
-        else if (matches.Count == 0)
-            ImGui.TextDisabled("No matching designs or tags.");
+        if (matches.Count == 0)
+        {
+            ImGui.TextDisabled("No matching designs, tags, or commands.");
+        }
         else
         {
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                ImGui.TextDisabled("Type to search your designs or tags. Type \"tag:\" to browse every tag.");
+                ImGui.Spacing();
+            }
+
             // Capped so a long result list (e.g. "tag:" browsing everything) scrolls in place instead of
             // growing the window past the bottom of the screen with no way to reach the rest.
             var listHeight = Math.Min(matches.Count, MaxVisibleRows) * ImGui.GetTextLineHeightWithSpacing();
@@ -164,6 +172,10 @@ public sealed class QuickSearchWindow : Window, IDisposable
             var count = plugin.Configuration.CachedOutfits.Values.Count(o => TagMatching.AnyMatch(o.Tags, tag));
             ImGui.SetTooltip($"Applies a random design tagged \"{tag}\" ({count} matching).");
         }
+        else if (result.Description is { } description)
+        {
+            ImGui.SetTooltip(description);
+        }
     }
 
     private static void DrawThumbnail(string absolutePath)
@@ -181,7 +193,11 @@ public sealed class QuickSearchWindow : Window, IDisposable
 
     private void ApplyAndClose(SearchResult result)
     {
-        if (result.DesignId is { } id)
+        if (result.Command is { } command)
+        {
+            command();
+        }
+        else if (result.DesignId is { } id)
         {
             plugin.DesignApply.ApplyDesignById(id);
         }
@@ -195,12 +211,31 @@ public sealed class QuickSearchWindow : Window, IDisposable
         IsOpen = false;
     }
 
+    // Always available, filtered by label like everything else - lets a quick "revert" or "favourite"
+    // resolve without having to know a design or tag name.
+    private List<SearchResult> SystemCommands()
+    {
+        void ReportError(string? error)
+        {
+            if (error != null)
+                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{error}");
+        }
+
+        return new List<SearchResult>
+        {
+            SearchResult.ForCommand("Apply Favourite", "Apply a random favourite design.",
+                () => ReportError(plugin.MainWindow.ApplyRandomFavourite(matchCurrentJob: false))),
+            SearchResult.ForCommand("Apply Last Known", "Reapply the last design you had worn.",
+                () => ReportError(plugin.MainWindow.ReapplyLastWorn())),
+            SearchResult.ForCommand("Revert", "Revert your character's appearance back to the game's state.",
+                plugin.MainWindow.RevertAppearance),
+        };
+    }
+
     private List<SearchResult> FindMatches()
     {
-        if (string.IsNullOrWhiteSpace(query))
-            return new List<SearchResult>();
-
         var trimmed = query.Trim();
+
         if (trimmed.StartsWith(TagBrowsePrefix, StringComparison.OrdinalIgnoreCase))
         {
             var filter = trimmed[TagBrowsePrefix.Length..].Trim();
@@ -210,11 +245,17 @@ public sealed class QuickSearchWindow : Window, IDisposable
                 .ToList();
         }
 
-        var results = plugin.Configuration.DistinctSortedTags()
+        var results = SystemCommands()
+            .Where(c => trimmed.Length == 0 || c.Label.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (trimmed.Length == 0)
+            return results;
+
+        results.AddRange(plugin.Configuration.DistinctSortedTags()
             .Where(t => t.Contains(query, StringComparison.OrdinalIgnoreCase))
             .Take(MaxTagResults)
-            .Select(SearchResult.ForTag)
-            .ToList();
+            .Select(SearchResult.ForTag));
 
         results.AddRange(plugin.Configuration.CachedOutfits
             .Where(kv => !plugin.Configuration.HiddenDesigns.Contains(kv.Key)

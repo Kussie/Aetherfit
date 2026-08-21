@@ -37,9 +37,11 @@ public class ConfigWindow : Window, IDisposable
     {
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(400, 340),
-            MaximumSize = new Vector2(640, 800),
+            MinimumSize = new Vector2(560, 340),
+            MaximumSize = new Vector2(900, 800),
         };
+        Size = new Vector2(560, 340);
+        SizeCondition = ImGuiCond.FirstUseEver;
 
         this.plugin = plugin;
     }
@@ -56,6 +58,7 @@ public class ConfigWindow : Window, IDisposable
             if (tabBar.Success)
             {
                 DrawTab("General", DrawGeneralTab);
+                DrawTab("Design Layers", DrawLayerOptionsTab);
                 DrawTab("Login & Zoning", DrawLoginSection);
                 DrawTab("Tag Suggestions", DrawTagSuggestionsSection);
                 DrawTab("Commands", DrawCommandsSection);
@@ -121,15 +124,6 @@ public class ConfigWindow : Window, IDisposable
         }
         ImGui.PopItemWidth();
 
-        var enableLayers = cfg.EnableRandomLayers;
-        if (ImGui.Checkbox("Enable Additional Design Layers feature", ref enableLayers))
-        {
-            cfg.EnableRandomLayers = enableLayers;
-            cfg.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("When on, applying a base design also applies its configured layers top to bottom,\npicking one design at random from any layer that holds several.\nWhen off, the Additional Design Layers panel is hidden and no layers are applied.");
-
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -176,6 +170,93 @@ public class ConfigWindow : Window, IDisposable
         ImGui.Spacing();
         ImGui.TextDisabled($"Aetherfit v{Plugin.Version}");
     }
+
+    private void DrawLayerOptionsTab()
+    {
+        var cfg = plugin.Configuration;
+
+        var enableLayers = cfg.EnableRandomLayers;
+        if (ImGui.Checkbox("Enable Additional Design Layers feature", ref enableLayers))
+        {
+            cfg.EnableRandomLayers = enableLayers;
+            cfg.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("When on, applying a base design also applies its configured layers top to bottom,\npicking one design at random from any layer that holds several.\nWhen off, the Additional Design Layers panel is hidden and no layers are applied.");
+
+        if (!enableLayers)
+            return;
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        ImGui.TextDisabled("Base Design Layer:");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Applied before every design, and before its Applied Before layers, unless the design\noverrides this in its own Additional Design Layers panel.");
+        ImGui.SameLine();
+        DrawBaseDesignLayerPicker();
+    }
+
+    private string baseDesignLayerFilter = string.Empty;
+
+    private void DrawBaseDesignLayerPicker()
+    {
+        var cfg = plugin.Configuration;
+        var preview = cfg.BaseDesignLayerId is { } sel ? cfg.ResolveDesignName(sel) : "None";
+
+        ImGui.PushItemWidth(280 * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("##baseDesignLayer", preview))
+        {
+            if (combo.Success)
+            {
+                if (ImGui.IsWindowAppearing())
+                    ImGui.SetKeyboardFocusHere();
+                ImGui.SetNextItemWidth(-1);
+                ImGui.InputTextWithHint("##baseDesignLayerFilter", "Filter by name...", ref baseDesignLayerFilter, 64);
+                ImGui.Separator();
+
+                if (ImGui.Selectable("None", cfg.BaseDesignLayerId == null))
+                {
+                    cfg.BaseDesignLayerId = null;
+                    cfg.Save();
+                }
+                ImGui.Separator();
+
+                var matches = LayerableDesignsSorted()
+                    .Where(d => baseDesignLayerFilter.Length == 0
+                                || d.Name.Contains(baseDesignLayerFilter, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (matches.Count == 0)
+                {
+                    ImGui.TextDisabled("No matching designs.");
+                }
+                else
+                {
+                    var listHeight = Math.Min(matches.Count, 15) * ImGui.GetTextLineHeightWithSpacing();
+                    using var scroll = ImRaii.Child("##baseDesignLayerList", new Vector2(-1, listHeight), false);
+                    foreach (var (id, name) in matches)
+                    {
+                        if (ImGui.Selectable($"{name}##baseDesignLayer{id}", cfg.BaseDesignLayerId == id))
+                        {
+                            cfg.BaseDesignLayerId = id;
+                            cfg.Save();
+                        }
+                    }
+                }
+            }
+        }
+        ImGui.PopItemWidth();
+    }
+
+    // Only Glamourer-sourced designs can be picked as a layer - a source like Glamaholic has no
+    // apply-on-top mechanism, so it can never be composited into a layer stack.
+    private IEnumerable<(Guid Id, string Name)> LayerableDesignsSorted()
+        => plugin.Configuration.CachedOutfits
+            .Where(kv => kv.Value.Source == DesignSource.Glamourer)
+            .Select(kv => (kv.Key, kv.Value.Name))
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase);
 
     private void DrawTagSuggestionsSection()
     {

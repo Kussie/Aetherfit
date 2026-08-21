@@ -158,6 +158,10 @@ public class Configuration : IPluginConfiguration
     // When disabled, the Additional Design Layers panel is hidden and applying a base design never applies layers.
     public bool EnableRandomLayers { get; set; } = false;
 
+    // Global default for the Base Design Layer, applied before every design (and before its own Applied
+    // Before layers) unless overridden per-design via DesignBaseLayerOverrides. Null = no base layer.
+    public Guid? BaseDesignLayerId { get; set; }
+
     public bool GlamaholicEnabled { get; set; } = true;
     public bool GlamourPlateEnabled { get; set; } = true;
     public bool SimpleGlamourSwitcherEnabled { get; set; } = true;
@@ -206,6 +210,10 @@ public class Configuration : IPluginConfiguration
     public Dictionary<Guid, LocalDesignMeta> DesignMeta { get; set; } = new();
 
     public Dictionary<Guid, List<DesignLayerSlot>> DesignLayerSlots { get; set; } = new();
+
+    // Per-design override of the global Base Design Layer: absent = inherit BaseDesignLayerId, present
+    // with a null value = explicitly None, present with a Guid = a specific design.
+    public Dictionary<Guid, Guid?> DesignBaseLayerOverrides { get; set; } = new();
 
     // Variant design -> its parent + which of the parent's data it inherits. Stored here (not on
     // CachedOutfit) for the same reason as DesignJobAssociations above.
@@ -281,7 +289,7 @@ public class Configuration : IPluginConfiguration
         nameof(Version), nameof(LastSeenChangelogRevision), nameof(LiveShareInstallId),
         nameof(CachedOutfits), nameof(OutfitImages), nameof(OutfitAdditionalImages),
         nameof(DesignMeta), nameof(FavouriteDesigns), nameof(HiddenDesigns), nameof(DesignJobAssociations),
-        nameof(DesignLayerSlots), nameof(DesignVariants), nameof(IgnoredHealthChecks),
+        nameof(DesignLayerSlots), nameof(DesignBaseLayerOverrides), nameof(DesignVariants), nameof(IgnoredHealthChecks),
         nameof(CharacterLoginSettings), nameof(CharacterDisplayNames),
     };
 
@@ -340,6 +348,7 @@ public class Configuration : IPluginConfiguration
         UpsertDict(DesignMeta, imported.DesignMeta);
         UpsertDict(DesignJobAssociations, imported.DesignJobAssociations);
         UpsertDict(DesignLayerSlots, imported.DesignLayerSlots);
+        UpsertDict(DesignBaseLayerOverrides, imported.DesignBaseLayerOverrides);
         UpsertDict(DesignVariants, imported.DesignVariants);
         UpsertDict(IgnoredHealthChecks, imported.IgnoredHealthChecks);
         UpsertSet(FavouriteDesigns, imported.FavouriteDesigns);
@@ -546,6 +555,11 @@ public class Configuration : IPluginConfiguration
         else
             DesignLayerSlots[id] = slots;
     }
+
+    // Null return covers both an explicit per-design "None" override and falling through to a global
+    // BaseDesignLayerId of null - callers don't need to tell the two apart.
+    public Guid? ResolveBaseDesignLayer(Guid id)
+        => DesignBaseLayerOverrides.TryGetValue(id, out var overrideValue) ? overrideValue : BaseDesignLayerId;
 
     public VariantInfo? GetVariantInfo(Guid id) => DesignVariants.TryGetValue(id, out var v) ? v : null;
 

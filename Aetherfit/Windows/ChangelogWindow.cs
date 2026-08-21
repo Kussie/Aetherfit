@@ -35,6 +35,10 @@ internal static class ChangelogData
             "Added ability to apply a specific layer from the gallery view",
             "Added ability to share designs with an importable string",
         }),
+        new(4, "Base Design Layer Support", new[]
+        {
+            "Added an ability to create and set a base layer, that is applied as the very first layer when a design is applied, with the ability to override the base on a per-design basis.",
+        }),
     };
 
     public static int LatestRevision => Entries.Length == 0 ? 0 : Entries.Max(e => e.Revision);

@@ -30,10 +30,29 @@ public sealed class DesignApplyService
     }
 
     public void ApplyDesignById(Guid id, bool recordLastApplied = true)
-        => ApplyDesignCore(id,
-            applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: true),
-            applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false),
-            recordLastApplied: recordLastApplied);
+    {
+        var beforeLayers = applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: true);
+        var afterLayers = applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false);
+
+        // Goes on before even the "Applied Before" layers, so it sits at the very bottom of the stack.
+        if (!applyingLayer && ResolveBaseLayer(id) is { } baseLayerId)
+            beforeLayers.Insert(0, baseLayerId);
+
+        ApplyDesignCore(id, beforeLayers, afterLayers, recordLastApplied: recordLastApplied);
+    }
+
+    // A design can only be picked as a Base Design Layer if it still exists and its provider supports
+    // layering - same restriction as PickLayers below.
+    private Guid? ResolveBaseLayer(Guid baseId)
+    {
+        if (!plugin.Configuration.EnableRandomLayers)
+            return null;
+
+        if (plugin.Configuration.ResolveBaseDesignLayer(baseId) is not { } layerId)
+            return null;
+
+        return SupportsLayers(layerId) ? layerId : null;
+    }
 
     // Applies just one equipment slot from a design onto the character's current outfit, leaving
     // everything else worn untouched. Bypasses ApplyDesignCore on purpose - none of its "before base
