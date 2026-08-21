@@ -568,7 +568,7 @@ public partial class MainWindow
         if (associations.Count == 0)
             return;
 
-        DrawSubheader("Associated Base Outfits");
+        DrawSubheader("Associated Outfits");
         ImGui.Indent();
         ImGui.TextDisabled("This design's own layers are not applied when it is used as a layer.");
 

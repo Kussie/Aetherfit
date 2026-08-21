@@ -391,7 +391,8 @@ public sealed class DesignApplyService
 
     // A design can only be picked as a layer if it still exists and its provider supports layering
     // (Glamourer only, for now - a source like Glamaholic has no equivalent apply-on-top mechanism).
-    private bool SupportsLayers(Guid id)
+    // Internal so DesignLayerResolutionService can reuse the same rule instead of duplicating it.
+    internal bool SupportsLayers(Guid id)
         => plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
            && plugin.DesignProviders.FirstOrDefault(p => p.Source == outfit.Source) is { } provider
            && provider.Capabilities.HasFlag(DesignProviderCapabilities.Layers);

@@ -73,6 +73,7 @@ public sealed class Plugin : IDalamudPlugin
     public GalleryLiveShareService LiveShare { get; init; }
     public RestoreSequenceService Restore { get; init; }
     public DesignApplyService DesignApply { get; init; }
+    public DesignLayerResolutionService LayerResolution { get; init; }
     public AutomationService Automation { get; init; }
     public SettingsBackupService SettingsBackup { get; init; }
 
@@ -201,6 +202,7 @@ public sealed class Plugin : IDalamudPlugin
         TagSuggestions = new TagSuggestionService(TagModel, Configuration);
         LiveShare = new GalleryLiveShareService(this);
         DesignApply = new DesignApplyService(this);
+        LayerResolution = new DesignLayerResolutionService(this);
         Automation = new AutomationService(this);
         SettingsBackup = new SettingsBackupService();
 

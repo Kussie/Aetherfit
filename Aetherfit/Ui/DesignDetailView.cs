@@ -92,6 +92,32 @@ internal static class DesignDetailView
         return hovered;
     }
 
+    // "(inherited from Layer: {name})" with the name tinted as a clickable cross-reference; true while
+    // the name is hovered, so callers can drive the same Shift+click-to-open behavior as other design
+    // links (e.g. DrawDesignLinkRow). tag distinguishes item vs stain when a row's two are inherited
+    // from different layers.
+    public static bool DrawInheritedFromLayerText(string designName, string? tag = null)
+    {
+        ImGui.SameLine();
+        ImGui.TextColored(UiTheme.StateUnset, "(inherited from Layer: ");
+        ImGui.SameLine(0, 0);
+        TextColoredUnformatted(UiTheme.ModLink, designName);
+        var hovered = ImGui.IsItemHovered();
+        ImGui.SameLine(0, 0);
+        ImGui.TextColored(UiTheme.StateUnset, tag == null ? ")" : $" ({tag}))");
+        return hovered;
+    }
+
+    // "(also contested by a random layer pick among N designs)" - never claims a specific inherited
+    // value, just flags that one might still apply. A distinct caution tint so it doesn't read as
+    // clickable and doesn't blend into "(not in design)" grey text.
+    public static void DrawContestedCaveat(int candidateCount)
+    {
+        ImGui.SameLine();
+        ImGui.TextColored(UiTheme.CautionText,
+            $"(also contested by a random layer pick among {candidateCount} designs)");
+    }
+
     public static void DrawStainSwatch(GameDataService gameData, byte stainId, bool active)
     {
         if (stainId == 0)

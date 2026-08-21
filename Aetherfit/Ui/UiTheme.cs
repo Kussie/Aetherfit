@@ -31,6 +31,10 @@ internal static class UiTheme
     // Inline error text (e.g. a failed screenshot capture).
     public static readonly Vector4 ErrorText = new(1.0f, 0.5f, 0.5f, 1.0f);
 
+    // Inline caution text (e.g. a value that could still be overwritten by a random layer pick) -
+    // distinct from ErrorText (an actual problem) and StateUnset (plain "not applicable" grey).
+    public static readonly Vector4 CautionText = new(0.95f, 0.75f, 0.35f, 1.0f);
+
     // Favourite star: filled gold when on. The "off" tint differs by context - a softer grey for the star
     // overlaid on a gallery thumbnail, a darker grey for the star button in the detail header.
     public static readonly Vector4 FavouriteStar = new(1.0f, 0.85f, 0.1f, 1.0f);
