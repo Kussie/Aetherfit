@@ -17,6 +17,8 @@ public sealed class PenumbraService
     private readonly RemoveTemporaryModSettingsPlayer removeTemporaryModSettingsPlayer;
     private readonly RemoveAllTemporaryModSettingsPlayer removeAllTemporaryModSettingsPlayer;
     private readonly RedrawObject redrawObject;
+    private readonly GetCollectionForObject getCollectionForObject;
+    private readonly GetAllModSettings getAllModSettings;
 
     // A mod changes the same items no matter which design pulls it in, so we look them up once per mod
     // directory and reuse that across every design.
@@ -38,6 +40,8 @@ public sealed class PenumbraService
         removeTemporaryModSettingsPlayer = new RemoveTemporaryModSettingsPlayer(Plugin.PluginInterface);
         removeAllTemporaryModSettingsPlayer = new RemoveAllTemporaryModSettingsPlayer(Plugin.PluginInterface);
         redrawObject = new RedrawObject(Plugin.PluginInterface);
+        getCollectionForObject = new GetCollectionForObject(Plugin.PluginInterface);
+        getAllModSettings = new GetAllModSettings(Plugin.PluginInterface);
     }
 
     // Penumbra's own reported ApiVersion (BreakingVersion/FeatureVersion in its PenumbraApi.cs) - confirmed
@@ -166,6 +170,55 @@ public sealed class PenumbraService
         {
             Plugin.Log.Warning(ex, "Failed to remove all temporary mod settings for key {Key}", key);
             return PenumbraApiEc.UnknownError;
+        }
+    }
+
+    // The local player's effective Penumbra collection - null if Penumbra can't resolve one for object
+    // index 0 (e.g. not logged in) or the call throws.
+    public Guid? GetLocalPlayerCollectionId()
+    {
+        try
+        {
+            var (valid, _, effective) = getCollectionForObject.Invoke(0);
+            return valid ? effective.Id : null;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query local player's Penumbra collection");
+            return null;
+        }
+    }
+
+    // Every mod's settings within the given collection (inheritance/temporary settings resolved),
+    // keyed by directory. Empty on failure rather than throwing - callers treat "no mods active" and
+    // "Penumbra unavailable" the same way (nothing to attribute).
+    public IReadOnlyDictionary<string, (bool Enabled, int Priority, Dictionary<string, List<string>> Settings, bool Inherited, bool Locked)>
+        GetAllModSettings(Guid collectionId)
+    {
+        var empty = new Dictionary<string, (bool, int, Dictionary<string, List<string>>, bool, bool)>();
+        try
+        {
+            var (result, settings) = getAllModSettings.Invoke(collectionId);
+            return result == PenumbraApiEc.Success && settings != null ? settings : empty;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query all mod settings for collection {Collection}", collectionId);
+            return empty;
+        }
+    }
+
+    // Directory -> display name - GetAllModSettings above only gives directories.
+    public IReadOnlyDictionary<string, string> GetModDisplayNames()
+    {
+        try
+        {
+            return getModList.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query installed mod list for names");
+            return new Dictionary<string, string>();
         }
     }
 

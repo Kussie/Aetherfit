@@ -63,6 +63,7 @@ public sealed class Plugin : IDalamudPlugin
     public CustomizePlusService CustomizePlus { get; init; }
     public GameDataService GameData { get; init; }
     public DesignAttributionService Attribution { get; init; }
+    public GearImportService GearImport { get; init; }
     public HealthReportService HealthReport { get; init; }
     public DesignLayerReportService LayerReport { get; init; }
     public ImageStorageService ImageStorage { get; init; }
@@ -195,6 +196,7 @@ public sealed class Plugin : IDalamudPlugin
         DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer), Glamaholic, GlamourPlate, SimpleGlamourSwitcher, Wardrobe };
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);
+        GearImport = new GearImportService(Configuration, GameData, Penumbra, Glamourer);
         HealthReport = new HealthReportService(Configuration, GameData, Attribution);
         LayerReport = new DesignLayerReportService(this);
         ImageStorage = new ImageStorageService(Configuration);

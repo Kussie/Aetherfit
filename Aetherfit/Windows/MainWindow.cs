@@ -356,6 +356,13 @@ public partial class MainWindow : Window, IDisposable
                 outfit.Description = meta.Description;
                 outfit.Tags = new List<string>(meta.Tags);
                 outfit.LastAppliedAt = meta.LastApplied;
+
+                if (outfit.Source == DesignSource.Glamourer
+                    && plugin.Configuration.GearImportOverrides.TryGetValue(aetherfitId, out var gearOverride))
+                {
+                    GearImportService.ApplyOverlay(outfit, gearOverride);
+                }
+
                 job.Metadata[aetherfitId] = outfit;
 
                 if (!plugin.ImageStorage.HasCover(aetherfitId) && provider.GetNativeImagePath(nativeId) is { } nativeImagePath)
@@ -405,6 +412,12 @@ public partial class MainWindow : Window, IDisposable
             .ToList();
         foreach (var stale in staleMeta)
             plugin.Configuration.DesignMeta.Remove(stale);
+
+        var staleGearOverrides = plugin.Configuration.GearImportOverrides.Keys
+            .Where(k => !validIds.Contains(k))
+            .ToList();
+        foreach (var stale in staleGearOverrides)
+            plugin.Configuration.GearImportOverrides.Remove(stale);
 
         var staleHealthIgnores = plugin.Configuration.IgnoredHealthChecks.Keys
             .Where(k => !validIds.Contains(k))

@@ -133,6 +133,21 @@ public sealed class GlamourerService : IDisposable
         }
     }
 
+    // Raw JObject for a saved design - unlike FetchDesignMetadata, nothing gets parsed and discarded, so
+    // a caller can clone a design's full shape (links, description, tags, etc.) rather than rebuild it.
+    public JObject? GetDesignJObject(Guid id)
+    {
+        try
+        {
+            return getDesignJObject.Invoke(id);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to fetch raw design JObject for {Id}", id);
+            return null;
+        }
+    }
+
     // quiet suppresses the success chat line and sound (e.g. automatic zone-change reapplies);
     // errors still print so background failures don't go unnoticed.
     public bool Apply(Guid id, string designName, IReadOnlyList<string>? layerNames = null, bool quiet = false)
@@ -350,7 +365,7 @@ public sealed class GlamourerService : IDisposable
         };
     }
 
-    private static List<CachedEquipmentSlot> ParseEquipment(JObject? equipment)
+    internal static List<CachedEquipmentSlot> ParseEquipment(JObject? equipment)
     {
         var result = new List<CachedEquipmentSlot>();
         if (equipment == null)
@@ -374,7 +389,7 @@ public sealed class GlamourerService : IDisposable
         return result;
     }
 
-    private static List<CachedBonusItem> ParseBonusItems(JToken? token)
+    internal static List<CachedBonusItem> ParseBonusItems(JToken? token)
     {
         var result = new List<CachedBonusItem>();
         if (token is not JObject obj)

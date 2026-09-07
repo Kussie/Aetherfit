@@ -209,6 +209,9 @@ public class Configuration : IPluginConfiguration
 
     public Dictionary<Guid, LocalDesignMeta> DesignMeta { get; set; } = new();
 
+    // Survives CachedOutfits being wholly rebuilt on refresh, same as DesignMeta above.
+    public Dictionary<Guid, GearImportOverride> GearImportOverrides { get; set; } = new();
+
     public Dictionary<Guid, List<DesignLayerSlot>> DesignLayerSlots { get; set; } = new();
 
     // Per-design override of the global Base Design Layer: absent = inherit BaseDesignLayerId, present
@@ -288,7 +291,7 @@ public class Configuration : IPluginConfiguration
     {
         nameof(Version), nameof(LastSeenChangelogRevision), nameof(LiveShareInstallId),
         nameof(CachedOutfits), nameof(OutfitImages), nameof(OutfitAdditionalImages),
-        nameof(DesignMeta), nameof(FavouriteDesigns), nameof(HiddenDesigns), nameof(DesignJobAssociations),
+        nameof(DesignMeta), nameof(GearImportOverrides), nameof(FavouriteDesigns), nameof(HiddenDesigns), nameof(DesignJobAssociations),
         nameof(DesignLayerSlots), nameof(DesignBaseLayerOverrides), nameof(DesignVariants), nameof(IgnoredHealthChecks),
         nameof(CharacterLoginSettings), nameof(CharacterDisplayNames),
     };
@@ -346,6 +349,7 @@ public class Configuration : IPluginConfiguration
         }
 
         UpsertDict(DesignMeta, imported.DesignMeta);
+        UpsertDict(GearImportOverrides, imported.GearImportOverrides);
         UpsertDict(DesignJobAssociations, imported.DesignJobAssociations);
         UpsertDict(DesignLayerSlots, imported.DesignLayerSlots);
         UpsertDict(DesignBaseLayerOverrides, imported.DesignBaseLayerOverrides);
@@ -672,6 +676,24 @@ public class LocalDesignMeta
     public string? Description { get; set; }
     public List<string> Tags { get; set; } = new();
     public DateTimeOffset? LastApplied { get; set; }
+}
+
+[Serializable]
+public class GearImportOverride
+{
+    public List<CachedEquipmentSlot> Equipment { get; set; } = new();
+    public List<CachedBonusItem> BonusItems { get; set; } = new();
+
+    // Apply=true entries only, merged onto the design's own Customizations by Key - never a wholesale replace.
+    public List<CachedCustomization> Customizations { get; set; } = new();
+
+    public int CustomizeClan { get; set; }
+    public int CustomizeGender { get; set; }
+    public bool CustomizeClanApplied { get; set; }
+    public bool CustomizeGenderApplied { get; set; }
+
+    // Detected active mods, added on top of the design's existing Mods - never removes any.
+    public List<CachedMod> Mods { get; set; } = new();
 }
 
 [Serializable]

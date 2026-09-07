@@ -91,54 +91,12 @@ public sealed class DesignAttributionService
 
     private static string? HairChangedItemFragment(CachedOutfit details)
     {
-        var clan = details.CustomizeClanApplied ? details.CustomizeClan : CurrentPlayerClan();
-        var genderValue = details.CustomizeGenderApplied ? details.CustomizeGender : CurrentPlayerGender();
-
-        var race = clan is { } c ? ClanToModelRace(c) : null;
-        var gender = genderValue switch { 0 => "Male", 1 => "Female", _ => null };
-        return race == null || gender == null ? null : $"{race} {gender} Hair ";
+        var clan = details.CustomizeClanApplied ? details.CustomizeClan : HairAttribution.CurrentPlayerClan();
+        var genderValue = details.CustomizeGenderApplied ? details.CustomizeGender : HairAttribution.CurrentPlayerGender();
+        return HairAttribution.HairFragment(clan, genderValue);
     }
 
-    // The current character's clan (Tribe RowId, 1-16) and gender (0 male / 1 female), or null when not logged in.
-    // The Tribe sheet RowIds line up with Glamourer's clan numbering, and Sex.Male/Female are 0/1.
-    private static int? CurrentPlayerClan()
-        => Plugin.PlayerState.IsLoaded ? (int)Plugin.PlayerState.Tribe.RowId : null;
-
-    private static int? CurrentPlayerGender()
-        => Plugin.PlayerState.IsLoaded ? (int)Plugin.PlayerState.Sex : null;
-
-    // True when a Penumbra changed-item key is the design's hairstyle: the right race/gender/Hair fragment
-    // and a trailing model id equal to the hairstyle value (parsed as an int so zero-padding doesn't matter).
+    // True when a Penumbra changed-item key is the design's hairstyle.
     private static bool HairKeyMatches(string key, string fragment, int expectedId)
-    {
-        if (!key.StartsWith("Customization:", StringComparison.Ordinal))
-            return false;
-
-        var at = key.IndexOf(fragment, StringComparison.Ordinal);
-        if (at < 0)
-            return false;
-
-        var idText = key[(at + fragment.Length)..].Trim();
-        // The id is the last token; guard against anything trailing it.
-        var space = idText.IndexOf(' ');
-        if (space >= 0)
-            idText = idText[..space];
-        return int.TryParse(idText, out var modelId) && modelId == expectedId;
-    }
-
-    // Glamourer clan (subrace, 1-16) -> the ModelRace name Penumbra uses in changed-item keys. Hyur splits
-    // into Midlander/Highlander; the other races collapse their two tribes onto one model base.
-    private static string? ClanToModelRace(int clan) => clan switch
-    {
-        1 => "Midlander",
-        2 => "Highlander",
-        3 or 4 => "Elezen",
-        5 or 6 => "Lalafell",
-        7 or 8 => "Miqo'te",
-        9 or 10 => "Roegadyn",
-        11 or 12 => "Au Ra",
-        13 or 14 => "Hrothgar",
-        15 or 16 => "Viera",
-        _ => null,
-    };
+        => HairAttribution.KeyMatches(key, fragment, expectedId);
 }

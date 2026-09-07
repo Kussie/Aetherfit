@@ -149,8 +149,11 @@ internal static class GlamourerJsonSchema
         return result;
     }
 
-    // All 12 slots, Apply=true only for the ones present - the rest stays whatever it already is when
-    // this design gets applied.
+    // All 12 slots; a slot absent from `slots` comes out Apply=false (stays whatever it already is when
+    // this design gets applied). A slot that IS present keeps its own Apply/ApplyStain flags rather than
+    // forcing them true - every existing caller's entries already have Apply=true set on construction, so
+    // this is a no-op for them, but it matters for a caller that deliberately stages an Apply=false entry
+    // (e.g. GearImportService, keeping a slot deferred to something else instead of forcing it on).
     public static JObject BuildEquipmentSection(IEnumerable<CachedEquipmentSlot> slots)
     {
         var bySlot = slots.ToDictionary(s => s.Slot);
@@ -163,9 +166,76 @@ internal static class GlamourerJsonSchema
                 ["ItemId"] = has ? (long)entry!.ItemId : 0L,
                 ["Stain"] = has ? entry!.Stain : (byte)0,
                 ["Stain2"] = has ? entry!.Stain2 : (byte)0,
-                ["Apply"] = has,
-                ["ApplyStain"] = has,
+                ["Apply"] = has && entry!.Apply,
+                ["ApplyStain"] = has && entry!.ApplyStain,
             };
+        }
+        return result;
+    }
+
+    // Full-replace, mirrors BuildEquipmentSection's reasoning - GetState()'s Bonus section always covers
+    // every known bonus slot (e.g. Glasses), so there's nothing to preserve from a prior value.
+    public static JObject BuildBonusSection(IEnumerable<CachedBonusItem> items)
+    {
+        var result = new JObject();
+        foreach (var b in items)
+            result[b.Slot] = new JObject { ["BonusId"] = (long)b.ItemId, ["Apply"] = b.Apply };
+        return result;
+    }
+
+    // Unlike ApplySingleCustomization (which zeroes every other key's Apply flag), keys not in
+    // `overrides` are left untouched here - this overlays what changed, not a wholesale replace.
+    public static JObject MergeCustomizeSection(JObject baseCustomize, IEnumerable<CachedCustomization> overrides)
+    {
+        var result = (JObject)baseCustomize.DeepClone();
+        foreach (var c in overrides)
+        {
+            if (result[c.Key] is not JObject entry)
+                result[c.Key] = entry = new JObject();
+
+            if (c.IsToggle)
+            {
+                // Same toggle-shape ambiguity as ApplySingleCustomization (bool vs. 0/128 flag).
+                var on = c.Value == "On";
+                entry["Value"] = entry["Value"]?.Type == JTokenType.Boolean ? on : (on ? 128 : 0);
+            }
+            else
+            {
+                entry["Value"] = c.RawValue;
+            }
+            entry["Apply"] = true;
+        }
+        return result;
+    }
+
+    // Appends only genuinely-new mod entries (by Directory) onto a clone of an existing Mods array -
+    // never touches an entry the design already has. Mirrors ParseMods's shape in reverse.
+    public static JArray AppendModsSection(JToken? baseMods, IEnumerable<CachedMod> additions)
+    {
+        var result = baseMods is JArray arr ? (JArray)arr.DeepClone() : new JArray();
+        var existingDirs = new HashSet<string>(
+            result.OfType<JObject>().Select(o => ReadString(o["Directory"]) ?? string.Empty),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var mod in additions)
+        {
+            if (existingDirs.Contains(mod.Directory))
+                continue;
+
+            var settings = new JObject();
+            foreach (var (group, value) in mod.Settings)
+                settings[group] = new JArray(value.Split(", ", StringSplitOptions.RemoveEmptyEntries));
+
+            result.Add(new JObject
+            {
+                ["Name"] = mod.Name,
+                ["Directory"] = mod.Directory,
+                ["Enabled"] = true,
+                ["Priority"] = mod.Priority,
+                ["Settings"] = settings,
+                ["Remove"] = false,
+                ["Inherit"] = false,
+            });
         }
         return result;
     }
