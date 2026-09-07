@@ -330,7 +330,7 @@ public partial class MainWindow
             }
 
             if (!isFavourite)
-                DrawLeafDot(hasColor ? design.Color : ImGui.GetColorU32(ImGuiCol.Text));
+                DrawLeafDot(hasColor ? design.Color : ImGui.GetColorU32(ImGuiCol.Text), hasVariants);
 
             if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
             {
@@ -354,12 +354,16 @@ public partial class MainWindow
     }
 
     // A filled dot at the start of a leaf row, sized from the line height and tinted to the design's colour.
-    private static void DrawLeafDot(uint color)
+    // A TreeNodeEx row (hasVariants) draws its own arrow glyph inset by FramePadding.X from the row's
+    // start, so the dot needs the same leftward nudge to land on it instead of drifting right of a plain
+    // sibling row's dot.
+    private static void DrawLeafDot(uint color, bool hasVariants = false)
     {
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
         var lineH = ImGui.GetTextLineHeight();
-        var center = new Vector2(min.X + (lineH * 0.45f), (min.Y + max.Y) * 0.5f);
+        var x = min.X + (lineH * 0.45f) - (hasVariants ? ImGui.GetStyle().FramePadding.X : 0f);
+        var center = new Vector2(x, (min.Y + max.Y) * 0.5f);
         ImGui.GetWindowDrawList().AddCircleFilled(center, lineH * LeafDotRadius, color, 16);
     }
 
@@ -652,6 +656,10 @@ public partial class MainWindow
 
                 if (plugin.Configuration.GetVariantInfo(id) is { } variant)
                     DrawVariantSection(id, variant);
+
+                var childVariants = plugin.Configuration.GetVariantsOf(id).Select(kv => kv.Key).ToList();
+                if (childVariants.Count > 0)
+                    DrawVariantsOfSection(childVariants);
 
                 if (Pills.DrawCollapsibleSubheader("Tags", ref tagsPanelOpen))
                 {
@@ -1155,6 +1163,28 @@ public partial class MainWindow
         {
             variant.InheritGear = inheritGear;
             plugin.Configuration.Save();
+        }
+
+        ImGui.Unindent();
+        ImGui.Spacing();
+    }
+
+    private void DrawVariantsOfSection(List<Guid> variantIds)
+    {
+        if (!Pills.DrawCollapsibleSubheader("Variants", ref variantsOfPanelOpen))
+            return;
+        ImGui.Indent();
+
+        foreach (var variantId in variantIds.OrderBy(ResolveLinkedDesignName, StringComparer.OrdinalIgnoreCase))
+        {
+            DesignDetailView.TextColoredUnformatted(ModLinkColor, ResolveLinkedDesignName(variantId));
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                ImGui.SetTooltip("Click to open in Aetherfit");
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    OpenDesign(variantId);
+            }
         }
 
         ImGui.Unindent();
