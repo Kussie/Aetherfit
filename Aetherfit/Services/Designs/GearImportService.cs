@@ -160,15 +160,21 @@ public sealed class GearImportService
     {
         var result = new List<CachedMod>();
 
+        // A kept-but-deferred slot (Apply=false, e.g. a layer-matched item left alone) still carries its
+        // real ItemId - only an entry the design actually applies counts as "this design's item" here.
         var itemNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var e in equipment)
         {
+            if (!e.Apply)
+                continue;
             var name = gameData.ResolveItemName(e.ItemId);
             if (name != GameDataService.NothingItemName)
                 itemNames.Add(name);
         }
         foreach (var b in bonusItems)
         {
+            if (!b.Apply)
+                continue;
             var name = gameData.ResolveBonusItemName(b.Slot, b.ItemId);
             if (name != GameDataService.NothingItemName)
                 itemNames.Add(name);
