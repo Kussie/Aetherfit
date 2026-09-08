@@ -28,26 +28,7 @@ public sealed class GearImportService
     public sealed record CaptureResult(bool Success, string? Error, GearImportOverride? Override);
 
     public sealed record CreateFreshDesignResult(bool Success, string? Error, Guid NewId);
-
-    // A brand-new design with no existing design as a base - there's nothing to diff against, but a slot
-    // or customization the global Base Design Layer already supplies still shouldn't be baked in verbatim
-    // just because a not-yet-created design has no per-design layer config of its own: this design will
-    // inherit that same Base Design Layer by default once it exists (Configuration.ResolveBaseDesignLayer
-    // falls back to it for any design with no override), so a value that only matches what the layer
-    // already provides is left deferred (Apply=false) exactly like Capture does for an existing design's
-    // layers - only a genuine override (something that differs from the layer's own value) gets baked in.
-    // includeCustomizations gates the design's own Customize section separately (defaults to off in the
-    // UI) - most of the time only the gear/mods are wanted, not a full race/face/hair snapshot.
-    //
-    // Mods need a workaround: Glamourer's AddDesign, given a payload built from live state (no saved
-    // design's own Identifier to recognize and clone), falls back to cloning its own internal "Temporary
-    // Design" object rather than fully parsing the provided JSON - and that fallback silently drops
-    // whatever "Mods" section the payload had, even though the identical payload shape works when the
-    // base instead comes from an existing saved design's own file (confirmed: that's exactly what
-    // MainWindow.EditMode.cs's TryBuildGearOverrideDesignJson does for the "Import current gear" flow,
-    // and its mods DO come through). So this creates twice: once from state to get equipment/customize
-    // right, then patches Mods onto *that new design's own now-real saved file* (which has a genuine
-    // Identifier) and recreates from it - the confirmed-working path - dropping the mod-less intermediate.
+    
     public CreateFreshDesignResult CreateFreshDesign(string name, bool includeCustomizations)
     {
         var (result, state) = glamourer.GetState();
