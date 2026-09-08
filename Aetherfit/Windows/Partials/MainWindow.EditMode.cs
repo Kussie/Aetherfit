@@ -41,6 +41,7 @@ public partial class MainWindow
     private const string ForceSyncPopupId = "Force Sync?##forceSyncConfirm";
     private const string ImportToGlamourerPopupId = "Import into Glamourer?##importGlamourerConfirm";
     private const string ImportGearPopupId = "Import current gear?##importGearConfirm";
+    private const string CreateNewDesignPopupId = "Create new design?##createNewDesignConfirm";
     private const string AddTagPopupId = "AddDesignTagPopup";
     private const string AddVariantPopupId = "AddVariantPopup";
     private string variantPickerFilter = string.Empty;
@@ -51,6 +52,9 @@ public partial class MainWindow
     private bool importGearCreateNew;
     private string importGearNewName = string.Empty;
     private bool importGearReclaimFocus;
+    private string createNewDesignName = string.Empty;
+    private bool createNewDesignReclaimFocus;
+    private bool createNewDesignIncludeCustomizations;
     private bool addTagReclaimFocus;
 
     // Reset whenever the selected design changes so edit mode always starts fresh for the new selection.
@@ -126,6 +130,8 @@ public partial class MainWindow
                 DrawSourceTree(hasFilter);
             else
                 DrawTree(root, hasFilter);
+
+            DrawCreateNewDesignLeaf();
         }
 
         // Tree's drawn, so we're done with the one-shot expand request - clear it for next frame.
@@ -365,6 +371,88 @@ public partial class MainWindow
         var x = min.X + (lineH * 0.45f) - (hasVariants ? ImGui.GetStyle().FramePadding.X : 0f);
         var center = new Vector2(x, (min.Y + max.Y) * 0.5f);
         ImGui.GetWindowDrawList().AddCircleFilled(center, lineH * LeafDotRadius, color, 16);
+    }
+
+    // Always the last row in the tree regardless of grouping mode (called once, after whichever tree
+    // draws) - a plain leaf with a + in place of the usual dot, opening a name-only creation popup.
+    private void DrawCreateNewDesignLeaf()
+    {
+        if (ImGui.Selectable("   Create new design##createNewDesignLeaf"))
+        {
+            createNewDesignName = string.Empty;
+            createNewDesignReclaimFocus = true;
+            createNewDesignIncludeCustomizations = false;
+            ImGui.OpenPopup(CreateNewDesignPopupId);
+        }
+
+        // Drawn by hand (not the icon font) so it's sized to match the dot's own footprint rather than a
+        // full icon glyph, which reads far too large next to it.
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        var lineH = ImGui.GetTextLineHeight();
+        var center = new Vector2(min.X + (lineH * 0.45f), (min.Y + max.Y) * 0.5f);
+        var half = lineH * LeafDotRadius;
+        var thickness = 1.5f * ImGuiHelpers.GlobalScale;
+        var color = ImGui.GetColorU32(ImGuiCol.Text);
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.AddLine(center - new Vector2(half, 0f), center + new Vector2(half, 0f), color, thickness);
+        drawList.AddLine(center - new Vector2(0f, half), center + new Vector2(0f, half), color, thickness);
+
+        DrawCreateNewDesignPopup();
+    }
+
+    private void DrawCreateNewDesignPopup()
+    {
+        ImGui.SetNextWindowSize(new Vector2(420, 0) * ImGuiHelpers.GlobalScale, ImGuiCond.Always);
+        using var modal = ImRaii.PopupModal(CreateNewDesignPopupId, ImGuiWindowFlags.NoResize);
+        if (!modal.Success)
+            return;
+
+        ImGui.TextWrapped("This creates a brand-new Glamourer design from your currently-equipped gear "
+            + "and any active Penumbra mods affecting them.");
+        ImGui.Spacing();
+
+        ImGui.TextUnformatted("Design name");
+        if (ImGui.IsWindowAppearing() || createNewDesignReclaimFocus)
+        {
+            ImGui.SetKeyboardFocusHere();
+            createNewDesignReclaimFocus = false;
+        }
+        ImGui.SetNextItemWidth(-1);
+        var submitted = ImGui.InputTextWithHint("##createNewDesignName", "Design name (required)", ref createNewDesignName, 128,
+            ImGuiInputTextFlags.EnterReturnsTrue);
+        var trimmed = createNewDesignName.Trim();
+        var canConfirm = trimmed.Length > 0;
+
+        ImGui.Spacing();
+        ImGui.Checkbox("Also include customizations (race, face, hair, etc.)", ref createNewDesignIncludeCustomizations);
+
+        ImGui.Spacing();
+        using (ImRaii.Disabled(!canConfirm))
+        {
+            if (ImGui.Button("Create") || (submitted && canConfirm))
+            {
+                ImGui.CloseCurrentPopup();
+                DoCreateNewDesignFromScratch(trimmed, createNewDesignIncludeCustomizations);
+            }
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel"))
+            ImGui.CloseCurrentPopup();
+    }
+
+    private void DoCreateNewDesignFromScratch(string name, bool includeCustomizations)
+    {
+        var result = plugin.GearImport.CreateFreshDesign(name, includeCustomizations);
+        if (!result.Success)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Create new design failed: {result.Error}");
+            return;
+        }
+
+        Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Created \"{name}\" from currently worn equipment.");
+        selectedDesign = result.NewId;
+        RefreshDesigns();
     }
 
     private void DrawDesignLeafTooltip(DesignLeaf design)

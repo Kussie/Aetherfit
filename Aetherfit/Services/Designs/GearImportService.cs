@@ -27,6 +27,128 @@ public sealed class GearImportService
 
     public sealed record CaptureResult(bool Success, string? Error, GearImportOverride? Override);
 
+    public sealed record CreateFreshDesignResult(bool Success, string? Error, Guid NewId);
+
+    // A brand-new design with no existing design as a base - there's nothing to diff against, but a slot
+    // or customization the global Base Design Layer already supplies still shouldn't be baked in verbatim
+    // just because a not-yet-created design has no per-design layer config of its own: this design will
+    // inherit that same Base Design Layer by default once it exists (Configuration.ResolveBaseDesignLayer
+    // falls back to it for any design with no override), so a value that only matches what the layer
+    // already provides is left deferred (Apply=false) exactly like Capture does for an existing design's
+    // layers - only a genuine override (something that differs from the layer's own value) gets baked in.
+    // includeCustomizations gates the design's own Customize section separately (defaults to off in the
+    // UI) - most of the time only the gear/mods are wanted, not a full race/face/hair snapshot.
+    //
+    // Mods need a workaround: Glamourer's AddDesign, given a payload built from live state (no saved
+    // design's own Identifier to recognize and clone), falls back to cloning its own internal "Temporary
+    // Design" object rather than fully parsing the provided JSON - and that fallback silently drops
+    // whatever "Mods" section the payload had, even though the identical payload shape works when the
+    // base instead comes from an existing saved design's own file (confirmed: that's exactly what
+    // MainWindow.EditMode.cs's TryBuildGearOverrideDesignJson does for the "Import current gear" flow,
+    // and its mods DO come through). So this creates twice: once from state to get equipment/customize
+    // right, then patches Mods onto *that new design's own now-real saved file* (which has a genuine
+    // Identifier) and recreates from it - the confirmed-working path - dropping the mod-less intermediate.
+    public CreateFreshDesignResult CreateFreshDesign(string name, bool includeCustomizations)
+    {
+        var (result, state) = glamourer.GetState();
+        if (result != GlamourerApiEc.Success || state == null)
+            return new CreateFreshDesignResult(false, $"Couldn't read current Glamourer state ({result}).", default);
+
+        var baseLayerOutfit = configuration.BaseDesignLayerId is { } baseLayerId
+            && configuration.CachedOutfits.TryGetValue(baseLayerId, out var layerOutfit)
+                ? layerOutfit
+                : null;
+
+        var designJson = (JObject)state.DeepClone();
+        var customize = state["Customize"] as JObject;
+        var liveEquipment = GlamourerService.ParseEquipment(state["Equipment"] as JObject);
+        var liveBonusItems = GlamourerService.ParseBonusItems(state["Bonus"]);
+        var liveCustomizations = GlamourerJsonSchema.ParseCustomizations(customize);
+        var clan = (int)GlamourerJsonSchema.ReadUInt64(customize?["Clan"]?["Value"]);
+        var gender = (int)GlamourerJsonSchema.ReadUInt64(customize?["Gender"]?["Value"]);
+
+        var effectiveEquipment = new List<CachedEquipmentSlot>();
+        var liveEquipmentBySlot = liveEquipment.ToDictionary(e => e.Slot);
+        foreach (EquipmentSlot slot in Enum.GetValues<EquipmentSlot>())
+        {
+            var live = liveEquipmentBySlot.GetValueOrDefault(slot);
+            var layerEntry = baseLayerOutfit?.Equipment.FirstOrDefault(e => e.Slot == slot && e.Apply);
+            var liveIsWorn = live != null && gameData.ResolveItemName(live.ItemId) != GameDataService.NothingItemName;
+
+            if (layerEntry != null && (!liveIsWorn || MatchesEquipment(live, layerEntry)))
+            {
+                if (designJson["Equipment"]?[slot.ToString()] is JObject entry)
+                {
+                    entry["Apply"] = false;
+                    entry["ApplyStain"] = false;
+                }
+                continue;
+            }
+            if (live != null)
+                effectiveEquipment.Add(live);
+        }
+
+        var effectiveBonusItems = new List<CachedBonusItem>(liveBonusItems);
+        if (baseLayerOutfit != null)
+        {
+            var liveBonusBySlot = liveBonusItems.ToDictionary(b => b.Slot);
+            foreach (var layerBonus in baseLayerOutfit.BonusItems.Where(b => b.Apply))
+            {
+                var live = liveBonusBySlot.GetValueOrDefault(layerBonus.Slot);
+                var liveIsWorn = live != null && gameData.ResolveBonusItemName(live.Slot, live.ItemId) != GameDataService.NothingItemName;
+                if (liveIsWorn && !MatchesBonusItem(live, layerBonus))
+                    continue;
+
+                if (designJson["Bonus"]?[layerBonus.Slot] is JObject entry)
+                    entry["Apply"] = false;
+                effectiveBonusItems.RemoveAll(b => b.Slot == layerBonus.Slot);
+            }
+        }
+
+        var hairstyleIsLayerWinner = false;
+        if (baseLayerOutfit != null)
+        {
+            var liveByKey = liveCustomizations.ToDictionary(c => c.Key);
+            foreach (var layerCustom in baseLayerOutfit.Customizations)
+            {
+                if (!liveByKey.TryGetValue(layerCustom.Key, out var live) || live.RawValue != layerCustom.RawValue)
+                    continue;
+
+                if (designJson["Customize"]?[layerCustom.Key] is JObject entry)
+                    entry["Apply"] = false;
+                if (layerCustom.Key == "Hairstyle")
+                    hairstyleIsLayerWinner = true;
+            }
+        }
+
+        // The toggle is about the design's own Customize section only - mod detection (including a hair
+        // mod affecting whatever hairstyle is currently active) runs the same either way.
+        if (!includeCustomizations)
+            GlamourerJsonSchema.ZeroApplyFlags(designJson["Customize"] as JObject);
+
+        var mods = DetectActiveMods(effectiveEquipment, effectiveBonusItems, liveCustomizations, clan, gender, hairstyleIsLayerWinner);
+
+        var (firstResult, firstId) = glamourer.AddDesign(designJson, name);
+        if (firstResult != GlamourerApiEc.Success)
+            return new CreateFreshDesignResult(false, $"Failed to create design: {firstResult}", default);
+
+        if (mods.Count == 0)
+            return new CreateFreshDesignResult(true, null, firstId);
+
+        if (glamourer.GetDesignJObject(firstId) is not { } savedJson)
+            return new CreateFreshDesignResult(true, null, firstId);
+
+        var patched = (JObject)savedJson.DeepClone();
+        patched["Mods"] = GlamourerJsonSchema.AppendModsSection(null, mods);
+
+        var (secondResult, secondId) = glamourer.AddDesign(patched, name);
+        if (secondResult != GlamourerApiEc.Success)
+            return new CreateFreshDesignResult(true, null, firstId);
+
+        glamourer.DeleteDesign(firstId);
+        return new CreateFreshDesignResult(true, null, secondId);
+    }
+
     public CaptureResult Capture(CachedOutfit design, DesignLayerResolutionService.Result layers)
     {
         var (result, state) = glamourer.GetState();
@@ -191,20 +313,26 @@ public sealed class GearImportService
         if (collectionId == null)
             return result;
 
-        var allSettings = penumbra.GetAllModSettings(collectionId.Value);
-        if (allSettings.Count == 0)
+        var names = penumbra.GetModDisplayNames();
+        if (names.Count == 0)
             return result;
 
-        var names = penumbra.GetModDisplayNames();
+        // Queried per-mod (not GetAllModSettings's bulk listing) so a mod that's active only via a
+        // session-only temporary override - never saved to the collection, so it has no permanent entry
+        // there at all - is still found.
+        var candidates = new List<(string Directory, string Name, int Priority, Dictionary<string, List<string>> Settings)>();
+        foreach (var (directory, displayName) in names)
+        {
+            if (penumbra.GetCurrentModSettingsWithTemp(collectionId.Value, directory, displayName) is not { Enabled: true } settings)
+                continue;
+            candidates.Add((directory, displayName, settings.Priority, settings.Settings));
+        }
+
         var matchedItems = new HashSet<string>(StringComparer.Ordinal);
         var matchedHair = false;
 
-        foreach (var (directory, settings) in allSettings.OrderByDescending(kv => kv.Value.Priority))
+        foreach (var (directory, displayName, priority, settings) in candidates.OrderByDescending(c => c.Priority))
         {
-            if (!settings.Enabled)
-                continue;
-
-            var displayName = names.TryGetValue(directory, out var n) ? n : directory;
             var changed = penumbra.GetChangedItemNames(directory, displayName);
             if (changed.Count == 0)
                 continue;
@@ -225,9 +353,9 @@ public sealed class GearImportService
                 Name = displayName,
                 Directory = directory,
                 State = ModState.Enabled,
-                Priority = settings.Priority,
+                Priority = priority,
                 // Same comma-joined-per-group convention DesignApplyService splits back on apply.
-                Settings = settings.Settings.ToDictionary(kv => kv.Key, kv => string.Join(", ", kv.Value)),
+                Settings = settings.ToDictionary(kv => kv.Key, kv => string.Join(", ", kv.Value)),
             });
         }
 

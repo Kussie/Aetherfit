@@ -320,7 +320,7 @@ internal static class GlamourerJsonSchema
         entry["Apply"] = true;
     }
 
-    private static void ZeroApplyFlags(JObject? section)
+    internal static void ZeroApplyFlags(JObject? section)
     {
         if (section == null)
             return;

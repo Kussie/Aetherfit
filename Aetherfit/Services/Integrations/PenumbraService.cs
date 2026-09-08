@@ -18,7 +18,7 @@ public sealed class PenumbraService
     private readonly RemoveAllTemporaryModSettingsPlayer removeAllTemporaryModSettingsPlayer;
     private readonly RedrawObject redrawObject;
     private readonly GetCollectionForObject getCollectionForObject;
-    private readonly GetAllModSettings getAllModSettings;
+    private readonly GetCurrentModSettingsWithTemp getCurrentModSettingsWithTemp;
 
     // A mod changes the same items no matter which design pulls it in, so we look them up once per mod
     // directory and reuse that across every design.
@@ -41,7 +41,7 @@ public sealed class PenumbraService
         removeAllTemporaryModSettingsPlayer = new RemoveAllTemporaryModSettingsPlayer(Plugin.PluginInterface);
         redrawObject = new RedrawObject(Plugin.PluginInterface);
         getCollectionForObject = new GetCollectionForObject(Plugin.PluginInterface);
-        getAllModSettings = new GetAllModSettings(Plugin.PluginInterface);
+        getCurrentModSettingsWithTemp = new GetCurrentModSettingsWithTemp(Plugin.PluginInterface);
     }
 
     // Penumbra's own reported ApiVersion (BreakingVersion/FeatureVersion in its PenumbraApi.cs) - confirmed
@@ -189,22 +189,24 @@ public sealed class PenumbraService
         }
     }
 
-    // Every mod's settings within the given collection (inheritance/temporary settings resolved),
-    // keyed by directory. Empty on failure rather than throwing - callers treat "no mods active" and
-    // "Penumbra unavailable" the same way (nothing to attribute).
-    public IReadOnlyDictionary<string, (bool Enabled, int Priority, Dictionary<string, List<string>> Settings, bool Inherited, bool Locked)>
-        GetAllModSettings(Guid collectionId)
+    // A single mod's effective settings in the given collection, including a temporary override (e.g. a
+    // mod toggled on directly in Penumbra without saving it to the collection). Queried per-mod - the
+    // bulk GetAllModSettings IPC can omit a mod that has no permanent entry in the collection at all
+    // despite currently being active only via such a temp override.
+    public (bool Enabled, int Priority, Dictionary<string, List<string>> Settings)? GetCurrentModSettingsWithTemp(Guid collectionId, string directory, string name)
     {
-        var empty = new Dictionary<string, (bool, int, Dictionary<string, List<string>>, bool, bool)>();
         try
         {
-            var (result, settings) = getAllModSettings.Invoke(collectionId);
-            return result == PenumbraApiEc.Success && settings != null ? settings : empty;
+            var (result, settings) = getCurrentModSettingsWithTemp.Invoke(collectionId, directory, name);
+            if (result != PenumbraApiEc.Success || settings == null)
+                return null;
+            var (enabled, priority, options, _, _) = settings.Value;
+            return (enabled, priority, options);
         }
         catch (Exception ex)
         {
-            Plugin.Log.Warning(ex, "Failed to query all mod settings for collection {Collection}", collectionId);
-            return empty;
+            Plugin.Log.Warning(ex, "Failed to query current mod settings for {Dir}", directory);
+            return null;
         }
     }
 
