@@ -4,8 +4,8 @@ using System.Linq;
 using Aetherfit.Services.Game;
 using Aetherfit.Utils;
 using Glamourer.Api.Enums;
-using Glamourer.Api.Helpers;
 using Glamourer.Api.IpcSubscribers;
+using Luna;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 

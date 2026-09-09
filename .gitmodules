@@ -14,3 +14,7 @@
 	path = Luna
 	url = https://github.com/Ottermandias/Luna.git
 	branch = main
+[submodule "Glamourer.Api"]
+	path = Glamourer.Api
+	url = https://github.com/Ottermandias/Glamourer.Api.git
+	branch = main

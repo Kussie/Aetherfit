@@ -20,13 +20,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Glamourer.Api" Version="2.8.2" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.29.0" />
     <PackageReference Include="PDFsharp" Version="6.2.4" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Glamourer.Api\Glamourer.Api.csproj" />
     <ProjectReference Include="..\Penumbra.Api\Penumbra.Api.csproj" />
     <ProjectReference Include="..\Penumbra.GameData\Penumbra.GameData.csproj" />
   </ItemGroup>
