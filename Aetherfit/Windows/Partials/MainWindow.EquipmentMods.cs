@@ -318,7 +318,7 @@ public partial class MainWindow
 
         var rowStart = ImGui.GetCursorScreenPos();
         var rowWidth = ImGui.GetContentRegionAvail().X;
-        var (modHovered, stainHovered) = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+        var (modHovered, stainHovered, warningHovered) = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
             stainSource?.Stain ?? 0, stainSource?.Stain2 ?? 0, applyStain, applied, rowAffectedBy.Items,
             wearable, wearableRacesText);
 
@@ -327,7 +327,7 @@ public partial class MainWindow
         // Nothing to single-apply if the slot isn't equipped, or the design leaves it disabled.
         var canApply = applied && itemName != GameDataService.NothingItemName;
         var applyDesignId = itemWinner?.SourceDesignId ?? designId;
-        DrawSlotContextMenu($"slot_{slot}", rowStart, rowWidth, canApply, modHovered, stainHovered,
+        DrawSlotContextMenu($"slot_{slot}", rowStart, rowWidth, canApply, modHovered, stainHovered, warningHovered,
             itemName, rowAffectedBy, () => plugin.DesignApply.ApplySingleEquipmentSlot(applyDesignId, slot, label));
     }
 
@@ -401,7 +401,7 @@ public partial class MainWindow
 
         var rowStart = ImGui.GetCursorScreenPos();
         var rowWidth = ImGui.GetContentRegionAvail().X;
-        var (modHovered, _) = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+        var (modHovered, _, _) = DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
             stain: 0, stain2: 0, applyStain: false, applied, rowAffectedBy.Items);
 
         if (winner != null)
@@ -411,7 +411,7 @@ public partial class MainWindow
 
         var canApply = applied && itemName != GameDataService.NothingItemName;
         var applyDesignId = winner?.SourceDesignId ?? designId;
-        DrawSlotContextMenu($"bonus_{slotKey}", rowStart, rowWidth, canApply, modHovered, stainHovered: false,
+        DrawSlotContextMenu($"bonus_{slotKey}", rowStart, rowWidth, canApply, modHovered, stainHovered: false, warningHovered: false,
             itemName, rowAffectedBy, () => plugin.DesignApply.ApplySingleBonusItem(applyDesignId, slotKey, label));
     }
 
@@ -425,7 +425,7 @@ public partial class MainWindow
     // Right-click anywhere on the row (when it's actually equipped) to apply just that item - the
     // existing "affected by mod" hover/click behavior still wins when that specific text is hovered.
     private void DrawSlotContextMenu(string idSuffix, Vector2 rowStart, float rowWidth, bool canApply,
-        bool modHovered, bool stainHovered, string? itemName, AffectedBy affectedBy, Action onApply)
+        bool modHovered, bool stainHovered, bool warningHovered, string? itemName, AffectedBy affectedBy, Action onApply)
     {
         var popupId = $"##{idSuffix}Menu";
         if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
@@ -437,9 +437,10 @@ public partial class MainWindow
             var rowEnd = new Vector2(rowStart.X + rowWidth, ImGui.GetCursorScreenPos().Y);
             if (ImGui.IsMouseHoveringRect(rowStart, rowEnd))
             {
-                // The dye swatch draws its own colour-name tooltip - don't fight it for the frame,
-                // but right-click still applies from anywhere in the row, swatch included.
-                if (!stainHovered)
+                // The dye swatch and the not-wearable warning icon each draw their own tooltip - don't
+                // fight them for the frame, but right-click still applies from anywhere in the row,
+                // swatch/icon included.
+                if (!stainHovered && !warningHovered)
                     ImGui.SetTooltip("Right-click to apply just this item to your current outfit.");
                 if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
                     ImGui.OpenPopup(popupId);

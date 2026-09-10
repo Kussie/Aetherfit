@@ -29,6 +29,8 @@ public enum AutomationConditionType
     Territory,
     Mounted,
     Weather,
+    // Renamed from Time - Time's own ordinal position (4) is unchanged, so existing saved conditions
+    // still resolve to this member correctly; only the C# identifier and its display label changed.
     Time,
     Swimming,
     // Appended, not inserted - these enums serialize by ordinal, so an earlier position would
@@ -36,6 +38,10 @@ public enum AutomationConditionType
     Housing,
     Group,
     OnlineStatus,
+    // The game server's own real-world clock (FFXIVClientStructs Framework.GetServerTime(), UTC) -
+    // distinct from Time (the in-game Eorzea clock) and LocalTime (this PC's system clock).
+    ServerTime,
+    LocalTime,
 }
 
 public enum SwimState
@@ -99,7 +105,8 @@ public class AutomationCondition
 
     public List<byte> WeatherIds { get; set; } = new();
 
-    // Eorzea hours, 0-23. Wraps past midnight when EndHour <= StartHour.
+    // Hours, 0-23, on whichever clock this condition's Type selects (Time = Eorzea, ServerTime = the
+    // game server's real-world clock, LocalTime = this PC's clock). Wraps past midnight when EndHour <= StartHour.
     public int StartHour { get; set; }
     public int EndHour { get; set; }
 

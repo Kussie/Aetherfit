@@ -314,6 +314,15 @@ public sealed class GameDataService
         return DateTimeOffset.FromUnixTimeSeconds(framework->ClientTime.EorzeaTime).UtcDateTime.Hour;
     }
 
+    // Framework.GetServerTime() is a distinct native call from ClientTime.EorzeaTime above - it's the
+    // game server's own real-world Unix timestamp (UTC), the same clock daily/weekly resets are based
+    // on, not a conversion of the in-game Eorzea clock.
+    public int GetCurrentServerHour()
+        => DateTimeOffset.FromUnixTimeSeconds(FFXIVClientStructs.FFXIV.Client.System.Framework.Framework.GetServerTime()).UtcDateTime.Hour;
+
+    // This PC's own system clock, for a "local time" automation condition - deliberately not UTC.
+    public int GetCurrentLocalHour() => DateTime.Now.Hour;
+
     public unsafe ushort GetCurrentMountId()
     {
         if (Plugin.ObjectTable.LocalPlayer is not { } localPlayer)

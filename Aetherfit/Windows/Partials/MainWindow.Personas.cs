@@ -85,10 +85,13 @@ public partial class MainWindow
     private void DrawPersonaNode(PersonaProfile persona, bool isActive)
     {
         var selected = selectedPersona == persona.Id;
-        if (ImGui.Selectable($"   {persona.Name}##persona_{persona.Id}", selected))
+        using (ImRaii.PushColor(ImGuiCol.Text, UiTheme.StateOn, isActive))
         {
-            selectedPersona = persona.Id;
-            selectedDesign = null;
+            if (ImGui.Selectable($"   {persona.Name}##persona_{persona.Id}", selected))
+            {
+                selectedPersona = persona.Id;
+                selectedDesign = null;
+            }
         }
         if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
         {
@@ -107,11 +110,15 @@ public partial class MainWindow
     // distinct from null (nothing persona-related selected) and from any real persona's generated Guid.
     private void DrawDefaultPersonaNode(CharacterLoginSettings settings)
     {
+        var isActive = settings.ActivePersonaId == null;
         var selected = selectedPersona == Guid.Empty;
-        if (ImGui.Selectable("   Default##persona_default", selected))
+        using (ImRaii.PushColor(ImGuiCol.Text, UiTheme.StateOn, isActive))
         {
-            selectedPersona = Guid.Empty;
-            selectedDesign = null;
+            if (ImGui.Selectable("   Default##persona_default", selected))
+            {
+                selectedPersona = Guid.Empty;
+                selectedDesign = null;
+            }
         }
         if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
         {
@@ -121,7 +128,7 @@ public partial class MainWindow
         }
 
         DrawLeafDot(ImGui.GetColorU32(ImGuiCol.Text));
-        DrawActivePersonaIndicator(settings.ActivePersonaId == null);
+        DrawActivePersonaIndicator(isActive);
     }
 
     private static void DrawActivePersonaIndicator(bool isActive)

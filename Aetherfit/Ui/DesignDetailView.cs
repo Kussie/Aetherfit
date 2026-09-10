@@ -30,7 +30,7 @@ internal static class DesignDetailView
         ("Glasses", "Facewear"),
     };
 
-    public static (bool ModHovered, bool StainHovered) DrawSlotRow(GameDataService gameData, string label,
+    public static (bool ModHovered, bool StainHovered, bool WarningHovered) DrawSlotRow(GameDataService gameData, string label,
         float labelWidth, string? itemName, byte stain, byte stain2, bool applyStain, bool applied,
         IReadOnlyDictionary<string, string> affected, bool? wearableByCurrentCharacter = null, string? wearableRacesText = null)
     {
@@ -44,21 +44,23 @@ internal static class DesignDetailView
         if (itemName == null)
         {
             ImGui.TextColored(UiTheme.StateUnset, "(not in design)");
-            return (false, false);
+            return (false, false, false);
         }
 
         ImGui.TextColored(labelColor, itemName);
+        var warningHovered = false;
         if (wearableByCurrentCharacter == false)
         {
             ImGui.SameLine();
             DrawFontAwesome(FontAwesomeIcon.ExclamationTriangle, UiTheme.ErrorText);
-            if (ImGui.IsItemHovered())
+            warningHovered = ImGui.IsItemHovered();
+            if (warningHovered)
                 ImGui.SetTooltip($"Not wearable by your current race/gender - only {wearableRacesText ?? "some races"}.");
         }
         var stainHovered = DrawStainSwatch(gameData, stain, applyStain && applied);
         stainHovered |= DrawStainSwatch(gameData, stain2, applyStain && applied);
         var modHovered = DrawAffectedSuffix(affected, applied, itemName);
-        return (modHovered, stainHovered);
+        return (modHovered, stainHovered, warningHovered);
     }
 
     // "(Appearance affected by {mod})" with the mod name tinted so it stands out. The mod name is rendered

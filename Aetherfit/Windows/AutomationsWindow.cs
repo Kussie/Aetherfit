@@ -427,7 +427,15 @@ public sealed class AutomationsWindow : Window, IDisposable
     }
 
     private static string SummarizeConditions(AutomationRule rule)
-        => rule.Conditions.Count == 0 ? "no conditions" : string.Join(", ", rule.Conditions.Select(c => c.Type.ToString()));
+        => rule.Conditions.Count == 0 ? "no conditions" : string.Join(", ", rule.Conditions.Select(c => ConditionTypeLabel(c.Type)));
+
+    private static string ConditionTypeLabel(AutomationConditionType type) => type switch
+    {
+        AutomationConditionType.Time => "Eorzea Time",
+        AutomationConditionType.ServerTime => "Server Time",
+        AutomationConditionType.LocalTime => "Local Time",
+        _ => type.ToString(),
+    };
 
     private string? DesignThumbnailPath(Guid id)
         => plugin.Configuration.ShowThumbnailOnHover ? plugin.ImageStorage.GetCoverPath(id) : null;
@@ -483,7 +491,7 @@ public sealed class AutomationsWindow : Window, IDisposable
             ImGui.AlignTextToFramePadding();
             DesignDetailView.DrawFontAwesome(matched ? FontAwesomeIcon.Check : FontAwesomeIcon.Times, matched ? UiTheme.StateOn : UiTheme.StateOff);
             ImGui.SameLine();
-            ImGui.TextColored(UiTheme.SectionHeader, condition.Type.ToString());
+            ImGui.TextColored(UiTheme.SectionHeader, ConditionTypeLabel(condition.Type));
             ImGui.SameLine();
             if (ImGuiComponents.IconButton(FontAwesomeIcon.Copy))
                 toDuplicateCondition = condition;
@@ -532,7 +540,7 @@ public sealed class AutomationsWindow : Window, IDisposable
             {
                 foreach (var type in Enum.GetValues<AutomationConditionType>())
                 {
-                    if (ImGui.Selectable(type.ToString()))
+                    if (ImGui.Selectable(ConditionTypeLabel(type)))
                     {
                         rule.Conditions.Add(new AutomationCondition { Type = type });
                         plugin.Configuration.Save();
@@ -580,7 +588,10 @@ public sealed class AutomationsWindow : Window, IDisposable
             case AutomationConditionType.Territory: DrawTerritoryConditionEditor(condition); break;
             case AutomationConditionType.Mounted: DrawMountedConditionEditor(condition); break;
             case AutomationConditionType.Weather: DrawWeatherConditionEditor(condition); break;
-            case AutomationConditionType.Time: DrawTimeConditionEditor(condition); break;
+            case AutomationConditionType.Time:
+            case AutomationConditionType.ServerTime:
+            case AutomationConditionType.LocalTime:
+                DrawTimeConditionEditor(condition); break;
             case AutomationConditionType.Swimming: DrawSwimmingConditionEditor(condition); break;
             case AutomationConditionType.Housing: DrawHousingConditionEditor(condition); break;
             case AutomationConditionType.Group: DrawGroupConditionEditor(condition); break;
@@ -692,9 +703,16 @@ public sealed class AutomationsWindow : Window, IDisposable
 
     private void DrawTimeConditionEditor(AutomationCondition condition)
     {
+        var suffix = condition.Type switch
+        {
+            AutomationConditionType.ServerTime => "ST",
+            AutomationConditionType.LocalTime => "LT",
+            _ => "ET",
+        };
+
         var start = condition.StartHour;
         ImGui.SetNextItemWidth(140 * ImGuiHelpers.GlobalScale);
-        if (ImGui.SliderInt("From ET##startHour", ref start, 0, 23))
+        if (ImGui.SliderInt($"From {suffix}##startHour", ref start, 0, 23))
         {
             condition.StartHour = start;
             plugin.Configuration.Save();
@@ -703,7 +721,7 @@ public sealed class AutomationsWindow : Window, IDisposable
         ImGui.SameLine();
         var end = condition.EndHour;
         ImGui.SetNextItemWidth(140 * ImGuiHelpers.GlobalScale);
-        if (ImGui.SliderInt("To ET##endHour", ref end, 0, 23))
+        if (ImGui.SliderInt($"To {suffix}##endHour", ref end, 0, 23))
         {
             condition.EndHour = end;
             plugin.Configuration.Save();

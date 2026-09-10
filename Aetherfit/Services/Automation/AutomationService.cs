@@ -188,8 +188,8 @@ public sealed class AutomationService : IDisposable
     }
 
     private readonly record struct MatchContext(uint JobId, uint TerritoryId, bool Mounted, ushort MountId,
-        byte WeatherId, int Hour, bool Swimming, bool Diving, GameDataService.HousingState Housing,
-        GroupType GroupType, uint OnlineStatusId);
+        byte WeatherId, int EorzeaHour, int ServerHour, int LocalHour, bool Swimming, bool Diving,
+        GameDataService.HousingState Housing, GroupType GroupType, uint OnlineStatusId);
 
     private MatchContext BuildMatchContext()
     {
@@ -200,7 +200,9 @@ public sealed class AutomationService : IDisposable
             Mounted: mounted,
             MountId: mounted ? plugin.GameData.GetCurrentMountId() : (ushort)0,
             WeatherId: plugin.GameData.GetCurrentWeatherId(),
-            Hour: plugin.GameData.GetCurrentEorzeaHour(),
+            EorzeaHour: plugin.GameData.GetCurrentEorzeaHour(),
+            ServerHour: plugin.GameData.GetCurrentServerHour(),
+            LocalHour: plugin.GameData.GetCurrentLocalHour(),
             Swimming: Plugin.Condition[ConditionFlag.Swimming],
             Diving: Plugin.Condition[ConditionFlag.Diving],
             Housing: plugin.GameData.GetCurrentHousingState(),
@@ -250,7 +252,9 @@ public sealed class AutomationService : IDisposable
             ? ctx.Mounted && (c.MountIds.Count == 0 || c.MountIds.Contains(ctx.MountId))
             : !ctx.Mounted,
         AutomationConditionType.Weather => c.WeatherIds.Contains(ctx.WeatherId),
-        AutomationConditionType.Time => InTimeRange(c.StartHour, c.EndHour, ctx.Hour),
+        AutomationConditionType.Time => InTimeRange(c.StartHour, c.EndHour, ctx.EorzeaHour),
+        AutomationConditionType.ServerTime => InTimeRange(c.StartHour, c.EndHour, ctx.ServerHour),
+        AutomationConditionType.LocalTime => InTimeRange(c.StartHour, c.EndHour, ctx.LocalHour),
         AutomationConditionType.Swimming => (c.SwimStates.Contains(SwimState.Swimming) && ctx.Swimming)
             || (c.SwimStates.Contains(SwimState.Diving) && ctx.Diving),
         AutomationConditionType.Housing => ctx.Housing.InHousing && c.HousingTargets.Any(t => MatchesHousing(t, ctx.Housing)),
@@ -326,9 +330,9 @@ public sealed class AutomationService : IDisposable
         return issues;
     }
 
-    // Mounted and Time are always well-defined even at their default values (MountedValue alone is
-    // meaningful; StartHour == EndHour == 0 means "all day", not "never") - every other condition type
-    // needs at least one selected value to ever match anything.
+    // Mounted and the three time conditions are always well-defined even at their default values
+    // (MountedValue alone is meaningful; StartHour == EndHour == 0 means "all day", not "never") -
+    // every other condition type needs at least one selected value to ever match anything.
     private static bool IsConditionEmpty(AutomationCondition c) => c.Type switch
     {
         AutomationConditionType.Job => c.JobIds.Count == 0,
