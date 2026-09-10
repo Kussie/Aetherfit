@@ -131,20 +131,78 @@ internal static class GlamourerJsonSchema
         return ReadBool(obj[valueKey]);
     }
 
+    // Glamourer's design FileVersion 3 (the Penumbra 1.7-compatible release) replaced the old per-mod
+    // Remove/Inherit/Enabled booleans with a single "State" string, sourced straight from Penumbra.Api's
+    // own SettingPresetData.WriteJsonProperties (Penumbra.Api/Preset/SettingPresetData.cs) - mirrored here
+    // rather than referencing that type directly, since Aetherfit only needs read access to a handful of
+    // fields, not the full preset-editing surface. Older saves/still-on-old-Glamourer installs fall back
+    // to the three-boolean shape.
+    public static ModState ParseModState(JObject entry)
+    {
+        if (ReadString(entry["State"]) is { } state)
+            return state.ToLowerInvariant() switch
+            {
+                "enabled" => ModState.Enabled,
+                "disabled" => ModState.Disabled,
+                "inherited" => ModState.Inherit,
+                "removetemporary" => ModState.Remove,
+                "toggle" => ModState.Toggle,
+                _ => ModState.Disabled,
+            };
+
+        if (ReadBool(entry["Remove"]))
+            return ModState.Remove;
+        if (ReadBool(entry["Inherit"]))
+            return ModState.Inherit;
+        return ReadBool(entry["Enabled"]) ? ModState.Enabled : ModState.Disabled;
+    }
+
+    // FileVersion 3's "Settings" is an array of group objects (Penumbra.Api/Preset/SettingsDictionary.cs
+    // WriteJson / GroupSettingData.AddToJson), each identified by Name (and/or a Guid Identifier this
+    // side has no use for) with its own "Options" array of {Name, State} entries - collapsed here to the
+    // same group-name -> comma-joined-selected-option-names shape the old {GroupName: [values...]} object
+    // format produced, since that's still all display/health-report/duplicate-signature code needs.
     public static Dictionary<string, string> ParseModSettings(JToken? token)
     {
         var result = new Dictionary<string, string>();
-        if (token is not JObject obj)
-            return result;
 
-        foreach (var prop in obj.Properties())
+        if (token is JArray groups)
         {
-            result[prop.Name] = prop.Value switch
+            foreach (var groupToken in groups.OfType<JObject>())
             {
-                JArray arr => string.Join(", ", arr.Select(v => v.ToString())),
-                JValue v => v.Value?.ToString() ?? string.Empty,
-                _ => prop.Value.ToString(),
-            };
+                var groupName = ReadString(groupToken["Name"]) ?? ReadString(groupToken["Identifier"]);
+                if (string.IsNullOrEmpty(groupName))
+                    continue;
+
+                var selected = new List<string>();
+                if (groupToken["Options"] is JArray options)
+                {
+                    foreach (var optionToken in options.OfType<JObject>())
+                    {
+                        if (!string.Equals(ReadString(optionToken["State"]), "Enabled", StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if ((ReadString(optionToken["Name"]) ?? ReadString(optionToken["Identifier"])) is { } optionName)
+                            selected.Add(optionName);
+                    }
+                }
+
+                result[groupName] = string.Join(", ", selected);
+            }
+            return result;
+        }
+
+        // Pre-FileVersion-3: { GroupName: [selected option names...] }.
+        if (token is JObject obj)
+        {
+            foreach (var prop in obj.Properties())
+            {
+                result[prop.Name] = prop.Value switch
+                {
+                    JArray arr => string.Join(", ", arr.Select(v => v.ToString())),
+                    JValue v => v.Value?.ToString() ?? string.Empty,
+                    _ => prop.Value.ToString(),
+                };
+            }
         }
         return result;
     }
@@ -209,7 +267,9 @@ internal static class GlamourerJsonSchema
     }
 
     // Appends only genuinely-new mod entries (by Directory) onto a clone of an existing Mods array -
-    // never touches an entry the design already has. Mirrors ParseMods's shape in reverse.
+    // never touches an entry the design already has. Mirrors ParseMods/ParseModState/ParseModSettings'
+    // FileVersion-3 shape in reverse (see those for the schema reference) - every mod this ever adds
+    // comes from GearImportService detecting it as currently active, so it's always written as Enabled.
     public static JArray AppendModsSection(JToken? baseMods, IEnumerable<CachedMod> additions)
     {
         var result = baseMods is JArray arr ? (JArray)arr.DeepClone() : new JArray();
@@ -222,19 +282,23 @@ internal static class GlamourerJsonSchema
             if (existingDirs.Contains(mod.Directory))
                 continue;
 
-            var settings = new JObject();
+            var settings = new JArray();
             foreach (var (group, value) in mod.Settings)
-                settings[group] = new JArray(value.Split(", ", StringSplitOptions.RemoveEmptyEntries));
+            {
+                var options = new JArray();
+                foreach (var option in value.Split(", ", StringSplitOptions.RemoveEmptyEntries))
+                    options.Add(new JObject { ["Name"] = option, ["State"] = "Enabled" });
+                settings.Add(new JObject { ["Name"] = group, ["Options"] = options });
+            }
 
             result.Add(new JObject
             {
                 ["Name"] = mod.Name,
                 ["Directory"] = mod.Directory,
-                ["Enabled"] = true,
+                ["Version"] = 1,
+                ["State"] = "Enabled",
                 ["Priority"] = mod.Priority,
                 ["Settings"] = settings,
-                ["Remove"] = false,
-                ["Inherit"] = false,
             });
         }
         return result;

@@ -417,16 +417,11 @@ public sealed class GlamourerService : IDisposable
 
         foreach (var entry in array.OfType<JObject>())
         {
-            var state = GlamourerJsonSchema.ReadBool(entry["Remove"]) ? ModState.Remove
-                      : GlamourerJsonSchema.ReadBool(entry["Inherit"]) ? ModState.Inherit
-                      : GlamourerJsonSchema.ReadBool(entry["Enabled"]) ? ModState.Enabled
-                      : ModState.Disabled;
-
             result.Add(new CachedMod
             {
                 Name = GlamourerJsonSchema.ReadString(entry["Name"]) ?? string.Empty,
                 Directory = GlamourerJsonSchema.ReadString(entry["Directory"]) ?? string.Empty,
-                State = state,
+                State = GlamourerJsonSchema.ParseModState(entry),
                 Priority = (int)GlamourerJsonSchema.ReadUInt64(entry["Priority"]),
                 Settings = GlamourerJsonSchema.ParseModSettings(entry["Settings"]),
             });

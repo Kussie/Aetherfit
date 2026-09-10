@@ -109,33 +109,29 @@ public sealed class HealthReportService
         return groups.Values.Where(g => g.Count > 1).Select(g => new DuplicateGroup(g)).ToList();
     }
 
+    // Equipment/dyes alone aren't enough to call two designs the same look: each design's own set of
+    // enabled mod associations (and their option settings) also has to match. Deliberately every enabled
+    // mod, not just whichever one Penumbra's changed-item data happens to attribute to a specific worn
+    // item (DesignAttributionService.Build only ever keeps the single highest-priority mod per item, for
+    // display purposes) - two designs wearing identical gear can still render differently if one relies
+    // on a second, layered mod (or the same mod with different settings) that per-item attribution alone
+    // would silently miss.
     private string BuildEquipmentSignature(CachedOutfit outfit)
     {
-        var affectedBy = attribution.Build(outfit).Items;
-
         var sb = new StringBuilder();
         foreach (var slot in outfit.Equipment.Where(e => e.Apply).OrderBy(e => e.Slot))
         {
             sb.Append((int)slot.Slot).Append(':').Append(slot.ItemId);
             if (slot.ApplyStain)
                 sb.Append(':').Append(slot.Stain).Append(':').Append(slot.Stain2);
-
-            var itemName = gameData.ResolveItemName(slot.ItemId);
-            if (itemName != GameDataService.NothingItemName && affectedBy.TryGetValue(itemName, out var mod))
-                AppendModSignature(sb, mod);
-
             sb.Append('|');
         }
         foreach (var bonus in outfit.BonusItems.Where(b => b.Apply).OrderBy(b => b.Slot, StringComparer.Ordinal))
-        {
-            sb.Append(bonus.Slot).Append(':').Append(bonus.ItemId);
+            sb.Append(bonus.Slot).Append(':').Append(bonus.ItemId).Append('|');
 
-            var bonusName = gameData.ResolveBonusItemName(bonus.Slot, bonus.ItemId);
-            if (bonusName != GameDataService.NothingItemName && affectedBy.TryGetValue(bonusName, out var bonusMod))
-                AppendModSignature(sb, bonusMod);
+        foreach (var mod in outfit.Mods.Where(m => m.State == ModState.Enabled).OrderBy(m => m.Directory, StringComparer.Ordinal))
+            AppendModSignature(sb, mod);
 
-            sb.Append('|');
-        }
         return sb.ToString();
     }
 

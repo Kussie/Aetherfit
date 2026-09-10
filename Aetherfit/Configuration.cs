@@ -864,12 +864,15 @@ public class CachedCustomization
     public bool IsToggle { get; set; }
 }
 
+// Appended, not inserted - serializes by ordinal (see CachedMod.State), so an earlier position would
+// reshuffle every already-cached mod's state.
 public enum ModState
 {
     Disabled,
     Enabled,
     Remove,
     Inherit,
+    Toggle,
 }
 
 [Serializable]
