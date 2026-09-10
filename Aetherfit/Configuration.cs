@@ -581,22 +581,51 @@ public class Configuration : IPluginConfiguration
     }
 
     // Null return covers both an explicit per-design "None" override and falling through to a global
-    // BaseDesignLayerId (or a persona's own base layer) of null - callers don't need to tell the two apart.
-    // personaBaseLayerId only ever applies to a design with no override at all (Inherit) - an explicit
-    // per-design override (even "None") always wins regardless of persona.
+    // BaseDesignLayerId (or the active persona's own base layer) of null - callers don't need to tell the
+    // two apart. An explicit per-design override (even "None") always wins regardless of any active
+    // persona.
     //
-    // personaBaseLayerId itself carries a tri-state from the caller: null means the persona has no base
-    // layer opinion at all (falls through to the global BaseDesignLayerId, same as a design applied
-    // directly), Guid.Empty means the persona explicitly wants no base layer (skips the global default
-    // too), and any other value is a specific design to use as the base layer.
-    public Guid? ResolveBaseDesignLayer(Guid id, Guid? personaBaseLayerId = null)
+    // The active persona (if any, for the current character) is looked up here ambiently - this makes
+    // EVERY apply path persona-aware for free (direct tree/gallery/random/chat/Automation, not just a
+    // persona-driven apply), which is the actual fix for a design's "Inherit" having no stable resolution
+    // when it's relevant to more than one persona: instead of depending on which UI list it was applied
+    // from, it now depends on whichever persona is currently active, persistently.
+    public Guid? ResolveBaseDesignLayer(Guid id)
     {
         if (DesignBaseLayerOverrides.TryGetValue(id, out var overrideValue))
             return overrideValue;
+
+        // Tri-state mirroring the override dictionary's own shape: no active persona (or Inherit) falls
+        // through to the global default; an active persona with InheritBaseLayer false and no
+        // PersonaBaseLayerId explicitly wants no base layer (Guid.Empty sentinel); otherwise a specific design.
+        var personaBaseLayerId = GetActivePersonaForCurrentCharacter() is { } persona
+            ? (persona.InheritBaseLayer ? null : (persona.PersonaBaseLayerId ?? Guid.Empty))
+            : (Guid?)null;
+
         if (personaBaseLayerId == Guid.Empty)
             return null;
         return personaBaseLayerId ?? BaseDesignLayerId;
     }
+
+    // Self-heals ActivePersonaId back to null (Default) if it points at a persona that no longer exists
+    // (e.g. deleted while active). Read-only otherwise - never creates a CharacterLoginSettings entry for
+    // a character that doesn't have one yet.
+    public PersonaProfile? GetActivePersona(ulong contentId)
+    {
+        if (!CharacterLoginSettings.TryGetValue(contentId, out var settings) || settings.ActivePersonaId is not { } activeId)
+            return null;
+
+        var persona = settings.Personas.FirstOrDefault(p => p.Id == activeId);
+        if (persona == null)
+        {
+            settings.ActivePersonaId = null;
+            Save();
+        }
+        return persona;
+    }
+
+    public PersonaProfile? GetActivePersonaForCurrentCharacter()
+        => Plugin.PlayerState.IsLoaded ? GetActivePersona(Plugin.PlayerState.ContentId) : null;
 
     public VariantInfo? GetVariantInfo(Guid id) => DesignVariants.TryGetValue(id, out var v) ? v : null;
 
@@ -707,27 +736,37 @@ public class CharacterLoginSettings
     // Whichever Customize+ profile the last persona-driven apply enabled, so the next one can disable
     // it before enabling a different persona's profile - otherwise both stay enabled simultaneously.
     public Guid? LastPersonaCustomizeProfileId { get; set; }
+
+    // null means Default (no persona) is active. Drives ambient base-layer resolution
+    // (Configuration.ResolveBaseDesignLayer) and is what login/zone-change restore reapplies -
+    // see PersonaApplyService.ActivatePersona.
+    public Guid? ActivePersonaId { get; set; }
 }
 
-// A named context (Penumbra collection, Customize+ profile, Honorific title, base layer) around a
-// scoped, many-to-many set of designs. Applying one of AssignedDesignIds through the persona's own UI
-// section bundles that context along; applying the same design directly (regular tree, gallery,
-// random-apply, Automation, chat command) never touches persona-scoped settings at all - a design
-// belonging to a persona doesn't carry that persona with it outside the persona's own section.
+// A named "which character am I right now" context: a Penumbra collection, Customize+ profile,
+// Honorific title, and base layer, plus an optional design to apply automatically on activation.
+// Activating a persona (PersonaApplyService.ActivatePersona) is the only thing that applies this
+// context - a design worn directly (regular tree, gallery, random-apply, Automation, chat command)
+// never touches it on its own, though it does inherit the active persona's base layer ambiently
+// (see Configuration.ResolveBaseDesignLayer) since that's the whole point of "being" that persona.
 [Serializable]
 public class PersonaProfile
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "New Persona";
-    public List<Guid> AssignedDesignIds { get; set; } = new();
 
     // Tri-state, mirroring DesignBaseLayerOverrides' own Inherit/None/specific shape: InheritBaseLayer
     // true means fall through to the global BaseDesignLayerId (PersonaBaseLayerId is ignored), false with
     // PersonaBaseLayerId null means explicitly no base layer for this persona, and false with a value
-    // means that specific design. Applies only to member designs with no per-design override of their own
-    // (i.e. set to Inherit) - an explicit per-design override still always wins regardless of persona.
+    // means that specific design. Applies only while this persona is active, to any design with no
+    // per-design override of its own (i.e. set to Inherit) - an explicit per-design override still
+    // always wins regardless of persona.
     public bool InheritBaseLayer { get; set; } = true;
     public Guid? PersonaBaseLayerId { get; set; }
+
+    // Applied automatically on activation. null ("None") means activating this persona leaves whatever
+    // design is currently worn as-is instead (see PersonaApplyService.ApplyPersonaDesign).
+    public Guid? DefaultDesignId { get; set; }
 
     public Guid? PenumbraCollectionId { get; set; }
     public Guid? CustomizePlusProfileId { get; set; }

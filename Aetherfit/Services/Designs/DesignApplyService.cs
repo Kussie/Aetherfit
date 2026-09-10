@@ -29,16 +29,13 @@ public sealed class DesignApplyService
         return ApplyResult.Fail(msg);
     }
 
-    // personaBaseLayerId is only ever passed by a persona-driven apply (PersonaApplyService) - it lets
-    // a persona's own Base Design Layer take priority over the global default for this one apply,
-    // without affecting a design's own explicit override (see Configuration.ResolveBaseDesignLayer).
-    public void ApplyDesignById(Guid id, bool recordLastApplied = true, Guid? personaBaseLayerId = null)
+    public void ApplyDesignById(Guid id, bool recordLastApplied = true)
     {
         var beforeLayers = applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: true);
         var afterLayers = applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false);
 
         // Goes on before even the "Applied Before" layers, so it sits at the very bottom of the stack.
-        if (!applyingLayer && ResolveBaseLayer(id, personaBaseLayerId) is { } baseLayerId)
+        if (!applyingLayer && ResolveBaseLayer(id) is { } baseLayerId)
             beforeLayers.Insert(0, baseLayerId);
 
         ApplyDesignCore(id, beforeLayers, afterLayers, recordLastApplied: recordLastApplied);
@@ -46,16 +43,21 @@ public sealed class DesignApplyService
 
     // A design can only be picked as a Base Design Layer if it still exists and its provider supports
     // layering - same restriction as PickLayers below.
-    private Guid? ResolveBaseLayer(Guid baseId, Guid? personaBaseLayerId = null)
+    private Guid? ResolveBaseLayer(Guid baseId)
     {
         if (!plugin.Configuration.EnableRandomLayers)
             return null;
 
-        if (plugin.Configuration.ResolveBaseDesignLayer(baseId, personaBaseLayerId) is not { } layerId)
+        if (plugin.Configuration.ResolveBaseDesignLayer(baseId) is not { } layerId)
             return null;
 
         return SupportsLayers(layerId) ? layerId : null;
     }
+
+    // Applies a single design purely as a layer on top of whatever's currently worn, without a full base
+    // apply of its own - used by persona/Default activation. Not "actively chosen," so it doesn't count
+    // toward last-worn bookkeeping (mirrors how a restored/preview apply elsewhere in this file opts out too).
+    public void ApplyLayerOnly(Guid designId) => ApplyLayers(new List<Guid> { designId }, recordLastApplied: false);
 
     // Applies just one equipment slot from a design onto the character's current outfit, leaving
     // everything else worn untouched. Bypasses ApplyDesignCore on purpose - none of its "before base
@@ -346,6 +348,16 @@ public sealed class DesignApplyService
     {
         if (!Plugin.PlayerState.IsLoaded)
             return ApplyResult.Fail("Log in to a character first.");
+
+        // An active persona takes priority over the plain last-worn record - reapplying it also restores
+        // its own Penumbra collection/Customize+ profile/Honorific title and its Default Design (or the
+        // current design + its own base layer, if it has none), not just bare gear+layers. Self-heals to
+        // Default if the active persona was deleted (Configuration.GetActivePersona).
+        if (plugin.Configuration.GetActivePersona(Plugin.PlayerState.ContentId) is { } activePersona)
+        {
+            var personaResult = plugin.PersonaApply.ActivatePersona(activePersona.Id);
+            return personaResult.Error != null ? ApplyResult.Fail(personaResult.Error) : ApplyResult.Ok(activePersona.Id);
+        }
 
         if (!plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
             || settings.LastWornDesign is not { } baseId)

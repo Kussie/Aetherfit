@@ -52,9 +52,15 @@ public sealed class RestoreSequenceService
 
         // Read-only lookup on purpose: don't create/save settings from an event firing every zone.
         if (!plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
-            || settings.AutomationsEnabled
-            || !settings.ReapplyOnZoneChange
-            || settings.LastWornDesign == null)
+            || settings.AutomationsEnabled)
+            return;
+
+        // An active persona survives zone changes unconditionally - it isn't gated behind
+        // ReapplyOnZoneChange (which remains a plain-non-persona setting only), since "being" a persona
+        // shouldn't lapse just because you changed zones. It can also legitimately have no LastWornDesign
+        // of its own yet (its own base layer alone is still worth restoring).
+        var personaActive = plugin.Configuration.GetActivePersona(Plugin.PlayerState.ContentId) != null;
+        if (!personaActive && (!settings.ReapplyOnZoneChange || settings.LastWornDesign == null))
             return;
 
         // A new TerritoryChanged means a new load: start the sequence over.
@@ -212,7 +218,21 @@ public sealed class RestoreSequenceService
         plugin.Configuration.Save();
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-        if (settings.AutomationsEnabled || settings.LoginAction == LoginAction.None)
+        if (settings.AutomationsEnabled)
+            return;
+
+        // An active persona is reapplied on login independent of the configured LoginAction (even
+        // None) - it takes priority over it entirely. ReapplyLastWorn's own persona-priority check does
+        // the actual work; this only needs to make sure it still gets called.
+        if (plugin.Configuration.GetActivePersona(Plugin.PlayerState.ContentId) != null)
+        {
+            var personaErr = plugin.MainWindow.ReapplyLastWorn();
+            if (personaErr != null)
+                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{personaErr}");
+            return;
+        }
+
+        if (settings.LoginAction == LoginAction.None)
             return;
 
         string? err = settings.LoginAction switch

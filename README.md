@@ -82,6 +82,8 @@ Once added, find Aetherfit in the main `/xlplugins` window and install it. You c
 
 `/aetherfit wear "design name"` - Apply the design with this exact name. The name must be in quotes, even if it's a single word.
 
+`/aetherfit persona "persona name" ["design name"]` - Activate a persona (its Default Design, or keep the current design if none is set). Optionally wear a specific design instead.
+
 `/aetherfit automations toggle|on|off` - Turn Automations on or off, or flip its current state.
 
 `/aetherfit automations snooze [minutes]` - Pause Automations for a while without turning it off (default 15 minutes).

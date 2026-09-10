@@ -231,14 +231,14 @@ public partial class MainWindow
             var inherited = cfg.BaseDesignLayerId is { } inheritedId ? ResolveLinkedDesignName(inheritedId) : "None";
             preview = $"Inherit ({inherited})";
 
-            // Flag when a persona's own base layer could take priority over the global default above -
-            // the actual resolution still depends on which persona (if any) the design is applied through.
-            if (Plugin.PlayerState.IsLoaded)
+            // Flag when the currently active persona's own base layer is what "Inherit" will actually
+            // resolve to instead of the global default shown above (Configuration.ResolveBaseDesignLayer
+            // looks this up ambiently) - there's no more "assigned to a persona" link to check, since
+            // resolution is driven by whichever persona is active, not by design membership.
+            if (cfg.GetActivePersonaForCurrentCharacter() is { } activePersona && !activePersona.InheritBaseLayer)
             {
-                var settings = cfg.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-                var personaNames = settings.Personas.Where(p => p.AssignedDesignIds.Contains(id)).Select(p => p.Name).ToList();
-                if (personaNames.Count > 0)
-                    preview += $" (Persona: {string.Join(", ", personaNames)})";
+                var activeBaseLayer = activePersona.PersonaBaseLayerId is { } abl ? ResolveLinkedDesignName(abl) : "None";
+                preview += $" (currently overridden by active persona \"{activePersona.Name}\": {activeBaseLayer})";
             }
         }
         else

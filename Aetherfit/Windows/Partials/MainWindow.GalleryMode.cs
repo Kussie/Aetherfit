@@ -385,8 +385,6 @@ public partial class MainWindow
             return;
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-        if (settings.Personas.Count == 0)
-            return;
 
         ImGui.Separator();
         if (!Pills.DrawCollapsibleSubheader($"Personas ({settings.Personas.Count})", ref personasSectionOpen))
@@ -401,12 +399,11 @@ public partial class MainWindow
         var containerAspect = thumbWidth / thumbHeight;
         var col = 0;
 
-        foreach (var persona in settings.Personas)
+        void DrawCard(string name, string? coverPath, bool isActive, Action onClick)
         {
             using (ImRaii.Group())
             {
                 var thumbStart = ImGui.GetCursorScreenPos();
-                var coverPath = plugin.ImageStorage.GetCoverPath(persona.Id);
                 if (coverPath != null)
                 {
                     var tex = Plugin.TextureProvider.GetFromFile(coverPath).GetWrapOrEmpty();
@@ -421,29 +418,45 @@ public partial class MainWindow
                     GalleryDraw.DrawNoImagePlaceholder(thumbStart, thumbVec);
                 }
 
-                var labelWidth = ImGui.CalcTextSize(persona.Name).X;
+                if (isActive)
+                {
+                    var badgePos = thumbStart + new Vector2(4f, 4f) * ImGuiHelpers.GlobalScale;
+                    ImGui.SetCursorScreenPos(badgePos);
+                    DesignDetailView.DrawFontAwesome(FontAwesomeIcon.Check, UiTheme.StateOn);
+                }
+
+                var labelWidth = ImGui.CalcTextSize(name).X;
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (thumbWidth - labelWidth) * 0.5f));
-                ImGui.TextUnformatted(persona.Name);
+                ImGui.TextUnformatted(name);
             }
 
             if (ImGui.IsItemClicked())
-            {
-                selectedPersona = persona.Id;
-                coverMode = false;
-            }
+                onClick();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"Open \"{persona.Name}\"");
+                ImGui.SetTooltip(isActive ? $"Open \"{name}\" (currently active)" : $"Open \"{name}\"");
 
             col++;
             if (col < columns)
-            {
                 ImGui.SameLine();
-            }
             else
-            {
                 col = 0;
-            }
         }
+
+        DrawCard("Default", null, settings.ActivePersonaId == null, () =>
+        {
+            selectedPersona = Guid.Empty;
+            coverMode = false;
+        });
+
+        foreach (var persona in settings.Personas)
+        {
+            DrawCard(persona.Name, plugin.ImageStorage.GetCoverPath(persona.Id), settings.ActivePersonaId == persona.Id, () =>
+            {
+                selectedPersona = persona.Id;
+                coverMode = false;
+            });
+        }
+
         if (col != 0)
             ImGui.NewLine();
         ImGui.Spacing();

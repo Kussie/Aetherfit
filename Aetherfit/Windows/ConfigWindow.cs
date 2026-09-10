@@ -485,6 +485,9 @@ public class ConfigWindow : Window, IDisposable
             "Apply a random favourite design. Add \"job\" to only pick favourites associated with your current job.");
         DrawCommand("/aetherfit wear \"design name\"",
             "Apply the design with this exact name. The name must be in quotes, even if it's a single word.");
+        DrawCommand("/aetherfit persona \"persona name\" [\"design name\"]",
+            "Activate a persona - its Default Design, or keep the current design if none is set. "
+            + "Optionally wear a specific design instead.");
         DrawCommand("/aetherfit automations toggle|on|off",
             "Turn Automations on or off, or flip its current state.");
         DrawCommand("/aetherfit automations snooze [minutes]",

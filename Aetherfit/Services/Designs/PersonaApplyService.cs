@@ -3,10 +3,12 @@ using System.Linq;
 
 namespace Aetherfit.Services.Designs;
 
-// Applies one of a persona's assigned designs together with the persona's own context (Penumbra
-// collection, Customize+ profile, Honorific title, base layer). Deliberately the only entry point -
-// applying a design directly (regular tree/gallery/random-apply/Automation/chat command) never routes
-// through here and never touches these systems, even for a design that happens to be persona-assigned.
+// Activates a persona - a "which character am I right now" context (Penumbra collection, Customize+
+// profile, Honorific title, base layer, and an optional design to apply automatically). Activation is
+// the single entry point for all of this; applying a design directly (regular tree/gallery/random-apply/
+// Automation/chat command) never routes through here, though it does still inherit the active persona's
+// base layer ambiently (Configuration.ResolveBaseDesignLayer) since that's the whole point of "being"
+// that persona.
 public sealed class PersonaApplyService
 {
     private readonly Plugin plugin;
@@ -19,8 +21,109 @@ public sealed class PersonaApplyService
         public static ApplyResult Fail(string error) => new(null, error);
     }
 
-    // Chat-command entry point: resolves a persona (and, optionally, one of its assigned designs) by
-    // name, then delegates to ApplyDesignWithinPersona - mirrors DesignApplyService.ApplyByName's shape.
+    // Undoes the outgoing persona's side effects unconditionally first, then applies the target's if it
+    // has any. persona == null (Default) means "no side effects to (re)apply" - the unconditional reset
+    // above is therefore the entire effect: collection override removed, Customize+ profile disabled,
+    // Honorific title cleared, all back to their defaults. Deliberately does not touch appearance/design
+    // itself - that's ActivatePersona's job.
+    private void EnterPersonaContext(CharacterLoginSettings settings, PersonaProfile? persona)
+    {
+        plugin.Penumbra.SetCollectionForObject(0, null);
+
+        if (settings.LastPersonaCustomizeProfileId is { } previousProfileId && plugin.Configuration.CustomizePlusIntegrationEnabled)
+            plugin.CustomizePlus.DisableProfile(previousProfileId);
+        settings.LastPersonaCustomizeProfileId = null;
+
+        if (plugin.Configuration.HonorificIntegrationEnabled)
+            plugin.Honorific.ClearTitle();
+
+        if (persona != null)
+        {
+            if (persona.PenumbraCollectionId is { } collectionId)
+            {
+                var result = plugin.Penumbra.SetCollectionForObject(0, collectionId);
+                if (result != Penumbra.Api.Enums.PenumbraApiEc.Success)
+                    Plugin.Log.Warning("Failed to set persona collection for \"{Persona}\": {Result}", persona.Name, result);
+            }
+
+            if (persona.CustomizePlusProfileId is { } profileId && plugin.Configuration.CustomizePlusIntegrationEnabled)
+            {
+                plugin.CustomizePlus.EnableProfile(profileId);
+                settings.LastPersonaCustomizeProfileId = profileId;
+            }
+
+            if (!string.IsNullOrEmpty(persona.HonorificTitle) && plugin.Configuration.HonorificIntegrationEnabled)
+                plugin.Honorific.SetTitle(persona.HonorificTitle, persona.HonorificTitleIsPrefix);
+        }
+
+        settings.ActivePersonaId = persona?.Id;
+        plugin.Configuration.Save();
+    }
+
+    // The single activation entry point - UI Activate button, tree double-click, login/zone-change
+    // restore, and the chat command with no design name all go through here. personaId == null activates
+    // Default.
+    public ApplyResult ActivatePersona(Guid? personaId)
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return ApplyResult.Fail("Log in to a character first.");
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        PersonaProfile? persona = null;
+        if (personaId is { } pid)
+        {
+            persona = settings.Personas.FirstOrDefault(p => p.Id == pid);
+            if (persona == null)
+                return ApplyResult.Fail("Persona not found.");
+        }
+
+        EnterPersonaContext(settings, persona);
+        ApplyPersonaDesign(settings, persona);
+        return ApplyResult.Ok(personaId ?? Guid.Empty);
+    }
+
+    // Default (persona == null): revert to the game's own state, then the global Base Design Layer alone
+    // if one is set. A real persona: its own Default Design if set, else leave the current design as-is,
+    // layering the persona's own resolved base layer underneath it (reapplying the current design and
+    // its own Additional Layers afterward so it still reads on top - the base layer only fills in slots
+    // the current design leaves untouched, same semantics ApplyDesignById already gives a design's base
+    // layer).
+    private void ApplyPersonaDesign(CharacterLoginSettings settings, PersonaProfile? persona)
+    {
+        if (persona == null)
+        {
+            plugin.DesignApply.RevertAppearance();
+            ApplyResolvedBaseLayerOnly(null);
+            return;
+        }
+
+        if (persona.DefaultDesignId is { } defaultId && plugin.Configuration.CachedOutfits.ContainsKey(defaultId))
+        {
+            plugin.DesignApply.ApplyDesignById(defaultId);
+            return;
+        }
+
+        ApplyResolvedBaseLayerOnly(persona);
+        if (settings.LastWornDesign is { } currentId && plugin.Configuration.CachedOutfits.ContainsKey(currentId))
+            plugin.DesignApply.ApplyDesignById(currentId);
+    }
+
+    private void ApplyResolvedBaseLayerOnly(PersonaProfile? persona)
+    {
+        if (!plugin.Configuration.EnableRandomLayers)
+            return;
+
+        var baseLayerId = persona == null
+            ? plugin.Configuration.BaseDesignLayerId
+            : (persona.InheritBaseLayer ? plugin.Configuration.BaseDesignLayerId : persona.PersonaBaseLayerId);
+        if (baseLayerId is { } id && plugin.DesignApply.SupportsLayers(id))
+            plugin.DesignApply.ApplyLayerOnly(id);
+    }
+
+    // Chat-command entry point. An explicit design name overrides DefaultDesignId/keep-current for this
+    // one apply only - it never changes the persona's own DefaultDesignId setting. Design names are
+    // resolved globally (DesignApplyService.ApplyByName), not against a per-persona list, since designs
+    // are no longer assigned to personas at all.
     public ApplyResult ApplyByName(string personaName, string? designName)
     {
         if (!Plugin.PlayerState.IsLoaded)
@@ -31,78 +134,15 @@ public sealed class PersonaApplyService
         if (persona == null)
             return ApplyResult.Fail($"No persona named \"{personaName}\" found.");
 
-        Guid designId;
-        if (designName != null)
+        EnterPersonaContext(settings, persona);
+
+        if (designName == null)
         {
-            var matches = persona.AssignedDesignIds
-                .Where(id => plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
-                             && string.Equals(outfit.Name, designName, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            if (matches.Count == 0)
-                return ApplyResult.Fail($"\"{persona.Name}\" has no design named \"{designName}\".");
-            if (matches.Count > 1)
-                return ApplyResult.Fail($"{matches.Count} designs named \"{designName}\" in \"{persona.Name}\" — can't tell which one you mean.");
-            designId = matches[0];
-        }
-        else
-        {
-            var candidates = persona.AssignedDesignIds.Where(id => plugin.Configuration.CachedOutfits.ContainsKey(id)).ToList();
-            if (candidates.Count == 0)
-                return ApplyResult.Fail($"\"{persona.Name}\" has no assigned designs.");
-            designId = candidates[Random.Shared.Next(candidates.Count)];
+            ApplyPersonaDesign(settings, persona);
+            return ApplyResult.Ok(persona.Id);
         }
 
-        return ApplyDesignWithinPersona(persona.Id, designId) ? ApplyResult.Ok(persona.Id) : ApplyResult.Fail("Failed to apply persona.");
-    }
-
-    public bool ApplyDesignWithinPersona(Guid personaId, Guid designId)
-    {
-        if (!Plugin.PlayerState.IsLoaded)
-        {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Log in to a character first.");
-            return false;
-        }
-
-        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-        var persona = settings.Personas.FirstOrDefault(p => p.Id == personaId);
-        if (persona == null)
-        {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Persona not found.");
-            return false;
-        }
-
-        if (!plugin.Configuration.CachedOutfits.ContainsKey(designId))
-        {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Design not found.");
-            return false;
-        }
-
-        // InheritBaseLayer -> pass null (defer to the global default, same as a direct apply); an explicit
-        // "None" (PersonaBaseLayerId unset) -> Guid.Empty, a sentinel ResolveBaseDesignLayer recognises as
-        // "no base layer" rather than falling through to the global default; a specific design passes through.
-        var personaBaseLayerId = persona.InheritBaseLayer ? (Guid?)null : (persona.PersonaBaseLayerId ?? Guid.Empty);
-        plugin.DesignApply.ApplyDesignById(designId, personaBaseLayerId: personaBaseLayerId);
-
-        if (persona.PenumbraCollectionId is { } collectionId)
-        {
-            var result = plugin.Penumbra.SetCollectionForObject(0, collectionId);
-            if (result != Penumbra.Api.Enums.PenumbraApiEc.Success)
-                Plugin.Log.Warning("Failed to set persona collection for \"{Persona}\": {Result}", persona.Name, result);
-        }
-
-        if (persona.CustomizePlusProfileId is { } profileId && plugin.Configuration.CustomizePlusIntegrationEnabled)
-        {
-            if (settings.LastPersonaCustomizeProfileId is { } previousId && previousId != profileId)
-                plugin.CustomizePlus.DisableProfile(previousId);
-
-            plugin.CustomizePlus.EnableProfile(profileId);
-            settings.LastPersonaCustomizeProfileId = profileId;
-            plugin.Configuration.Save();
-        }
-
-        if (!string.IsNullOrEmpty(persona.HonorificTitle) && plugin.Configuration.HonorificIntegrationEnabled)
-            plugin.Honorific.SetTitle(persona.HonorificTitle, persona.HonorificTitleIsPrefix);
-
-        return true;
+        var result = plugin.DesignApply.ApplyByName(designName);
+        return result.Error != null ? ApplyResult.Fail(result.Error) : ApplyResult.Ok(persona.Id);
     }
 }

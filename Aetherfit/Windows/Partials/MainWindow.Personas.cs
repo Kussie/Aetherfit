@@ -21,14 +21,13 @@ public partial class MainWindow
     private bool createPersonaReclaimFocus;
     private string renamePersonaName = string.Empty;
     private bool renamePersonaReclaimFocus;
-    private string personaAddDesignFilter = string.Empty;
     private string personaBaseLayerFilter = string.Empty;
+    private string personaDefaultDesignFilter = string.Empty;
     private bool personaImagesPanelOpen = true;
     private bool personaTagsPanelOpen = true;
     private bool personaDescriptionPanelOpen = true;
     private bool personaBaseLayerPanelOpen = true;
     private bool personaProfilesPanelOpen = true;
-    private bool personaAssignedDesignsPanelOpen = true;
 
     private const string AddPersonaTagPopupId = "AddPersonaTagPopup";
     private string addPersonaTagSearchText = string.Empty;
@@ -40,9 +39,10 @@ public partial class MainWindow
     private string? personaDescriptionOriginalValue;
 
     // Renders as a top-level tree node parallel to the regular design tree/grouping, at the bottom of
-    // the left pane. Each persona expands to show only its own AssignedDesignIds - clicking one of
-    // those applies it through PersonaApplyService (bundling the persona's collection/C+ profile/
-    // title/base layer), never the plain DesignApplyService path the regular tree uses.
+    // the left pane. A synthetic "Default" row (no persona active) is always drawn first, then the
+    // real personas - each row shows a green check when it's the currently ACTIVE persona (a real,
+    // persistent "which character am I right now" state - see PersonaApplyService), distinct from
+    // selectedPersona which is just which detail pane the UI happens to be showing.
     private void DrawPersonasSection()
     {
         if (!Plugin.PlayerState.IsLoaded)
@@ -55,10 +55,12 @@ public partial class MainWindow
             ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
         if (sectionOpen)
         {
+            DrawDefaultPersonaNode(settings);
+
             // Snapshot the list before iterating - deleting a persona from within the loop (via the
             // detail pane) would otherwise invalidate settings.Personas mid-enumeration.
             foreach (var persona in settings.Personas.ToList())
-                DrawPersonaNode(persona);
+                DrawPersonaNode(persona, settings.ActivePersonaId == persona.Id);
 
             if (ImGui.Selectable("   Create new persona##createNewPersonaLeaf"))
             {
@@ -78,9 +80,9 @@ public partial class MainWindow
     }
 
     // A single-line, non-expandable row - matches a plain design leaf's look rather than a folder-style
-    // tree node. Browsing/applying a persona's own assigned designs happens in its detail pane
-    // (DrawSelectedPersonaDetails) instead of expanding inline here.
-    private void DrawPersonaNode(PersonaProfile persona)
+    // tree node. Single click selects (navigates the detail pane); double-click activates it outright -
+    // mirrors DrawDesignLeaf's own single-click-selects/double-click-applies convention.
+    private void DrawPersonaNode(PersonaProfile persona, bool isActive)
     {
         var selected = selectedPersona == persona.Id;
         if (ImGui.Selectable($"   {persona.Name}##persona_{persona.Id}", selected))
@@ -88,7 +90,49 @@ public partial class MainWindow
             selectedPersona = persona.Id;
             selectedDesign = null;
         }
+        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+        {
+            selectedPersona = persona.Id;
+            selectedDesign = null;
+            plugin.PersonaApply.ActivatePersona(persona.Id);
+        }
+
         DrawLeafDot(ImGui.GetColorU32(ImGuiCol.Text));
+        DrawActivePersonaIndicator(isActive);
+    }
+
+    // The synthetic "Default" entry - not a real stored PersonaProfile, so it can't be renamed or
+    // deleted. Represents "no persona active": plain in-game state, plus the global Base Design Layer if
+    // one is set. selectedPersona == Guid.Empty is the sentinel for "Default's detail pane is open" -
+    // distinct from null (nothing persona-related selected) and from any real persona's generated Guid.
+    private void DrawDefaultPersonaNode(CharacterLoginSettings settings)
+    {
+        var selected = selectedPersona == Guid.Empty;
+        if (ImGui.Selectable("   Default##persona_default", selected))
+        {
+            selectedPersona = Guid.Empty;
+            selectedDesign = null;
+        }
+        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+        {
+            selectedPersona = Guid.Empty;
+            selectedDesign = null;
+            plugin.PersonaApply.ActivatePersona(null);
+        }
+
+        DrawLeafDot(ImGui.GetColorU32(ImGuiCol.Text));
+        DrawActivePersonaIndicator(settings.ActivePersonaId == null);
+    }
+
+    private static void DrawActivePersonaIndicator(bool isActive)
+    {
+        if (!isActive)
+            return;
+
+        ImGui.SameLine();
+        DesignDetailView.DrawFontAwesome(FontAwesomeIcon.Check, UiTheme.StateOn);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Currently active");
     }
 
     private void DrawCreatePersonaPopup(CharacterLoginSettings settings)
@@ -168,19 +212,28 @@ public partial class MainWindow
             return;
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+
+        if (id == Guid.Empty)
+        {
+            DrawDefaultPersonaDetails(settings);
+            return;
+        }
+
         var persona = settings.Personas.FirstOrDefault(p => p.Id == id);
         if (persona == null)
         {
             selectedPersona = null;
             return;
         }
+        var isActive = settings.ActivePersonaId == persona.Id;
 
         var frameH = ImGui.GetFrameHeight();
-        float renameW, trashW;
+        float renameW, trashW, activateW;
         using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
         {
             renameW = ImGui.CalcTextSize(FontAwesomeIcon.Pen.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
             trashW = ImGui.CalcTextSize(FontAwesomeIcon.Trash.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
+            activateW = ImGui.CalcTextSize(FontAwesomeIcon.Check.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
         }
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (6f * ImGuiHelpers.GlobalScale));
@@ -192,9 +245,23 @@ public partial class MainWindow
         ImGui.SetWindowFontScale(1.0f);
         if (title != persona.Name && ImGui.IsItemHovered())
             ImGui.SetTooltip(persona.Name);
+        if (isActive)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(UiTheme.StateOn, "(Active)");
+        }
 
         // The action icons sit on their own row under the title, matching the design detail header.
         ImGui.SetCursorPosX(iconRowX);
+        using (ImRaii.Disabled(isActive))
+        {
+            if (HeaderIconButton("activatePersona", FontAwesomeIcon.Check, isActive ? UiTheme.StateOn : null, new Vector2(activateW, frameH)))
+                plugin.PersonaApply.ActivatePersona(persona.Id);
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(isActive ? "This persona is currently active" : "Make this persona active");
+
+        ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
         if (HeaderIconButton("renamePersona", FontAwesomeIcon.Pen, null, new Vector2(renameW, frameH)))
         {
             renamePersonaName = persona.Name;
@@ -213,13 +280,15 @@ public partial class MainWindow
         DrawRenamePersonaPopup(persona);
 
         if (ConfirmDialog.Draw(DeletePersonaPopupId,
-                $"Delete the persona \"{persona.Name}\"? This doesn't delete any of its assigned designs, only the persona itself.",
-                "Delete", holdToConfirm: true))
+                $"Delete the persona \"{persona.Name}\"?", "Delete", holdToConfirm: true))
         {
+            var wasActive = isActive;
             settings.Personas.Remove(persona);
             plugin.ImageStorage.RemoveCover(persona.Id);
             selectedPersona = null;
             plugin.Configuration.Save();
+            if (wasActive)
+                plugin.PersonaApply.ActivatePersona(null);
             return;
         }
 
@@ -267,97 +336,58 @@ public partial class MainWindow
             DrawPersonaCollectionPicker(persona);
             DrawPersonaCustomizePlusPicker(persona);
             DrawPersonaTitleEditor(persona);
+            DrawPersonaDefaultDesignPicker(persona);
             ImGui.Unindent();
             ImGui.Spacing();
         }
 
-        if (Pills.DrawCollapsibleSubheader($"Assigned Designs ({persona.AssignedDesignIds.Count})", ref personaAssignedDesignsPanelOpen))
+        DrawPersonaCustomizationsSection(persona);
+    }
+
+    // Read-only, mostly static - Default can't be renamed, deleted, or given tags/description/collection/
+    // Customize+/title/Default Design of its own, so none of that editing machinery applies here.
+    private void DrawDefaultPersonaDetails(CharacterLoginSettings settings)
+    {
+        var isActive = settings.ActivePersonaId == null;
+
+        ImGui.SetWindowFontScale(1.5f);
+        ImGui.TextColored(UiTheme.GoldAccent, "Default");
+        ImGui.SetWindowFontScale(1.0f);
+        if (isActive)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(UiTheme.StateOn, "(Active)");
+        }
+
+        using (ImRaii.Disabled(isActive))
+        {
+            if (ImGui.Button("Activate"))
+                plugin.PersonaApply.ActivatePersona(null);
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(isActive
+                ? "Default is currently active"
+                : "Revert to your in-game appearance, plus the global Base Design Layer if one is set");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        ImGui.TextWrapped("Default represents your character with no persona active: your plain in-game "
+            + "appearance, with only the global Base Design Layer applied on top if one is set. It can't "
+            + "be renamed, deleted, or given a Default Design of its own - activate a real persona instead "
+            + "for that.");
+
+        ImGui.Spacing();
+        if (Pills.DrawCollapsibleSubheader("Base Design Layer", ref personaBaseLayerPanelOpen))
         {
             ImGui.Indent();
-            DrawPersonaAddDesignPicker(persona);
-            ImGui.Spacing();
-
-            if (persona.AssignedDesignIds.Count == 0)
-            {
-                ImGui.TextDisabled("No designs assigned yet.");
-            }
-            else
-            {
-                float removeW;
-                using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
-                    removeW = ImGui.CalcTextSize(FontAwesomeIcon.Times.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
-
-                // Bordered and height-capped so a long assignment list scrolls in place instead of pushing
-                // the rest of the detail pane down - matches other capped lists (bulk-layer preview, etc).
-                var listHeight = Math.Min(persona.AssignedDesignIds.Count, MaxVisibleDesignRows) * ImGui.GetFrameHeightWithSpacing();
-                Guid? toRemove = null;
-                using (ImRaii.Child("##personaAssignedDesignsList", new Vector2(-1, listHeight), true))
-                {
-                    foreach (var designId in persona.AssignedDesignIds)
-                    {
-                        using var rowId = ImRaii.PushId(designId.ToString());
-                        if (DrawPersonaAssignedDesignRow(persona, designId, removeW, frameH))
-                            toRemove = designId;
-                    }
-                }
-
-                if (toRemove is { } removeId)
-                {
-                    persona.AssignedDesignIds.Remove(removeId);
-                    plugin.Configuration.Save();
-                }
-            }
+            var baseLayerName = plugin.Configuration.BaseDesignLayerId is { } blId
+                ? plugin.Configuration.ResolveDesignName(blId) : "None";
+            ImGui.TextDisabled($"Resolved: {baseLayerName}");
+            ImGui.TextDisabled("Set globally in Aetherfit's Settings - Default has no base layer of its own.");
             ImGui.Unindent();
+            ImGui.Spacing();
         }
-    }
-
-    // A cover-thumbnail + name + remove-button row - deliberately not a plain Selectable, so the
-    // Assigned Designs list reads as a card list rather than a bare filename dump. Returns true if the
-    // caller should remove this design from the persona (removal deferred so the list isn't mutated
-    // mid-iteration). The cover thumbnail only shows on hover, as a tooltip - matching how a design's
-    // own tree leaf (DrawDesignLeafTooltip) previews it, rather than an always-visible inline thumbnail.
-    private bool DrawPersonaAssignedDesignRow(PersonaProfile persona, Guid designId, float removeW, float frameH)
-    {
-        var displayName = designLeafById.TryGetValue(designId, out var leaf) ? leaf.DisplayName : "(missing design)";
-
-        var rowWidth = ImGui.GetContentRegionAvail().X - removeW - ImGui.GetStyle().ItemInnerSpacing.X;
-        if (ImGui.Selectable(displayName, false, ImGuiSelectableFlags.None, new Vector2(rowWidth, 0)))
-        {
-            if (ImGui.GetIO().KeyShift)
-            {
-                selectedDesign = designId;
-                RevealDesignInTree(designId);
-            }
-            else
-            {
-                plugin.PersonaApply.ApplyDesignWithinPersona(persona.Id, designId);
-            }
-        }
-        if (ImGui.IsItemHovered())
-            DrawPersonaAssignedDesignTooltip(persona, leaf, displayName, designId);
-
-        ImGui.SameLine();
-        var remove = HeaderIconButton("remove", FontAwesomeIcon.Times, null, new Vector2(removeW, frameH));
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Remove from this persona");
-
-        return remove;
-    }
-
-    // Same title line (the design's full tree path) and image as DrawDesignLeafTooltip, plus this
-    // row's own "wear as part of persona" hint in place of the tree's apply/open-in-Glamourer hints.
-    private void DrawPersonaAssignedDesignTooltip(PersonaProfile persona, DesignLeaf? leaf, string displayName, Guid designId)
-    {
-        var hasPath = !string.IsNullOrEmpty(leaf?.FullPath);
-        var imagePath = plugin.Configuration.ShowThumbnailOnHover ? plugin.ImageStorage.GetCoverPath(designId) : null;
-
-        ImGui.BeginTooltip();
-        ImGui.TextUnformatted(hasPath ? leaf!.FullPath : displayName);
-        if (imagePath != null)
-            DrawImageScaled(imagePath, TooltipImageMax * ImGuiHelpers.GlobalScale);
-        ImGui.TextDisabled($"Click to wear as part of \"{persona.Name}\"");
-        ImGui.TextDisabled("Shift + click to jump to this design in the edit view");
-        ImGui.EndTooltip();
     }
 
     private void DrawPersonaCollectionPicker(PersonaProfile persona)
@@ -445,6 +475,55 @@ public partial class MainWindow
         }
     }
 
+    // Applied automatically whenever this persona is activated. Unlike the base-layer picker below, this
+    // is a full ApplyDesignById apply rather than a layer composite, so any design source works - no
+    // Glamourer-only restriction needed.
+    private void DrawPersonaDefaultDesignPicker(PersonaProfile persona)
+    {
+        var preview = persona.DefaultDesignId is { } id ? plugin.Configuration.ResolveDesignName(id) : "None";
+
+        ImGui.TextDisabled("Default Design:");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Applied automatically when this persona is activated. \"None\" keeps whatever "
+                + "design is currently worn, just layering this persona's Base Design Layer underneath it.");
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(240 * ImGuiHelpers.GlobalScale);
+        using var combo = ImRaii.Combo("##personaDefaultDesign", preview, ImGuiComboFlags.HeightLargest);
+        if (!combo.Success)
+            return;
+
+        if (ImGui.IsWindowAppearing())
+            ImGui.SetKeyboardFocusHere();
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##personaDefaultDesignFilter", "Filter by name...", ref personaDefaultDesignFilter, 64);
+        ImGui.Separator();
+
+        var matches = plugin.Configuration.CachedOutfits
+            .Select(kv => (Id: kv.Key, kv.Value.Name))
+            .Where(d => personaDefaultDesignFilter.Length == 0
+                        || d.Name.Contains(personaDefaultDesignFilter, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var listHeight = Math.Min(matches.Count + 1, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
+        using var scroll = ImRaii.Child("##personaDefaultDesignList", new Vector2(-1, listHeight), false);
+
+        if (ImGui.Selectable("None", persona.DefaultDesignId == null))
+        {
+            persona.DefaultDesignId = null;
+            plugin.Configuration.Save();
+        }
+        ImGui.Separator();
+        foreach (var (designId, name) in matches)
+        {
+            if (ImGui.Selectable($"{name}##personaDefaultDesign{designId}", persona.DefaultDesignId == designId))
+            {
+                persona.DefaultDesignId = designId;
+                plugin.Configuration.Save();
+            }
+        }
+    }
+
     private void DrawPersonaBaseLayerPicker(PersonaProfile persona)
     {
         string preview;
@@ -460,7 +539,9 @@ public partial class MainWindow
 
         ImGui.TextDisabled("Persona Base Layer:");
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Applied instead of the global Base Design Layer for this persona's designs\nthat don't override their own Base Design Layer.\nInherit falls through to the global Base Design Layer set in Settings.");
+            ImGui.SetTooltip("Applied instead of the global Base Design Layer while this persona is active, "
+                + "for any design that doesn't override its own Base Design Layer.\nInherit falls through "
+                + "to the global Base Design Layer set in Settings.");
         ImGui.SameLine();
         ImGui.SetNextItemWidth(240 * ImGuiHelpers.GlobalScale);
         using (var combo = ImRaii.Combo("##personaBaseLayer", preview, ImGuiComboFlags.HeightLargest))
@@ -522,45 +603,27 @@ public partial class MainWindow
         }
     }
 
-    private void DrawPersonaAddDesignPicker(PersonaProfile persona)
+    // Reuses the exact same Customizations rendering a normal design's own detail pane uses
+    // (DrawCustomizationsPanel, MainWindow.EquipmentMods.cs), pointed at whichever design currently
+    // resolves as this persona's Base Design Layer - "the difference from your character's plain in-game
+    // appearance" this persona's base layer would introduce, including that design's own configured
+    // Additional Layers. Intentionally shares the customizationsPanelOpen collapse state with a normal
+    // design's own Customizations section (that field isn't keyed per-design either).
+    private void DrawPersonaCustomizationsSection(PersonaProfile persona)
     {
-        ImGui.SetNextItemWidth(280 * ImGuiHelpers.GlobalScale);
-        using (var combo = ImRaii.Combo("##personaAddDesign", "Assign a design...", ImGuiComboFlags.HeightLargest))
+        var baseLayerId = persona.InheritBaseLayer ? plugin.Configuration.BaseDesignLayerId : persona.PersonaBaseLayerId;
+        if (baseLayerId is { } id && plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit))
         {
-            if (combo.Success)
-            {
-                if (ImGui.IsWindowAppearing())
-                    ImGui.SetKeyboardFocusHere();
-                ImGui.SetNextItemWidth(-1);
-                ImGui.InputTextWithHint("##personaAddDesignFilter", "Filter by name...", ref personaAddDesignFilter, 64);
-                ImGui.Separator();
-
-                var matches = plugin.Configuration.CachedOutfits
-                    .Where(kv => !persona.AssignedDesignIds.Contains(kv.Key))
-                    .Where(kv => personaAddDesignFilter.Length == 0
-                                 || kv.Value.Name.Contains(personaAddDesignFilter, StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(kv => kv.Value.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                if (matches.Count == 0)
-                {
-                    ImGui.TextDisabled("No matching designs.");
-                }
-                else
-                {
-                    var listHeight = Math.Min(matches.Count, 15) * ImGui.GetTextLineHeightWithSpacing();
-                    using var scroll = ImRaii.Child("##personaAddDesignList", new Vector2(-1, listHeight), false);
-                    foreach (var (designId, outfit) in matches)
-                    {
-                        if (ImGui.Selectable($"{outfit.Name}##personaAddDesign{designId}"))
-                        {
-                            persona.AssignedDesignIds.Add(designId);
-                            plugin.Configuration.Save();
-                        }
-                    }
-                }
-            }
+            DrawCustomizationsPanel(id, outfit);
+            return;
         }
+
+        if (!Pills.DrawCollapsibleSubheader("Customizations", ref customizationsPanelOpen))
+            return;
+        ImGui.Indent();
+        ImGui.TextDisabled("This persona has no Base Design Layer set - nothing to preview.");
+        ImGui.Unindent();
+        ImGui.Spacing();
     }
 
     // Mirrors DrawTagsRow's pill layout, minus the Glamourer-merge button - a persona has no source
