@@ -338,6 +338,8 @@ public sealed class Plugin : IDalamudPlugin
       + "/aetherfit favourite [job] — apply a random favourite outfit, optionally only one associated with your current job.\n"
       + "/aetherfit wear \"design name\" — apply the design with this exact name (quotes required).\n"
       + "/aetherfit persona \"persona name\" [\"design name\"] — apply a persona's design (random from its assigned designs if none given).\n"
+      + "/aetherfit automations toggle|on|off — turn Automations on, off, or flip its current state.\n"
+      + "/aetherfit automations snooze [minutes] — pause Automations for a while (default 15 minutes).\n"
       + "/aetherfit last — reapply the last known design.\n"
       + "/aetherfit revert — revert appearance to the game state.\n"
       + "/aetherfit help — show this list.";
@@ -465,6 +467,54 @@ public sealed class Plugin : IDalamudPlugin
                 }
 
                 ReportError(MainWindow.ApplyPersonaByName(personaName, designName));
+                break;
+            }
+
+            case "automations":
+            {
+                var parts = rest.Trim().Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                var sub = parts.Length > 0 ? parts[0].ToLowerInvariant() : string.Empty;
+
+                switch (sub)
+                {
+                    case "toggle":
+                        ToggleAutomationsEnabled();
+                        break;
+
+                    case "on":
+                    case "off":
+                    {
+                        var enabled = Automation.SetEnabled(sub == "on");
+                        if (enabled == null)
+                        {
+                            ChatGui.PrintError($"{ChatPrefix}Log in to a character first.");
+                            break;
+                        }
+                        ChatGui.Print($"{ChatPrefix}Automations {(enabled.Value ? "enabled" : "disabled")}.");
+                        break;
+                    }
+
+                    case "snooze":
+                    {
+                        if (!PlayerState.IsLoaded)
+                        {
+                            ChatGui.PrintError($"{ChatPrefix}Log in to a character first.");
+                            break;
+                        }
+
+                        var minutes = 15;
+                        if (parts.Length > 1 && int.TryParse(parts[1].Trim(), out var parsed))
+                            minutes = Math.Clamp(parsed, 1, 1440);
+
+                        Automation.StartSnooze(TimeSpan.FromMinutes(minutes));
+                        ChatGui.Print($"{ChatPrefix}Automations snoozed for {minutes} minute{(minutes == 1 ? "" : "s")}.");
+                        break;
+                    }
+
+                    default:
+                        ChatGui.PrintError($"{ChatPrefix}Usage: /aetherfit automations toggle|on|off|snooze [minutes]");
+                        break;
+                }
                 break;
             }
 

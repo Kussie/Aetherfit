@@ -9,7 +9,7 @@
 
 **Optional:** [Wardrobe](https://github.com/ThatKwistine/WardrobePlugin) — if installed, Aetherfit can also browse and apply your Wardrobe outfits, mods and all (see the temporary-settings note below).
 
-Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit builds on top of it with a more intuitive, gallery-style frontend for browsing and applying designs. Designs no longer have to live in Glamourer itself, either — Aetherfit can pull them in from **Glamaholic**, **Simple Glamour Switcher**, **Wardrobe**, and the game's own **Glamour Plates** too, showing everything together in one unified gallery regardless of where it's actually saved. Glamourer remains required either way, since it's still the engine Aetherfit uses to actually apply an outfit to your character, no matter which source a design came from.
+Glamourer is a powerful tool for managing and applying designs to your characters in Final Fantasy XIV. Aetherfit builds on top of it with a more intuitive, gallery-style frontend for browsing and applying designs. Designs no longer have to live in Glamourer itself, either — Aetherfit can pull them in from **Glamaholic**, **Simple Glamour Switcher**, **Wardrobe**, **Eorzea Collection** and the game's own **Glamour Plates** too, showing everything together in one unified gallery regardless of where it's actually saved. Glamourer remains required either way, since it's still the engine Aetherfit uses to actually apply an outfit to your character, no matter which source a design came from.
 
 Aetherfit is meant to be a lightweight, easy-to-use alternative to the default Glamourer interface — making it much easier to quickly find and apply the perfect design for any occasion. You'll still use Glamourer itself (or Glamaholic, or the game's own Glamour Dresser) to create, edit, and manage your actual designs; Aetherfit is focused purely on making it quick and easy to choose which design to switch to quickly.
 
@@ -81,6 +81,10 @@ Once added, find Aetherfit in the main `/xlplugins` window and install it. You c
 `/aetherfit favourite [job]` - Apply a random favourite design. Add `job` to only pick favourites associated with your current job.
 
 `/aetherfit wear "design name"` - Apply the design with this exact name. The name must be in quotes, even if it's a single word.
+
+`/aetherfit automations toggle|on|off` - Turn Automations on or off, or flip its current state.
+
+`/aetherfit automations snooze [minutes]` - Pause Automations for a while without turning it off (default 15 minutes).
 
 `/aetherfit last` - Reapply the last design you had worn.
 

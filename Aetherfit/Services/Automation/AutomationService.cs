@@ -360,7 +360,17 @@ public sealed class AutomationService : IDisposable
             return null;
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-        settings.AutomationsEnabled = !settings.AutomationsEnabled;
+        return SetEnabled(!settings.AutomationsEnabled);
+    }
+
+    // Explicit on/off (as opposed to ToggleEnabled's flip) - used by the "/aetherfit automations on|off" command.
+    public bool? SetEnabled(bool enabled)
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return null;
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        settings.AutomationsEnabled = enabled;
         plugin.Configuration.Save();
         return settings.AutomationsEnabled;
     }
