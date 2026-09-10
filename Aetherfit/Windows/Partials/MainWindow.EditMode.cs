@@ -58,7 +58,9 @@ public partial class MainWindow
     private bool createNewDesignIncludeCustomizations;
     private bool createNewDesignAdvancedImport;
     private readonly HashSet<EquipmentSlot> createNewDesignExcludedSlots = new();
+    private readonly HashSet<string> createNewDesignExcludedBonusSlots = new();
     private List<CachedEquipmentSlot>? createNewDesignLiveEquipment;
+    private List<CachedBonusItem>? createNewDesignLiveBonusItems;
     private bool addTagReclaimFocus;
 
     // Reset whenever the selected design changes so edit mode always starts fresh for the new selection.
@@ -425,23 +427,53 @@ public partial class MainWindow
     private void DrawCreateNewDesignLeaf()
     {
         if (ImGui.Selectable("   Create new design##createNewDesignLeaf"))
+            ImGui.OpenPopup("##createNewDesignMenu");
+
+        DrawCreateLeafPlusIcon();
+
+        DrawCreateNewDesignMenu();
+        DrawCreateNewDesignPopup();
+    }
+
+    // Offered from the same click that used to jump straight into "From Worn". "From Worn" only sets a
+    // flag rather than calling ImGui.OpenPopup(CreateNewDesignPopupId) directly - the modal is drawn from
+    // DrawCreateNewDesignPopup, one scope up from this menu's own popup, so calling OpenPopup from in here
+    // would compute the wrong ID (the exact ID-stack scoping bug the Personas "Create new persona" popup
+    // hit earlier) and the modal would silently never open. "From Code / Eorzea Collection" reuses the
+    // existing flag-based trigger untouched (OpenImportDesignDialog), which has no such issue since its
+    // own draw call already lives at MainWindow's stable top-level location regardless of caller depth.
+    private void DrawCreateNewDesignMenu()
+    {
+        using var popup = ImRaii.Popup("##createNewDesignMenu");
+        if (!popup.Success)
+            return;
+
+        if (ImGui.Selectable("From Worn"))
         {
             createNewDesignName = string.Empty;
             createNewDesignReclaimFocus = true;
             createNewDesignIncludeCustomizations = false;
             createNewDesignAdvancedImport = false;
             createNewDesignExcludedSlots.Clear();
+            createNewDesignExcludedBonusSlots.Clear();
             createNewDesignLiveEquipment = null;
-            ImGui.OpenPopup(CreateNewDesignPopupId);
+            createNewDesignLiveBonusItems = null;
+            createNewDesignPopupRequested = true;
         }
-
-        DrawCreateLeafPlusIcon();
-
-        DrawCreateNewDesignPopup();
+        if (ImGui.Selectable("From Code / Eorzea Collection"))
+            OpenImportDesignDialog();
     }
+
+    private bool createNewDesignPopupRequested;
 
     private void DrawCreateNewDesignPopup()
     {
+        if (createNewDesignPopupRequested)
+        {
+            createNewDesignPopupRequested = false;
+            ImGui.OpenPopup(CreateNewDesignPopupId);
+        }
+
         ImGui.SetNextWindowSize(new Vector2(420, 0) * ImGuiHelpers.GlobalScale, ImGuiCond.Always);
         using var modal = ImRaii.PopupModal(CreateNewDesignPopupId, ImGuiWindowFlags.NoResize);
         if (!modal.Success)
@@ -468,13 +500,13 @@ public partial class MainWindow
 
         ImGui.Spacing();
         if (ImGui.Checkbox("Advanced Import", ref createNewDesignAdvancedImport) && createNewDesignAdvancedImport)
-            createNewDesignLiveEquipment ??= LoadLiveEquipmentPreview();
+            EnsureLiveEquipmentPreviewLoaded();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Choose which equipment slots to include in the new design.");
 
         if (createNewDesignAdvancedImport)
         {
-            createNewDesignLiveEquipment ??= LoadLiveEquipmentPreview();
+            EnsureLiveEquipmentPreviewLoaded();
             ImGui.Spacing();
             DrawAdvancedImportSlotPicker();
         }
@@ -486,7 +518,8 @@ public partial class MainWindow
             {
                 ImGui.CloseCurrentPopup();
                 DoCreateNewDesignFromScratch(trimmed, createNewDesignIncludeCustomizations,
-                    createNewDesignAdvancedImport ? createNewDesignExcludedSlots : null);
+                    createNewDesignAdvancedImport ? createNewDesignExcludedSlots : null,
+                    createNewDesignAdvancedImport ? createNewDesignExcludedBonusSlots : null);
             }
         }
         ImGui.SameLine();
@@ -494,15 +527,19 @@ public partial class MainWindow
             ImGui.CloseCurrentPopup();
     }
 
-    private List<CachedEquipmentSlot> LoadLiveEquipmentPreview()
+    private void EnsureLiveEquipmentPreviewLoaded()
     {
+        if (createNewDesignLiveEquipment != null)
+            return;
+
         var preview = plugin.GearImport.GetLiveEquipmentForPreview();
-        return preview.Success ? preview.Equipment.ToList() : new List<CachedEquipmentSlot>();
+        createNewDesignLiveEquipment = preview.Success ? preview.Equipment.ToList() : new List<CachedEquipmentSlot>();
+        createNewDesignLiveBonusItems = preview.Success ? preview.BonusItems.ToList() : new List<CachedBonusItem>();
     }
 
-    // Lets the user exclude specific equipment slots from the design CreateFreshDesign would otherwise
-    // capture unconditionally - unworn slots aren't shown, since there's nothing there to include or
-    // exclude either way.
+    // Lets the user exclude specific equipment slots (and the one bonus/facewear slot) from the design
+    // CreateFreshDesign would otherwise capture unconditionally - unworn slots aren't shown, since
+    // there's nothing there to include or exclude either way.
     private void DrawAdvancedImportSlotPicker()
     {
         if (createNewDesignLiveEquipment == null)
@@ -514,7 +551,13 @@ public partial class MainWindow
                          && plugin.GameData.ResolveItemName(e.ItemId) != GameDataService.NothingItemName)
             .ToList();
 
-        if (worn.Count == 0)
+        var bonusBySlot = (createNewDesignLiveBonusItems ?? new List<CachedBonusItem>()).ToDictionary(b => b.Slot);
+        var wornBonus = DesignDetailView.BonusSlotDisplay
+            .Where(bd => bonusBySlot.TryGetValue(bd.SlotKey, out var b)
+                         && plugin.GameData.ResolveBonusItemName(bd.SlotKey, b.ItemId) != GameDataService.NothingItemName)
+            .ToList();
+
+        if (worn.Count == 0 && wornBonus.Count == 0)
         {
             ImGui.TextDisabled("Nothing currently equipped.");
             return;
@@ -526,7 +569,8 @@ public partial class MainWindow
         var frameH = ImGui.GetFrameHeight();
         var labelWidth = 90f * ImGuiHelpers.GlobalScale;
 
-        var listHeight = Math.Min(worn.Count, MaxVisibleDesignRows) * ImGui.GetFrameHeightWithSpacing();
+        var totalRows = worn.Count + wornBonus.Count;
+        var listHeight = Math.Min(totalRows, MaxVisibleDesignRows) * ImGui.GetFrameHeightWithSpacing();
         using var scroll = ImRaii.Child("##advancedImportSlots", new Vector2(-1, listHeight), true);
         foreach (var (slot, label) in worn)
         {
@@ -550,13 +594,37 @@ public partial class MainWindow
             DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
                 entry.Stain, entry.Stain2, entry.ApplyStain, applied: !excluded, EmptyAffectedMap);
         }
+
+        foreach (var (slotKey, label) in wornBonus)
+        {
+            var entry = bonusBySlot[slotKey];
+            var excluded = createNewDesignExcludedBonusSlots.Contains(slotKey);
+
+            using (ImRaii.PushId(slotKey))
+            {
+                if (HeaderIconButton("advToggle", excluded ? FontAwesomeIcon.Times : FontAwesomeIcon.Check,
+                        excluded ? UiTheme.ErrorText : UiTheme.StateOn, new Vector2(toggleW, frameH)))
+                {
+                    if (!createNewDesignExcludedBonusSlots.Remove(slotKey))
+                        createNewDesignExcludedBonusSlots.Add(slotKey);
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(excluded ? "Excluded - click to include" : "Included - click to exclude");
+            }
+
+            ImGui.SameLine();
+            var itemName = plugin.GameData.ResolveBonusItemName(slotKey, entry.ItemId);
+            DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+                0, 0, false, applied: !excluded, EmptyAffectedMap);
+        }
     }
 
     private static readonly Dictionary<string, string> EmptyAffectedMap = new();
 
-    private void DoCreateNewDesignFromScratch(string name, bool includeCustomizations, IReadOnlySet<EquipmentSlot>? excludedSlots)
+    private void DoCreateNewDesignFromScratch(string name, bool includeCustomizations,
+        IReadOnlySet<EquipmentSlot>? excludedSlots, IReadOnlySet<string>? excludedBonusSlots = null)
     {
-        var result = plugin.GearImport.CreateFreshDesign(name, includeCustomizations, excludedSlots);
+        var result = plugin.GearImport.CreateFreshDesign(name, includeCustomizations, excludedSlots, excludedBonusSlots);
         if (!result.Success)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Create new design failed: {result.Error}");

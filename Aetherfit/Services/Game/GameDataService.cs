@@ -55,6 +55,13 @@ public sealed class GameDataService
     private readonly ConcurrentDictionary<byte, string> weatherNameCache = new();
     private readonly ConcurrentDictionary<uint, string> mountNameCache = new();
 
+    // Reverse (name -> id) lookups, lazily built once on first use (e.g. importing from Eorzea
+    // Collection, which only gives item/dye/facewear names, not ids). First-match-wins on a name
+    // collision, same as Glamaholic's own reverse lookups.
+    private Dictionary<string, uint>? itemIdByName;
+    private Dictionary<string, byte>? stainIdByName;
+    private Dictionary<string, uint>? bonusRowIdByName;
+
     // ClassJob RowId, for the jobs we surface as associations. The job list is fixed, so a curated set is more
     // reliable than taking every DictJob entry: that would include pre-job-stone base classes (Gladiator, etc.)
     // alongside their advanced-job counterparts, doubling up entries with the same derived role.
@@ -473,6 +480,65 @@ public sealed class GameDataService
                 return text;
         }
         return NothingItemName;
+    }
+
+    // Reverse of ResolveItemName - used by importers that only have a display name (Eorzea Collection's
+    // JSON API), never an id. Exact lowercase match first, then retry with regular spaces swapped for
+    // NBSP (some item names use NBSP instead of a normal space) - mirrors Glamaholic's own fallback.
+    public bool TryResolveItemIdByName(string name, out uint itemId)
+    {
+        itemIdByName ??= BuildNameIndex(itemSheet, item => item.Name.ExtractText(), item => item.RowId);
+        return TryResolveByName(itemIdByName, name, out itemId);
+    }
+
+    public bool TryResolveStainIdByName(string name, out byte stainId)
+    {
+        stainIdByName ??= BuildNameIndex(stainSheet, stain => stain.Name.ExtractText(), stain => (byte)stain.RowId);
+        return TryResolveByName(stainIdByName, name, out stainId);
+    }
+
+    // Returns the raw Glasses-sheet row id with the same bit-49 "bonus item" flag every other
+    // CachedBonusItem.ItemId in this codebase carries (see BonusRowId) - without it, the id round-trips
+    // through ResolveBonusItemName/BonusItemExists fine for display, but Glamourer won't treat it as a
+    // real bonus item when applying the design.
+    public bool TryResolveBonusItemIdByName(string name, out ulong bonusId)
+    {
+        bonusRowIdByName ??= BuildNameIndex(glassesSheet, g => g.Name.ExtractText(), g => g.RowId);
+        if (!TryResolveByName(bonusRowIdByName, name, out var rowId))
+        {
+            bonusId = 0;
+            return false;
+        }
+        bonusId = rowId | (1UL << 49);
+        return true;
+    }
+
+    private static Dictionary<string, TId> BuildNameIndex<TRow, TId>(ExcelSheet<TRow>? sheet,
+        Func<TRow, string> getName, Func<TRow, TId> getId)
+        where TRow : struct, IExcelRow<TRow> where TId : notnull
+    {
+        var index = new Dictionary<string, TId>(StringComparer.Ordinal);
+        if (sheet == null)
+            return index;
+
+        foreach (var row in sheet)
+        {
+            var name = getName(row);
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+            index.TryAdd(name.ToLowerInvariant(), getId(row));
+        }
+        return index;
+    }
+
+    private static bool TryResolveByName<TId>(Dictionary<string, TId> index, string name, out TId id)
+    {
+        var lower = name.ToLowerInvariant();
+        if (index.TryGetValue(lower, out id!))
+            return true;
+
+        var nbsp = lower.Replace('\x20', '\xA0');
+        return index.TryGetValue(nbsp, out id!);
     }
 
     // --- Character-creation colour palette (chara/xls/charamake/human.cmp) ---------------------

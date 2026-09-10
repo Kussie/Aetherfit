@@ -16,15 +16,16 @@ public partial class MainWindow
     private void OpenReceiveLiveDialog() =>
         plugin.ReceiveLiveWindow.Show();
 
-    private string importDesignCode = string.Empty;
-    private string? importDesignCodeError;
-    private bool importDesignCodePopupRequested;
+    private string importDesignInput = string.Empty;
+    private string? importDesignInputError;
+    private bool importDesignPopupRequested;
 
-    private void OpenImportDesignCodeDialog()
+    private void OpenImportDesignDialog()
     {
-        importDesignCode = string.Empty;
-        importDesignCodeError = null;
-        importDesignCodePopupRequested = true;
+        importDesignInput = string.Empty;
+        importDesignInputError = null;
+        plugin.EorzeaCollection.Reset();
+        importDesignPopupRequested = true;
     }
 
     // The "Open Shared Gallery" dropdown: a local file, a live pull from another player, or a pasted design code.
@@ -65,53 +66,87 @@ public partial class MainWindow
 
         ImGui.Separator();
 
-        if (ImGui.Selectable("Design from Code..."))
-            OpenImportDesignCodeDialog();
+        if (ImGui.Selectable("Design from Code / Eorzea Collection..."))
+            OpenImportDesignDialog();
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Paste a single design code (gear only) shared by another Aetherfit user.");
+            ImGui.SetTooltip("Paste a design code (gear only) shared by another Aetherfit user, or an Eorzea Collection glamour link.");
     }
 
-    private void DrawImportDesignCodePopup()
+    // One dialog for both "paste a design code" and "paste an Eorzea Collection link" - detected from
+    // the pasted text itself rather than asking the user to pick which kind of input they have.
+    private void DrawImportDesignPopup()
     {
-        if (importDesignCodePopupRequested)
+        if (importDesignPopupRequested)
         {
-            importDesignCodePopupRequested = false;
-            ImGui.OpenPopup("##importDesignCode");
+            importDesignPopupRequested = false;
+            ImGui.OpenPopup("##importDesign");
         }
 
-        using var popup = ImRaii.Popup("##importDesignCode");
+        using var popup = ImRaii.Popup("##importDesign");
         if (!popup.Success)
             return;
 
-        ImGui.TextDisabled("Paste a design code below. Only gear comes across - tags, description");
-        ImGui.TextDisabled("and customizations aren't included.");
+        ImGui.TextDisabled("Paste a design code or an Eorzea Collection glamour link below. Only gear");
+        ImGui.TextDisabled("(and facewear) comes across - tags, description and customizations aren't included.");
         ImGui.Spacing();
 
+        var fetching = plugin.EorzeaCollection.Phase == EorzeaCollectionImportPhase.Fetching;
         if (ImGui.IsWindowAppearing())
             ImGui.SetKeyboardFocusHere();
         ImGui.SetNextItemWidth(350 * ImGuiHelpers.GlobalScale);
-        var submitted = ImGui.InputTextWithHint("##importDesignCodeInput", "Paste code here...", ref importDesignCode, 8192,
-            ImGuiInputTextFlags.EnterReturnsTrue);
+        bool submitted;
+        using (ImRaii.Disabled(fetching))
+            submitted = ImGui.InputTextWithHint("##importDesignInput", "Paste code or link here...", ref importDesignInput, 8192,
+                ImGuiInputTextFlags.EnterReturnsTrue);
 
-        if (importDesignCodeError != null)
-            ImGui.TextColored(UiTheme.ErrorText, importDesignCodeError);
+        var error = importDesignInputError
+            ?? (plugin.EorzeaCollection.Phase == EorzeaCollectionImportPhase.Error ? plugin.EorzeaCollection.ErrorMessage : null);
+        if (error != null)
+            ImGui.TextColored(UiTheme.ErrorText, error);
+        else if (fetching)
+            ImGui.TextDisabled("Fetching...");
 
-        if ((submitted || ImGui.Button("Import")) && !string.IsNullOrWhiteSpace(importDesignCode))
-            DoImportDesignCode();
+        using (ImRaii.Disabled(fetching))
+        {
+            if ((submitted || ImGui.Button("Import")) && !string.IsNullOrWhiteSpace(importDesignInput))
+                DoImportDesignInput();
+        }
+        ImGui.SameLine();
+        // Not gated on fetching - an in-flight Eorzea Collection fetch has no cancellation of its own,
+        // so this just closes the popup and lets it finish quietly in the background.
+        if (ImGui.Button("Cancel"))
+            ImGui.CloseCurrentPopup();
+
+        if (plugin.EorzeaCollection.Phase == EorzeaCollectionImportPhase.Closed)
+            ImGui.CloseCurrentPopup();
     }
 
-    private void DoImportDesignCode()
+    private void DoImportDesignInput()
     {
-        if (!DesignShareCode.TryDecode(importDesignCode, out var name, out var equipment, out var error))
+        importDesignInputError = null;
+        var input = importDesignInput.Trim();
+
+        if (EorzeaCollectionService.IsEorzeaCollectionUrl(input))
         {
-            importDesignCodeError = error;
+            _ = plugin.EorzeaCollection.ImportAsync(plugin, input);
+            return;
+        }
+
+        DoImportDesignCode(input);
+    }
+
+    private void DoImportDesignCode(string code)
+    {
+        if (!DesignShareCode.TryDecode(code, out var name, out var equipment, out var error))
+        {
+            importDesignInputError = error;
             return;
         }
 
         var (stateResult, state) = plugin.Glamourer.GetState();
         if (stateResult != GlamourerApiEc.Success || state == null)
         {
-            importDesignCodeError = $"Couldn't read current Glamourer state ({stateResult}).";
+            importDesignInputError = $"Couldn't read current Glamourer state ({stateResult}).";
             return;
         }
 
@@ -119,7 +154,7 @@ public partial class MainWindow
         var (addResult, newId) = plugin.Glamourer.AddDesign(designJson, name!);
         if (addResult != GlamourerApiEc.Success)
         {
-            importDesignCodeError = addResult.ToString();
+            importDesignInputError = addResult.ToString();
             return;
         }
 

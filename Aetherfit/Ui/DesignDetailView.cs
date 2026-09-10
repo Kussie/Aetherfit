@@ -27,7 +27,7 @@ internal static class DesignDetailView
 
     public static readonly (string SlotKey, string Label)[] BonusSlotDisplay =
     {
-        ("Glasses", "Facewear Accessory"),
+        ("Glasses", "Facewear"),
     };
 
     public static (bool ModHovered, bool StainHovered) DrawSlotRow(GameDataService gameData, string label,

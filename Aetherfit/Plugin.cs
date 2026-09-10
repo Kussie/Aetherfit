@@ -65,6 +65,7 @@ public sealed class Plugin : IDalamudPlugin
     public GameDataService GameData { get; init; }
     public DesignAttributionService Attribution { get; init; }
     public GearImportService GearImport { get; init; }
+    public EorzeaCollectionService EorzeaCollection { get; init; }
     public HealthReportService HealthReport { get; init; }
     public DesignLayerReportService LayerReport { get; init; }
     public ImageStorageService ImageStorage { get; init; }
@@ -208,6 +209,7 @@ public sealed class Plugin : IDalamudPlugin
         GameData = new GameDataService();
         Attribution = new DesignAttributionService(GameData, Penumbra);
         GearImport = new GearImportService(Configuration, GameData, Penumbra, Glamourer);
+        EorzeaCollection = new EorzeaCollectionService(GameData);
         HealthReport = new HealthReportService(Configuration, GameData, Attribution);
         LayerReport = new DesignLayerReportService(this);
         ImageStorage = new ImageStorageService(Configuration);

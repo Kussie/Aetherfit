@@ -29,7 +29,8 @@ public sealed class GearImportService
 
     public sealed record CreateFreshDesignResult(bool Success, string? Error, Guid NewId);
 
-    public sealed record LiveEquipmentResult(bool Success, string? Error, IReadOnlyList<CachedEquipmentSlot> Equipment);
+    public sealed record LiveEquipmentResult(bool Success, string? Error, IReadOnlyList<CachedEquipmentSlot> Equipment,
+        IReadOnlyList<CachedBonusItem> BonusItems);
 
     // Feeds the Advanced Import slot picker in the create-design popup - a lightweight read-only peek at
     // what CreateFreshDesign would otherwise capture unconditionally, before the user picks slots to exclude.
@@ -37,16 +38,18 @@ public sealed class GearImportService
     {
         var (result, state) = glamourer.GetState();
         if (result != GlamourerApiEc.Success || state == null)
-            return new LiveEquipmentResult(false, $"Couldn't read current Glamourer state ({result}).", Array.Empty<CachedEquipmentSlot>());
+            return new LiveEquipmentResult(false, $"Couldn't read current Glamourer state ({result}).",
+                Array.Empty<CachedEquipmentSlot>(), Array.Empty<CachedBonusItem>());
 
-        return new LiveEquipmentResult(true, null, GlamourerService.ParseEquipment(state["Equipment"] as JObject));
+        return new LiveEquipmentResult(true, null, GlamourerService.ParseEquipment(state["Equipment"] as JObject),
+            GlamourerService.ParseBonusItems(state["Bonus"]));
     }
 
-    // excludedSlots is the Advanced Import picker's choice of slots to leave out of the new design
-    // entirely (their Apply/ApplyStain flags are forced off, same as a slot matched by the base layer
-    // below) - null/empty behaves exactly as before, capturing every worn slot.
+    // excludedSlots/excludedBonusSlots are the Advanced Import picker's choice of slots to leave out of
+    // the new design entirely (their Apply/ApplyStain flags are forced off, same as a slot matched by
+    // the base layer below) - null/empty behaves exactly as before, capturing everything worn.
     public CreateFreshDesignResult CreateFreshDesign(string name, bool includeCustomizations,
-        IReadOnlySet<EquipmentSlot>? excludedSlots = null)
+        IReadOnlySet<EquipmentSlot>? excludedSlots = null, IReadOnlySet<string>? excludedBonusSlots = null)
     {
         var (result, state) = glamourer.GetState();
         if (result != GlamourerApiEc.Success || state == null)
@@ -97,6 +100,16 @@ public sealed class GearImportService
         }
 
         var effectiveBonusItems = new List<CachedBonusItem>(liveBonusItems);
+        foreach (var bonus in liveBonusItems)
+        {
+            if (excludedBonusSlots?.Contains(bonus.Slot) != true)
+                continue;
+
+            if (designJson["Bonus"]?[bonus.Slot] is JObject excludedBonusEntry)
+                excludedBonusEntry["Apply"] = false;
+            effectiveBonusItems.RemoveAll(b => b.Slot == bonus.Slot);
+        }
+
         if (baseLayerOutfit != null)
         {
             var liveBonusBySlot = liveBonusItems.ToDictionary(b => b.Slot);
