@@ -703,12 +703,14 @@ public sealed class AutomationsWindow : Window, IDisposable
 
     private void DrawTimeConditionEditor(AutomationCondition condition)
     {
-        var suffix = condition.Type switch
+        var (suffix, currentHour) = condition.Type switch
         {
-            AutomationConditionType.ServerTime => "ST",
-            AutomationConditionType.LocalTime => "LT",
-            _ => "ET",
+            AutomationConditionType.ServerTime => ("ST", plugin.GameData.GetCurrentServerHour()),
+            AutomationConditionType.LocalTime => ("LT", plugin.GameData.GetCurrentLocalHour()),
+            _ => ("ET", plugin.GameData.GetCurrentEorzeaHour()),
         };
+
+        ImGui.TextDisabled($"Currently {currentHour}:00 {suffix}");
 
         var start = condition.StartHour;
         ImGui.SetNextItemWidth(140 * ImGuiHelpers.GlobalScale);
@@ -728,6 +730,8 @@ public sealed class AutomationsWindow : Window, IDisposable
         }
 
         ImGui.TextDisabled("Wraps past midnight when \"To\" is earlier than or equal to \"From\".");
+        if (start == end)
+            ImGui.TextDisabled($"\"From\" and \"To\" are equal ({start}:00) - this matches all day, every hour, not never.");
     }
 
     private void DrawSwimmingConditionEditor(AutomationCondition condition)

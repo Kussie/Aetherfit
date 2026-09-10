@@ -595,13 +595,21 @@ public partial class MainWindow : Window, IDisposable
         DrawAutomationsActiveRuleLine();
     }
 
-    // ON/OFF baked right into the toolbar button itself - the at-a-glance indicator.
+    // ON/OFF baked right into the toolbar button itself - the at-a-glance indicator. Snooze overrides
+    // "ON" specifically (not "OFF" - a snooze only ever does anything while Automations is otherwise on,
+    // see AutomationService.OnFrameworkTick's own early-out), so it isn't mistaken for "still applying."
     private (string Text, Vector4 Color)? AutomationsStateSuffix()
     {
         if (!Plugin.PlayerState.IsLoaded)
             return null;
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        if (settings.AutomationsEnabled && plugin.Automation.SnoozeRemaining is { } remaining)
+        {
+            var minutes = (int)Math.Ceiling(remaining.TotalMinutes);
+            return ($"SNOOZED ({(minutes >= 1 ? $"{minutes}m" : "<1m")})", UiTheme.CautionText);
+        }
+
         return settings.AutomationsEnabled ? ("ON", UiTheme.StateOn) : ("OFF", UiTheme.StateOff);
     }
 
