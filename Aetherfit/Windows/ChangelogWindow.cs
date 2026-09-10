@@ -39,6 +39,12 @@ internal static class ChangelogData
         {
             "Added an ability to create and set a base layer, that is applied as the very first layer when a design is applied, with the ability to override the base on a per-design basis.",
         }),
+        new(5, "Introducing Personas!", new[]
+        {
+            "Adding the ability to create and manage personas, which are a collection of designs that can be applied together with a single click. These can be used to create themed looks, or to quickly switch between different outfits for different occasions or even entirely different characters.",
+            "When creating a new design you can now choose exactly which slots you want to include in the design, allowing for more flexibility and control over your designs.",
+            "Added in option in Automation rules to suggest applying the result of a rule in a toast instead of applying it automatically.  If the toast expires or is denied, the rule will not be applied and wont be asked again for that rule for 30 minutes.",
+        }),
     };
 
     public static int LatestRevision => Entries.Length == 0 ? 0 : Entries.Max(e => e.Revision);

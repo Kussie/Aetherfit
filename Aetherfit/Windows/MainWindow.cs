@@ -27,7 +27,33 @@ public partial class MainWindow : Window, IDisposable
     private Dictionary<Guid, DesignLeaf> designLeafById = new();
     private int designsCount;
     private string? designsError;
-    private Guid? selectedDesign;
+    // Mutually exclusive - setting one to a non-null value clears the other, so the right-hand pane
+    // always knows which detail view to draw. Implemented as properties over private backing fields
+    // (rather than patching every one of the many existing "selectedDesign = ..." call sites across the
+    // MainWindow partials) so old and new call sites alike get this for free.
+    private Guid? selectedDesignField;
+    private Guid? selectedDesign
+    {
+        get => selectedDesignField;
+        set
+        {
+            selectedDesignField = value;
+            if (value != null)
+                selectedPersonaField = null;
+        }
+    }
+
+    private Guid? selectedPersonaField;
+    private Guid? selectedPersona
+    {
+        get => selectedPersonaField;
+        set
+        {
+            selectedPersonaField = value;
+            if (value != null)
+                selectedDesignField = null;
+        }
+    }
     private Guid? viewerFollowedDesign;
     private DesignLeaf? hoveredDesignForTooltip;
 
@@ -230,7 +256,12 @@ public partial class MainWindow : Window, IDisposable
             using (var right = ImRaii.Child("Right", new Vector2(0, bodyHeight), true))
             {
                 if (right.Success)
-                    DrawSelectedOutfitDetails();
+                {
+                    if (selectedPersona != null)
+                        DrawSelectedPersonaDetails();
+                    else
+                        DrawSelectedOutfitDetails();
+                }
             }
         }
 
@@ -399,7 +430,11 @@ public partial class MainWindow : Window, IDisposable
         affectedByCache.Clear();
 
         var validIds = new HashSet<Guid>(merged.Keys);
-        plugin.ImageStorage.CleanupRemovedDesigns(validIds);
+
+        // Persona covers share the same Guid-keyed image storage as design covers - CleanupRemovedDesigns
+        // would otherwise sweep them as orphans, since persona ids never appear in merged.Keys.
+        var personaIds = plugin.Configuration.CharacterLoginSettings.Values.SelectMany(s => s.Personas).Select(p => p.Id);
+        plugin.ImageStorage.CleanupRemovedDesigns(new HashSet<Guid>(validIds.Concat(personaIds)));
 
         var staleJobAssociations = plugin.Configuration.DesignJobAssociations.Keys
             .Where(k => !validIds.Contains(k))
@@ -444,6 +479,15 @@ public partial class MainWindow : Window, IDisposable
 
         if (selectedDesign is { } sid && !validIds.Contains(sid))
             selectedDesign = null;
+
+        if (selectedPersona is { } pid)
+        {
+            var stillExists = Plugin.PlayerState.IsLoaded
+                && plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var loginSettings)
+                && loginSettings.Personas.Any(p => p.Id == pid);
+            if (!stillExists)
+                selectedPersona = null;
+        }
 
         plugin.Configuration.Save();
 
@@ -945,6 +989,17 @@ public partial class MainWindow : Window, IDisposable
     public string? ApplyRandomFavourite(bool matchCurrentJob) => Track(plugin.DesignApply.ApplyRandomFavourite(matchCurrentJob));
 
     public string? ApplyRandomByCurrentJob() => Track(plugin.DesignApply.ApplyRandomByCurrentJob());
+
+    public string? ApplyPersonaByName(string personaName, string? designName)
+    {
+        var result = plugin.PersonaApply.ApplyByName(personaName, designName);
+        if (result.PersonaId is { } id)
+        {
+            selectedPersona = id;
+            selectedDesign = null;
+        }
+        return result.Error;
+    }
 
     private sealed class FolderNode
     {

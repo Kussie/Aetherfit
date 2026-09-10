@@ -29,13 +29,16 @@ public sealed class DesignApplyService
         return ApplyResult.Fail(msg);
     }
 
-    public void ApplyDesignById(Guid id, bool recordLastApplied = true)
+    // personaBaseLayerId is only ever passed by a persona-driven apply (PersonaApplyService) - it lets
+    // a persona's own Base Design Layer take priority over the global default for this one apply,
+    // without affecting a design's own explicit override (see Configuration.ResolveBaseDesignLayer).
+    public void ApplyDesignById(Guid id, bool recordLastApplied = true, Guid? personaBaseLayerId = null)
     {
         var beforeLayers = applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: true);
         var afterLayers = applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false);
 
         // Goes on before even the "Applied Before" layers, so it sits at the very bottom of the stack.
-        if (!applyingLayer && ResolveBaseLayer(id) is { } baseLayerId)
+        if (!applyingLayer && ResolveBaseLayer(id, personaBaseLayerId) is { } baseLayerId)
             beforeLayers.Insert(0, baseLayerId);
 
         ApplyDesignCore(id, beforeLayers, afterLayers, recordLastApplied: recordLastApplied);
@@ -43,12 +46,12 @@ public sealed class DesignApplyService
 
     // A design can only be picked as a Base Design Layer if it still exists and its provider supports
     // layering - same restriction as PickLayers below.
-    private Guid? ResolveBaseLayer(Guid baseId)
+    private Guid? ResolveBaseLayer(Guid baseId, Guid? personaBaseLayerId = null)
     {
         if (!plugin.Configuration.EnableRandomLayers)
             return null;
 
-        if (plugin.Configuration.ResolveBaseDesignLayer(baseId) is not { } layerId)
+        if (plugin.Configuration.ResolveBaseDesignLayer(baseId, personaBaseLayerId) is not { } layerId)
             return null;
 
         return SupportsLayers(layerId) ? layerId : null;

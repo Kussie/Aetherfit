@@ -18,6 +18,8 @@ public sealed class PenumbraService
     private readonly RemoveAllTemporaryModSettingsPlayer removeAllTemporaryModSettingsPlayer;
     private readonly RedrawObject redrawObject;
     private readonly GetCollectionForObject getCollectionForObject;
+    private readonly GetCollections getCollections;
+    private readonly SetCollectionForObject setCollectionForObject;
     private readonly GetCurrentModSettingsWithTemp getCurrentModSettingsWithTemp;
 
     // A mod changes the same items no matter which design pulls it in, so we look them up once per mod
@@ -41,6 +43,8 @@ public sealed class PenumbraService
         removeAllTemporaryModSettingsPlayer = new RemoveAllTemporaryModSettingsPlayer(Plugin.PluginInterface);
         redrawObject = new RedrawObject(Plugin.PluginInterface);
         getCollectionForObject = new GetCollectionForObject(Plugin.PluginInterface);
+        getCollections = new GetCollections(Plugin.PluginInterface);
+        setCollectionForObject = new SetCollectionForObject(Plugin.PluginInterface);
         getCurrentModSettingsWithTemp = new GetCurrentModSettingsWithTemp(Plugin.PluginInterface);
     }
 
@@ -221,6 +225,37 @@ public sealed class PenumbraService
         {
             Plugin.Log.Warning(ex, "Failed to query installed mod list for names");
             return new Dictionary<string, string>();
+        }
+    }
+
+    // Every installed collection a persona could reference - id -> display name.
+    public IReadOnlyDictionary<Guid, string> GetCollections()
+    {
+        try
+        {
+            return getCollections.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query installed Penumbra collections");
+            return new Dictionary<Guid, string>();
+        }
+    }
+
+    // A persona should only ever reference a collection the user already made - never create or
+    // delete one on their behalf, just (re)point the local player at an existing one (or clear the
+    // assignment if collectionId is null).
+    public PenumbraApiEc SetCollectionForObject(int objectIndex, Guid? collectionId)
+    {
+        try
+        {
+            var (result, _) = setCollectionForObject.Invoke(objectIndex, collectionId, allowCreateNew: false, allowDelete: true);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to set Penumbra collection for object {Index}", objectIndex);
+            return PenumbraApiEc.UnknownError;
         }
     }
 

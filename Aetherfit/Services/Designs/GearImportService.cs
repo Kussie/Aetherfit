@@ -28,8 +28,25 @@ public sealed class GearImportService
     public sealed record CaptureResult(bool Success, string? Error, GearImportOverride? Override);
 
     public sealed record CreateFreshDesignResult(bool Success, string? Error, Guid NewId);
-    
-    public CreateFreshDesignResult CreateFreshDesign(string name, bool includeCustomizations)
+
+    public sealed record LiveEquipmentResult(bool Success, string? Error, IReadOnlyList<CachedEquipmentSlot> Equipment);
+
+    // Feeds the Advanced Import slot picker in the create-design popup - a lightweight read-only peek at
+    // what CreateFreshDesign would otherwise capture unconditionally, before the user picks slots to exclude.
+    public LiveEquipmentResult GetLiveEquipmentForPreview()
+    {
+        var (result, state) = glamourer.GetState();
+        if (result != GlamourerApiEc.Success || state == null)
+            return new LiveEquipmentResult(false, $"Couldn't read current Glamourer state ({result}).", Array.Empty<CachedEquipmentSlot>());
+
+        return new LiveEquipmentResult(true, null, GlamourerService.ParseEquipment(state["Equipment"] as JObject));
+    }
+
+    // excludedSlots is the Advanced Import picker's choice of slots to leave out of the new design
+    // entirely (their Apply/ApplyStain flags are forced off, same as a slot matched by the base layer
+    // below) - null/empty behaves exactly as before, capturing every worn slot.
+    public CreateFreshDesignResult CreateFreshDesign(string name, bool includeCustomizations,
+        IReadOnlySet<EquipmentSlot>? excludedSlots = null)
     {
         var (result, state) = glamourer.GetState();
         if (result != GlamourerApiEc.Success || state == null)
@@ -52,6 +69,16 @@ public sealed class GearImportService
         var liveEquipmentBySlot = liveEquipment.ToDictionary(e => e.Slot);
         foreach (EquipmentSlot slot in Enum.GetValues<EquipmentSlot>())
         {
+            if (excludedSlots?.Contains(slot) == true)
+            {
+                if (designJson["Equipment"]?[slot.ToString()] is JObject excludedEntry)
+                {
+                    excludedEntry["Apply"] = false;
+                    excludedEntry["ApplyStain"] = false;
+                }
+                continue;
+            }
+
             var live = liveEquipmentBySlot.GetValueOrDefault(slot);
             var layerEntry = baseLayerOutfit?.Equipment.FirstOrDefault(e => e.Slot == slot && e.Apply);
             var liveIsWorn = live != null && gameData.ResolveItemName(live.ItemId) != GameDataService.NothingItemName;

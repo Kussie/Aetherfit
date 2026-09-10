@@ -171,7 +171,7 @@ public partial class MainWindow
         var addWidth = ImGui.CalcTextSize("Add Layer").X + (style.FramePadding.X * 2);
         ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - addWidth - style.ItemSpacing.X);
 
-        using (var combo = ImRaii.Combo("##layerPicker", preview))
+        using (var combo = ImRaii.Combo("##layerPicker", preview, ImGuiComboFlags.HeightLargest))
         {
             if (combo.Success)
             {
@@ -230,6 +230,16 @@ public partial class MainWindow
         {
             var inherited = cfg.BaseDesignLayerId is { } inheritedId ? ResolveLinkedDesignName(inheritedId) : "None";
             preview = $"Inherit ({inherited})";
+
+            // Flag when a persona's own base layer could take priority over the global default above -
+            // the actual resolution still depends on which persona (if any) the design is applied through.
+            if (Plugin.PlayerState.IsLoaded)
+            {
+                var settings = cfg.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+                var personaNames = settings.Personas.Where(p => p.AssignedDesignIds.Contains(id)).Select(p => p.Name).ToList();
+                if (personaNames.Count > 0)
+                    preview += $" (Persona: {string.Join(", ", personaNames)})";
+            }
         }
         else
         {
@@ -237,7 +247,7 @@ public partial class MainWindow
         }
 
         ImGui.SetNextItemWidth(280 * ImGuiHelpers.GlobalScale);
-        using (var combo = ImRaii.Combo("##baseDesignLayerOverride", preview))
+        using (var combo = ImRaii.Combo("##baseDesignLayerOverride", preview, ImGuiComboFlags.HeightLargest))
         {
             if (combo.Success)
             {
@@ -246,6 +256,18 @@ public partial class MainWindow
                 ImGui.SetNextItemWidth(-1);
                 ImGui.InputTextWithHint("##baseLayerOverrideFilter", "Filter by name...", ref baseLayerOverrideFilter, 64);
                 ImGui.Separator();
+
+                var matches = AllDesignsSorted()
+                    .Where(d => d.Id != id
+                                && (baseLayerOverrideFilter.Length == 0
+                                    || d.Name.Contains(baseLayerOverrideFilter, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+
+                // Inherit/None sit inside the same scrollable child as the design list below, rather than
+                // as a fixed block above it - two nested scroll regions (this child, plus the popup itself
+                // once its total content outgrew the screen) rendered as two overlapping scrollbars.
+                var listHeight = Math.Min(matches.Count + 2, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
+                using var scroll = ImRaii.Child("##baseLayerOverrideList", new Vector2(-1, listHeight), false);
 
                 if (ImGui.Selectable("Inherit", !hasOverride))
                 {
@@ -259,20 +281,12 @@ public partial class MainWindow
                 }
                 ImGui.Separator();
 
-                var matches = AllDesignsSorted()
-                    .Where(d => d.Id != id
-                                && (baseLayerOverrideFilter.Length == 0
-                                    || d.Name.Contains(baseLayerOverrideFilter, StringComparison.OrdinalIgnoreCase)))
-                    .ToList();
-
                 if (matches.Count == 0)
                 {
                     ImGui.TextDisabled("No matching designs.");
                 }
                 else
                 {
-                    var listHeight = Math.Min(matches.Count, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
-                    using var scroll = ImRaii.Child("##baseLayerOverrideList", new Vector2(-1, listHeight), false);
                     foreach (var (designId, name) in matches)
                     {
                         if (ImGui.Selectable($"{name}##baseLayerOverride{designId}", hasOverride && overrideValue == designId))

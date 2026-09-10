@@ -21,6 +21,8 @@ It also provides a quick and easy way to preview your designs with screenshots a
 
 It adds the following functionality:
 - Source designs from Glamourer, Glamaholic, Simple Glamour Switcher, Wardrobe, and the game's own Glamour Plates, all in one gallery
+- Create a brand-new Glamourer design directly from your currently-equipped gear and active Penumbra mods, optionally including your current customizations (race, face, hair, etc.)
+- Persona Profiles — bundle a Penumbra collection, Customize+ profile, and Honorific title around their own scoped set of designs, so switching persona switches all of those together; applying a persona-assigned design outside its persona never touches them
 - Browse designs by tags
 - Add screenshots to designs
 - Get AI-suggested tags for a design based on its own screenshots, powered by a local, on-device image tagger — nothing is ever uploaded anywhere

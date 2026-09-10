@@ -206,7 +206,7 @@ public class ConfigWindow : Window, IDisposable
         var preview = cfg.BaseDesignLayerId is { } sel ? cfg.ResolveDesignName(sel) : "None";
 
         ImGui.PushItemWidth(280 * ImGuiHelpers.GlobalScale);
-        using (var combo = ImRaii.Combo("##baseDesignLayer", preview))
+        using (var combo = ImRaii.Combo("##baseDesignLayer", preview, ImGuiComboFlags.HeightLargest))
         {
             if (combo.Success)
             {
@@ -634,6 +634,23 @@ public class ConfigWindow : Window, IDisposable
             extra: plugin.Configuration.WardrobeEnabled ? () =>
                 plugin.Configuration.WardrobeResetTemporarySettingsBeforeApply = DrawResetTemporarySettingsToggle(
                     "Wardrobe", plugin.Configuration.WardrobeResetTemporarySettingsBeforeApply) : null);
+        ImGui.Spacing();
+
+        // Not design sources like the ones above - Personas use these to switch a Customize+ profile /
+        // set a Honorific title, so the checkbox here means "let Personas touch this plugin" rather
+        // than "source designs from it".
+        var customizePlusInfo = plugin.CustomizePlus.CheckIntegration();
+        DrawIntegrationRow("Customize+", customizePlusInfo, CustomizePlusService.MinApiVersion,
+            rightAligned: () => plugin.Configuration.CustomizePlusIntegrationEnabled = DrawRightAlignedCheckbox(
+                "CustomizePlus", plugin.Configuration.CustomizePlusIntegrationEnabled, "Let Personas switch Customize+ profiles",
+                customizePlusInfo.Status == PluginIntegrationStatus.Ok));
+        ImGui.Spacing();
+
+        var honorificInfo = plugin.Honorific.CheckIntegration();
+        DrawIntegrationRow("Honorific", honorificInfo, HonorificService.MinApiVersion,
+            rightAligned: () => plugin.Configuration.HonorificIntegrationEnabled = DrawRightAlignedCheckbox(
+                "Honorific", plugin.Configuration.HonorificIntegrationEnabled, "Let Personas set a Honorific title",
+                honorificInfo.Status == PluginIntegrationStatus.Ok));
     }
 
     private void DrawBackupTab()

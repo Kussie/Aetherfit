@@ -319,6 +319,18 @@ public sealed class AutomationsWindow : Window, IDisposable
                 ImGui.SetTooltip("Enabled");
             ImGui.SameLine();
 
+            var isSuggest = rule.Mode == AutomationRuleMode.Suggest;
+            if (ImGuiComponents.IconButton(isSuggest ? FontAwesomeIcon.CommentDots : FontAwesomeIcon.Bolt))
+            {
+                rule.Mode = isSuggest ? AutomationRuleMode.AutoApply : AutomationRuleMode.Suggest;
+                plugin.Configuration.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(isSuggest
+                    ? "Suggest - shows a dismissible popup instead of applying automatically. Click to switch to Auto Apply."
+                    : "Auto Apply - applies silently when conditions match. Click to switch to Suggest.");
+            ImGui.SameLine();
+
             var issues = plugin.Automation.GetRuleIssues(rule);
             var style = ImGui.GetStyle();
             float warningIconW, copyIconW, shareIconW, trashIconW;
@@ -440,10 +452,11 @@ public sealed class AutomationsWindow : Window, IDisposable
         ImGui.Spacing();
         ImGui.TextColored(UiTheme.SectionHeader, "Preview:");
         ImGui.SameLine();
+        var verb = rule.Mode == AutomationRuleMode.Suggest ? "suggest" : "apply";
         if (preview.WouldApply)
-            ImGui.TextColored(UiTheme.StateOn, "Would apply right now");
+            ImGui.TextColored(UiTheme.StateOn, $"Would {verb} right now");
         else
-            ImGui.TextColored(UiTheme.PlaceholderText, "Would not apply right now");
+            ImGui.TextColored(UiTheme.PlaceholderText, $"Would not {verb} right now");
 
         ImGui.Spacing();
         ImGui.Separator();

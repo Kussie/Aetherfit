@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
+using Aetherfit.Utils;
 using Dalamud.Plugin.Ipc;
 
 namespace Aetherfit.Services.Integrations;
@@ -11,9 +13,9 @@ namespace Aetherfit.Services.Integrations;
 // CustomizePlus.cs (github.com/Caraxi/SimpleGlamourSwitcher/blob/main/SimpleGlamourSwitcher/IPC/CustomizePlus.cs),
 // which talks to the same plugin.
 //
-// Only used for SimpleGlamourSwitcherService's per-outfit template toggling - Aetherfit never assigns or
-// switches a Customize+ profile itself, only enables/disables named templates within whichever profile
-// is already active for the local player.
+// Used for SimpleGlamourSwitcherService's per-outfit template toggling (enable/disable named templates
+// within whichever profile is already active for the local player) and for PersonaApplyService's
+// whole-profile switching (GetProfiles/EnableProfile/DisableProfile).
 public sealed class CustomizePlusService
 {
     // Matches Customize+'s own IPC tuple shape exactly - the in-process IPC call requires the generic
@@ -24,11 +26,19 @@ public sealed class CustomizePlusService
 
     public readonly record struct TemplateStatus(Guid UniqueId, string Name, List<TemplateBone> Bones, bool IsEnabled);
 
+    // Matches Customize+'s own Profile.GetList IPC tuple shape exactly, same reasoning as TemplateBone
+    // above - CharacterType/WorldId/CharacterSubType are part of the wire shape but unused here.
+    public readonly record struct ProfileCharacter(string Name, byte CharacterType, ushort WorldId, ushort CharacterSubType);
+    public readonly record struct ProfileInfo(Guid UniqueId, string Name, string FullPath, List<ProfileCharacter> Characters, int Priority, bool Enabled);
+
     private readonly ICallGateSubscriber<(int Breaking, int Feature)> getApiVersion;
     private readonly ICallGateSubscriber<ushort, (int ErrorCode, Guid? ActiveProfile)> getActiveProfileIdOnCharacter;
     private readonly ICallGateSubscriber<Guid, (int ErrorCode, List<TemplateStatus> Templates)> getTemplates;
     private readonly ICallGateSubscriber<Guid, Guid, int> enableTemplateByUniqueId;
     private readonly ICallGateSubscriber<Guid, Guid, int> disableTemplateByUniqueId;
+    private readonly ICallGateSubscriber<IList<ProfileInfo>> getProfileList;
+    private readonly ICallGateSubscriber<Guid, int> enableProfileByUniqueId;
+    private readonly ICallGateSubscriber<Guid, int> disableProfileByUniqueId;
 
     public CustomizePlusService()
     {
@@ -37,6 +47,29 @@ public sealed class CustomizePlusService
         getTemplates = Plugin.PluginInterface.GetIpcSubscriber<Guid, (int, List<TemplateStatus>)>("CustomizePlus.Profile.GetTemplates");
         enableTemplateByUniqueId = Plugin.PluginInterface.GetIpcSubscriber<Guid, Guid, int>("CustomizePlus.Profile.EnableTemplateByUniqueId");
         disableTemplateByUniqueId = Plugin.PluginInterface.GetIpcSubscriber<Guid, Guid, int>("CustomizePlus.Profile.DisableTemplateByUniqueId");
+        getProfileList = Plugin.PluginInterface.GetIpcSubscriber<IList<ProfileInfo>>("CustomizePlus.Profile.GetList");
+        enableProfileByUniqueId = Plugin.PluginInterface.GetIpcSubscriber<Guid, int>("CustomizePlus.Profile.EnableByUniqueId");
+        disableProfileByUniqueId = Plugin.PluginInterface.GetIpcSubscriber<Guid, int>("CustomizePlus.Profile.DisableByUniqueId");
+    }
+
+    public static readonly (int Major, int Minor) MinApiVersion = (6, 1);
+
+    public PluginIntegrationInfo CheckIntegration()
+    {
+        if (PluginIntegrationCheck.CheckInstalledAndLoaded("CustomizePlus", out var exposed) is { } early)
+            return early;
+
+        try
+        {
+            var (breaking, feature) = getApiVersion.InvokeFunc();
+            var ok = breaking == MinApiVersion.Major && feature >= MinApiVersion.Minor;
+            return new PluginIntegrationInfo(ok ? PluginIntegrationStatus.Ok : PluginIntegrationStatus.VersionTooLow, exposed!.Version, (breaking, feature));
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query Customize+ API version");
+            return new PluginIntegrationInfo(PluginIntegrationStatus.NotLoaded, exposed!.Version, null);
+        }
     }
 
     // Same version gate Customize+'s own consumers use (SGS's IsReady() checks Breaking == 6). Also
@@ -85,6 +118,49 @@ public sealed class CustomizePlusService
         {
             Plugin.Log.Warning(ex, "Failed to query Customize+ templates for profile {Profile}", profile);
             return Array.Empty<TemplateStatus>();
+        }
+    }
+
+    // Every user-created profile a persona could reference - id + name only, ignoring priority/enabled/
+    // character-association fields that don't matter for a persona picker.
+    public IReadOnlyList<(Guid Id, string Name)> GetProfiles()
+    {
+        try
+        {
+            return getProfileList.InvokeFunc().Select(p => (p.UniqueId, p.Name)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query Customize+ profile list");
+            return Array.Empty<(Guid, string)>();
+        }
+    }
+
+    // Distinct names from SetTemplateEnabled above - these switch a whole profile's enabled state
+    // (used by a persona apply), not a template within an already-active one.
+    public bool EnableProfile(Guid profileId)
+    {
+        try
+        {
+            return enableProfileByUniqueId.InvokeFunc(profileId) == 0;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to enable Customize+ profile {Profile}", profileId);
+            return false;
+        }
+    }
+
+    public bool DisableProfile(Guid profileId)
+    {
+        try
+        {
+            return disableProfileByUniqueId.InvokeFunc(profileId) == 0;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to disable Customize+ profile {Profile}", profileId);
+            return false;
         }
     }
 

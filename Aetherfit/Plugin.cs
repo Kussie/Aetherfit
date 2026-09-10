@@ -61,6 +61,7 @@ public sealed class Plugin : IDalamudPlugin
     public IReadOnlyList<IDesignProvider> DesignProviders { get; init; }
     public PenumbraService Penumbra { get; init; }
     public CustomizePlusService CustomizePlus { get; init; }
+    public HonorificService Honorific { get; init; }
     public GameDataService GameData { get; init; }
     public DesignAttributionService Attribution { get; init; }
     public GearImportService GearImport { get; init; }
@@ -75,6 +76,7 @@ public sealed class Plugin : IDalamudPlugin
     public GalleryLiveShareService LiveShare { get; init; }
     public RestoreSequenceService Restore { get; init; }
     public DesignApplyService DesignApply { get; init; }
+    public PersonaApplyService PersonaApply { get; init; }
     public DesignLayerResolutionService LayerResolution { get; init; }
     public AutomationService Automation { get; init; }
     public SettingsBackupService SettingsBackup { get; init; }
@@ -87,6 +89,7 @@ public sealed class Plugin : IDalamudPlugin
     private BatchScreenshotWindow BatchScreenshotWindow { get; init; }
     private ChangelogWindow ChangelogWindow { get; init; }
     private AutomationsWindow AutomationsWindow { get; init; }
+    private SuggestionPopupWindow SuggestionPopupWindow { get; init; }
     internal MainWindow MainWindow { get; init; }
     public ImageViewerWindow ImageViewer { get; init; }
     public ScreenshotSetupWindow ScreenshotSetup { get; init; }
@@ -159,6 +162,13 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.Save();
         }
 
+        if (Configuration.Version < 3)
+        {
+            // No-op today (Personas/LastPersonaCustomizeProfileId default via their own field initializers).
+            Configuration.Version = 3;
+            Configuration.Save();
+        }
+
         // Attached after the migrations above so those still write directly.
         configSaver = new ConfigurationSaver(Configuration);
         Configuration.AttachSaver(configSaver);
@@ -191,6 +201,7 @@ public sealed class Plugin : IDalamudPlugin
         GlamourPlate = new GlamourPlateService(Glamourer, Configuration);
         Penumbra = new PenumbraService();
         CustomizePlus = new CustomizePlusService();
+        Honorific = new HonorificService();
         SimpleGlamourSwitcher = new SimpleGlamourSwitcherService(Glamourer, Penumbra, CustomizePlus);
         Wardrobe = new WardrobeService(Glamourer, Penumbra);
         DesignProviders = new List<IDesignProvider> { new GlamourerDesignProvider(Glamourer), Glamaholic, GlamourPlate, SimpleGlamourSwitcher, Wardrobe };
@@ -207,6 +218,7 @@ public sealed class Plugin : IDalamudPlugin
         TagSuggestions = new TagSuggestionService(TagModel, Configuration);
         LiveShare = new GalleryLiveShareService(this);
         DesignApply = new DesignApplyService(this);
+        PersonaApply = new PersonaApplyService(this);
         LayerResolution = new DesignLayerResolutionService(this);
         Automation = new AutomationService(this);
         SettingsBackup = new SettingsBackupService();
@@ -224,6 +236,7 @@ public sealed class Plugin : IDalamudPlugin
         BatchScreenshotWindow = new BatchScreenshotWindow(this);
         ChangelogWindow = new ChangelogWindow(this);
         AutomationsWindow = new AutomationsWindow(this);
+        SuggestionPopupWindow = new SuggestionPopupWindow(this);
         MainWindow = new MainWindow(this);
         ImageViewer = new ImageViewerWindow();
         ScreenshotSetup = new ScreenshotSetupWindow(this);
@@ -238,6 +251,7 @@ public sealed class Plugin : IDalamudPlugin
         WindowSystem.AddWindow(BatchScreenshotWindow);
         WindowSystem.AddWindow(ChangelogWindow);
         WindowSystem.AddWindow(AutomationsWindow);
+        WindowSystem.AddWindow(SuggestionPopupWindow);
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ImageViewer);
         WindowSystem.AddWindow(ScreenshotSetup);
@@ -321,6 +335,7 @@ public sealed class Plugin : IDalamudPlugin
       + "/aetherfit job — apply a random outfit associated with your current job.\n"
       + "/aetherfit favourite [job] — apply a random favourite outfit, optionally only one associated with your current job.\n"
       + "/aetherfit wear \"design name\" — apply the design with this exact name (quotes required).\n"
+      + "/aetherfit persona \"persona name\" [\"design name\"] — apply a persona's design (random from its assigned designs if none given).\n"
       + "/aetherfit last — reapply the last known design.\n"
       + "/aetherfit revert — revert appearance to the game state.\n"
       + "/aetherfit help — show this list.";
@@ -340,6 +355,27 @@ public sealed class Plugin : IDalamudPlugin
         if (trimmed.Length < 2 || trimmed[0] != '"' || trimmed[^1] != '"')
             return null;
         return trimmed[1..^1];
+    }
+
+    // "Foo" ["Bar"] - the first quoted arg is required, the second optional. Both null if anything
+    // present doesn't parse as a properly quoted string, so the caller can show one usage error either way.
+    private static (string? First, string? Second) ParseUpToTwoQuotedArgs(string rest)
+    {
+        var trimmed = rest.TrimStart();
+        if (trimmed.Length < 2 || trimmed[0] != '"')
+            return (null, null);
+
+        var closeIdx = trimmed.IndexOf('"', 1);
+        if (closeIdx < 0)
+            return (null, null);
+
+        var first = trimmed[1..closeIdx];
+        var remainder = trimmed[(closeIdx + 1)..].Trim();
+        if (remainder.Length == 0)
+            return (first, null);
+
+        var second = ParseQuotedArg(remainder);
+        return second != null ? (first, second) : (null, null);
     }
 
     private void ReportError(string? err)
@@ -414,6 +450,19 @@ public sealed class Plugin : IDalamudPlugin
                 }
 
                 ReportError(MainWindow.ApplyDesignByName(name));
+                break;
+            }
+
+            case "persona":
+            {
+                var (personaName, designName) = ParseUpToTwoQuotedArgs(rest);
+                if (personaName == null)
+                {
+                    ChatGui.PrintError($"{ChatPrefix}Usage: /aetherfit persona \"Persona Name\" [\"Design Name\"] — quotes are required.");
+                    break;
+                }
+
+                ReportError(MainWindow.ApplyPersonaByName(personaName, designName));
                 break;
             }
 

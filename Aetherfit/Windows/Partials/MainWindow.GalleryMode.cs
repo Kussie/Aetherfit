@@ -63,6 +63,7 @@ public partial class MainWindow
     private int jobAssociationVersion;
     private bool favouritesSectionOpen = true;
     private bool otherDesignsSectionOpen = true;
+    private bool personasSectionOpen = true;
 
     private void DrawCoverModePane()
     {
@@ -357,6 +358,8 @@ public partial class MainWindow
                     ImGui.Spacing();
                 }
 
+                DrawPersonasGallerySection();
+
                 if (splitIdx < visible.Count)
                 {
                     ImGui.Separator();
@@ -370,7 +373,80 @@ public partial class MainWindow
             }
         }
 
+        DrawPersonasGallerySection();
         DrawCoverGridRange(visible, 0, visible.Count, columns, thumbWidth, thumbHeight);
+    }
+
+    // A lightweight card row, not the full editor - clicking a persona jumps to its rich detail view
+    // in the tree/EditMode pane (DrawSelectedPersonaDetails) rather than duplicating that whole UI here.
+    private void DrawPersonasGallerySection()
+    {
+        if (!plugin.Configuration.ShowPersonasSection || !Plugin.PlayerState.IsLoaded)
+            return;
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        if (settings.Personas.Count == 0)
+            return;
+
+        ImGui.Separator();
+        if (!Pills.DrawCollapsibleSubheader($"Personas ({settings.Personas.Count})", ref personasSectionOpen))
+            return;
+
+        ImGui.Spacing();
+
+        // Same size and no-cover treatment as a regular design card (GalleryDraw.DrawNoImagePlaceholder),
+        // not a shrunk-down icon - a persona without a cover should read the same as a design without one.
+        var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
+        var thumbVec = new Vector2(thumbWidth, thumbHeight);
+        var containerAspect = thumbWidth / thumbHeight;
+        var col = 0;
+
+        foreach (var persona in settings.Personas)
+        {
+            using (ImRaii.Group())
+            {
+                var thumbStart = ImGui.GetCursorScreenPos();
+                var coverPath = plugin.ImageStorage.GetCoverPath(persona.Id);
+                if (coverPath != null)
+                {
+                    var tex = Plugin.TextureProvider.GetFromFile(coverPath).GetWrapOrEmpty();
+                    if (tex.Width > 0 && tex.Height > 0)
+                        GalleryDraw.DrawFittedImage(tex, thumbStart, thumbVec, thumbWidth, thumbHeight, containerAspect,
+                            plugin.Configuration.GalleryFitMode);
+                    else
+                        ImGui.Dummy(thumbVec);
+                }
+                else
+                {
+                    GalleryDraw.DrawNoImagePlaceholder(thumbStart, thumbVec);
+                }
+
+                var labelWidth = ImGui.CalcTextSize(persona.Name).X;
+                ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (thumbWidth - labelWidth) * 0.5f));
+                ImGui.TextUnformatted(persona.Name);
+            }
+
+            if (ImGui.IsItemClicked())
+            {
+                selectedPersona = persona.Id;
+                coverMode = false;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Open \"{persona.Name}\"");
+
+            col++;
+            if (col < columns)
+            {
+                ImGui.SameLine();
+            }
+            else
+            {
+                col = 0;
+            }
+        }
+        if (col != 0)
+            ImGui.NewLine();
+        ImGui.Spacing();
     }
 
     // Recomputed fresh wherever it's needed (rather than once per grid) - grouped/nested sections

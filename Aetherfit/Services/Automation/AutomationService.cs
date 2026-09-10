@@ -28,6 +28,25 @@ public sealed class AutomationService : IDisposable
     public Guid? CurrentRuleId { get; private set; }
     public string? CurrentRuleName { get; private set; }
 
+    public readonly record struct Suggestion(Guid RuleId, string RuleName, Guid DesignId);
+
+    // 30 minutes, fixed - a dismissed suggestion (explicit Dismiss or the popup's own auto-timeout)
+    // won't reappear before then even if the rule's conditions are still true next poll.
+    private static readonly TimeSpan SuggestionDismissCooldown = TimeSpan.FromMinutes(30);
+    private readonly Dictionary<Guid, DateTime> suggestionDismissedUntilUtc = new();
+
+    public Suggestion? PendingSuggestion { get; private set; }
+
+    // Both an explicit Dismiss click and the popup's own auto-timeout call this - either way it's a
+    // "don't ask again for a while" signal. Applying the suggestion doesn't call this at all; the
+    // suggestion clears itself next poll because the applied design becomes settings.LastWornDesign.
+    public void DismissSuggestion(Guid ruleId)
+    {
+        suggestionDismissedUntilUtc[ruleId] = DateTime.UtcNow + SuggestionDismissCooldown;
+        if (PendingSuggestion?.RuleId == ruleId)
+            PendingSuggestion = null;
+    }
+
     // Null once expired or cancelled, not just clamped to zero - callers shouldn't have to also check
     // "is this actually still in the future" themselves.
     public TimeSpan? SnoozeRemaining
@@ -74,6 +93,7 @@ public sealed class AutomationService : IDisposable
         {
             CurrentRuleId = null;
             CurrentRuleName = null;
+            PendingSuggestion = null;
             return;
         }
 
@@ -82,19 +102,42 @@ public sealed class AutomationService : IDisposable
         {
             CurrentRuleId = null;
             CurrentRuleName = null;
+            PendingSuggestion = null;
             lastAppliedRuleId = null;
             return;
         }
 
-        var (rule, pick) = EvaluateRules(settings);
+        var ctx = BuildMatchContext();
+
+        var (rule, pick) = EvaluateRules(settings, ctx, AutomationRuleMode.AutoApply);
         CurrentRuleId = rule?.Id;
         CurrentRuleName = rule?.Name;
 
-        if (rule == null || pick == null || rule.Id == lastAppliedRuleId || !CanApplyNow(settings))
-            return; // if blocked, the next poll (once unblocked) will pick this back up
+        if (rule != null && pick != null && rule.Id != lastAppliedRuleId && CanApplyNow(settings))
+        {
+            lastAppliedRuleId = rule.Id;
+            BeginApply(pick.Value);
+        }
 
-        lastAppliedRuleId = rule.Id;
-        BeginApply(pick.Value);
+        EvaluateSuggestion(settings, ctx);
+    }
+
+    private void EvaluateSuggestion(CharacterLoginSettings settings, MatchContext ctx)
+    {
+        var (rule, designId) = EvaluateRules(settings, ctx, AutomationRuleMode.Suggest);
+        if (rule == null || designId == null || designId == settings.LastWornDesign)
+        {
+            PendingSuggestion = null;
+            return;
+        }
+
+        if (suggestionDismissedUntilUtc.TryGetValue(rule.Id, out var until) && DateTime.UtcNow < until)
+        {
+            PendingSuggestion = null;
+            return;
+        }
+
+        PendingSuggestion = new Suggestion(rule.Id, rule.Name, designId.Value);
     }
 
     // Combat blocks unconditionally - there's no setting to override it, since changing appearance
@@ -180,13 +223,13 @@ public sealed class AutomationService : IDisposable
         };
     }
 
-    private (AutomationRule? Rule, Guid? DesignId) EvaluateRules(CharacterLoginSettings settings)
+    private (AutomationRule? Rule, Guid? DesignId) EvaluateRules(CharacterLoginSettings settings, MatchContext ctx, AutomationRuleMode mode)
     {
-        var ctx = BuildMatchContext();
-
         foreach (var rule in settings.AutomationRules)
         {
-            if (!rule.Enabled)
+            // A rule with no conditions at all would otherwise match unconditionally (Conditions.All on
+            // an empty list is vacuously true) - require at least one, same as requiring a usable design below.
+            if (!rule.Enabled || rule.Mode != mode || rule.Conditions.Count == 0)
                 continue;
             if (!rule.Conditions.All(c => Matches(c, ctx)))
                 continue;
@@ -259,6 +302,9 @@ public sealed class AutomationService : IDisposable
     {
         var issues = new List<string>();
 
+        if (rule.Conditions.Count == 0)
+            issues.Add("No conditions set - this rule will never run. Add at least one condition.");
+
         foreach (var condition in rule.Conditions)
         {
             if (IsConditionEmpty(condition))
@@ -303,7 +349,7 @@ public sealed class AutomationService : IDisposable
     {
         var ctx = BuildMatchContext();
         var results = rule.Conditions.Select(c => (c, Matches(c, ctx))).ToList();
-        var wouldApply = results.All(r => r.Item2) && PickDesign(rule, ctx.JobId) != null;
+        var wouldApply = results.Count > 0 && results.All(r => r.Item2) && PickDesign(rule, ctx.JobId) != null;
         return new RulePreview(wouldApply, results);
     }
 

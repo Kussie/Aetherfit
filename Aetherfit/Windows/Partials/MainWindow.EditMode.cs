@@ -11,6 +11,7 @@ using Dalamud.Interface.Utility.Raii;
 using Glamourer.Api.Enums;
 using Newtonsoft.Json.Linq;
 using Aetherfit.Services.Designs;
+using Aetherfit.Services.Game;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Services.Screenshots;
 using Aetherfit.Ui;
@@ -55,6 +56,9 @@ public partial class MainWindow
     private string createNewDesignName = string.Empty;
     private bool createNewDesignReclaimFocus;
     private bool createNewDesignIncludeCustomizations;
+    private bool createNewDesignAdvancedImport;
+    private readonly HashSet<EquipmentSlot> createNewDesignExcludedSlots = new();
+    private List<CachedEquipmentSlot>? createNewDesignLiveEquipment;
     private bool addTagReclaimFocus;
 
     // Reset whenever the selected design changes so edit mode always starts fresh for the new selection.
@@ -122,16 +126,28 @@ public partial class MainWindow
         hoveredDesignForTooltip = null;
         using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(spacing.X, spacing.Y + 3)))
         {
-            if (groupByJob)
-                DrawJobTree(hasFilter);
-            else if (groupByTags)
-                DrawTagTree(hasFilter);
-            else if (groupBySource)
-                DrawSourceTree(hasFilter);
-            else
-                DrawTree(root, hasFilter);
+            if (plugin.Configuration.ShowDesignsSection)
+            {
+                var designsOpen = ImGui.TreeNodeEx($"Designs ({designsCount})##designsRoot",
+                    ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+                if (designsOpen)
+                {
+                    if (groupByJob)
+                        DrawJobTree(hasFilter);
+                    else if (groupByTags)
+                        DrawTagTree(hasFilter);
+                    else if (groupBySource)
+                        DrawSourceTree(hasFilter);
+                    else
+                        DrawTree(root, hasFilter);
 
-            DrawCreateNewDesignLeaf();
+                    DrawCreateNewDesignLeaf();
+                    ImGui.TreePop();
+                }
+            }
+
+            if (plugin.Configuration.ShowPersonasSection)
+                DrawPersonasSection();
         }
 
         // Tree's drawn, so we're done with the one-shot expand request - clear it for next frame.
@@ -165,6 +181,20 @@ public partial class MainWindow
         {
             groupByJob = false;
             groupByTags = false;
+        }
+
+        ImGui.Spacing();
+        var showDesigns = plugin.Configuration.ShowDesignsSection;
+        if (ImGui.Checkbox("Show Designs section", ref showDesigns))
+        {
+            plugin.Configuration.ShowDesignsSection = showDesigns;
+            plugin.Configuration.Save();
+        }
+        var showPersonas = plugin.Configuration.ShowPersonasSection;
+        if (ImGui.Checkbox("Show Personas section", ref showPersonas))
+        {
+            plugin.Configuration.ShowPersonasSection = showPersonas;
+            plugin.Configuration.Save();
         }
     }
 
@@ -373,20 +403,11 @@ public partial class MainWindow
         ImGui.GetWindowDrawList().AddCircleFilled(center, lineH * LeafDotRadius, color, 16);
     }
 
-    // Always the last row in the tree regardless of grouping mode (called once, after whichever tree
-    // draws) - a plain leaf with a + in place of the usual dot, opening a name-only creation popup.
-    private void DrawCreateNewDesignLeaf()
+    // Draws a hand-drawn + (not the icon font, so it's sized to match the leaf dot's own footprint
+    // rather than a full icon glyph reading far too large next to it) over the previously-drawn item -
+    // call this immediately after the Selectable it belongs to. Shared by every "Create new X" leaf row.
+    private static void DrawCreateLeafPlusIcon()
     {
-        if (ImGui.Selectable("   Create new design##createNewDesignLeaf"))
-        {
-            createNewDesignName = string.Empty;
-            createNewDesignReclaimFocus = true;
-            createNewDesignIncludeCustomizations = false;
-            ImGui.OpenPopup(CreateNewDesignPopupId);
-        }
-
-        // Drawn by hand (not the icon font) so it's sized to match the dot's own footprint rather than a
-        // full icon glyph, which reads far too large next to it.
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
         var lineH = ImGui.GetTextLineHeight();
@@ -397,6 +418,24 @@ public partial class MainWindow
         var drawList = ImGui.GetWindowDrawList();
         drawList.AddLine(center - new Vector2(half, 0f), center + new Vector2(half, 0f), color, thickness);
         drawList.AddLine(center - new Vector2(0f, half), center + new Vector2(0f, half), color, thickness);
+    }
+
+    // Always the last row in the tree regardless of grouping mode (called once, after whichever tree
+    // draws) - a plain leaf with a + in place of the usual dot, opening a name-only creation popup.
+    private void DrawCreateNewDesignLeaf()
+    {
+        if (ImGui.Selectable("   Create new design##createNewDesignLeaf"))
+        {
+            createNewDesignName = string.Empty;
+            createNewDesignReclaimFocus = true;
+            createNewDesignIncludeCustomizations = false;
+            createNewDesignAdvancedImport = false;
+            createNewDesignExcludedSlots.Clear();
+            createNewDesignLiveEquipment = null;
+            ImGui.OpenPopup(CreateNewDesignPopupId);
+        }
+
+        DrawCreateLeafPlusIcon();
 
         DrawCreateNewDesignPopup();
     }
@@ -428,12 +467,26 @@ public partial class MainWindow
         ImGui.Checkbox("Also include customizations (race, face, hair, etc.)", ref createNewDesignIncludeCustomizations);
 
         ImGui.Spacing();
+        if (ImGui.Checkbox("Advanced Import", ref createNewDesignAdvancedImport) && createNewDesignAdvancedImport)
+            createNewDesignLiveEquipment ??= LoadLiveEquipmentPreview();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Choose which equipment slots to include in the new design.");
+
+        if (createNewDesignAdvancedImport)
+        {
+            createNewDesignLiveEquipment ??= LoadLiveEquipmentPreview();
+            ImGui.Spacing();
+            DrawAdvancedImportSlotPicker();
+        }
+
+        ImGui.Spacing();
         using (ImRaii.Disabled(!canConfirm))
         {
             if (ImGui.Button("Create") || (submitted && canConfirm))
             {
                 ImGui.CloseCurrentPopup();
-                DoCreateNewDesignFromScratch(trimmed, createNewDesignIncludeCustomizations);
+                DoCreateNewDesignFromScratch(trimmed, createNewDesignIncludeCustomizations,
+                    createNewDesignAdvancedImport ? createNewDesignExcludedSlots : null);
             }
         }
         ImGui.SameLine();
@@ -441,9 +494,69 @@ public partial class MainWindow
             ImGui.CloseCurrentPopup();
     }
 
-    private void DoCreateNewDesignFromScratch(string name, bool includeCustomizations)
+    private List<CachedEquipmentSlot> LoadLiveEquipmentPreview()
     {
-        var result = plugin.GearImport.CreateFreshDesign(name, includeCustomizations);
+        var preview = plugin.GearImport.GetLiveEquipmentForPreview();
+        return preview.Success ? preview.Equipment.ToList() : new List<CachedEquipmentSlot>();
+    }
+
+    // Lets the user exclude specific equipment slots from the design CreateFreshDesign would otherwise
+    // capture unconditionally - unworn slots aren't shown, since there's nothing there to include or
+    // exclude either way.
+    private void DrawAdvancedImportSlotPicker()
+    {
+        if (createNewDesignLiveEquipment == null)
+            return;
+
+        var equipmentBySlot = createNewDesignLiveEquipment.ToDictionary(e => e.Slot);
+        var worn = DesignDetailView.SlotDisplay
+            .Where(sd => equipmentBySlot.TryGetValue(sd.Slot, out var e)
+                         && plugin.GameData.ResolveItemName(e.ItemId) != GameDataService.NothingItemName)
+            .ToList();
+
+        if (worn.Count == 0)
+        {
+            ImGui.TextDisabled("Nothing currently equipped.");
+            return;
+        }
+
+        float toggleW;
+        using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+            toggleW = ImGui.CalcTextSize(FontAwesomeIcon.Times.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
+        var frameH = ImGui.GetFrameHeight();
+        var labelWidth = 90f * ImGuiHelpers.GlobalScale;
+
+        var listHeight = Math.Min(worn.Count, MaxVisibleDesignRows) * ImGui.GetFrameHeightWithSpacing();
+        using var scroll = ImRaii.Child("##advancedImportSlots", new Vector2(-1, listHeight), true);
+        foreach (var (slot, label) in worn)
+        {
+            var entry = equipmentBySlot[slot];
+            var excluded = createNewDesignExcludedSlots.Contains(slot);
+
+            using (ImRaii.PushId((int)slot))
+            {
+                if (HeaderIconButton("advToggle", excluded ? FontAwesomeIcon.Times : FontAwesomeIcon.Check,
+                        excluded ? UiTheme.ErrorText : UiTheme.StateOn, new Vector2(toggleW, frameH)))
+                {
+                    if (!createNewDesignExcludedSlots.Remove(slot))
+                        createNewDesignExcludedSlots.Add(slot);
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(excluded ? "Excluded - click to include" : "Included - click to exclude");
+            }
+
+            ImGui.SameLine();
+            var itemName = plugin.GameData.ResolveItemName(entry.ItemId);
+            DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
+                entry.Stain, entry.Stain2, entry.ApplyStain, applied: !excluded, EmptyAffectedMap);
+        }
+    }
+
+    private static readonly Dictionary<string, string> EmptyAffectedMap = new();
+
+    private void DoCreateNewDesignFromScratch(string name, bool includeCustomizations, IReadOnlySet<EquipmentSlot>? excludedSlots)
+    {
+        var result = plugin.GearImport.CreateFreshDesign(name, includeCustomizations, excludedSlots);
         if (!result.Success)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Create new design failed: {result.Error}");

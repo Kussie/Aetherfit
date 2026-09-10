@@ -111,12 +111,21 @@ public class AutomationCondition
     public List<CharacterOnlineStatus> OnlineStatuses { get; set; } = new();
 }
 
+// AutoApply keeps today's silent behavior; Suggest surfaces a dismissible popup instead of applying
+// outright, for rules where you'd rather be asked than have your appearance change out from under you.
+public enum AutomationRuleMode
+{
+    AutoApply,
+    Suggest,
+}
+
 [Serializable]
 public class AutomationRule
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "New Rule";
     public bool Enabled { get; set; } = true;
+    public AutomationRuleMode Mode { get; set; } = AutomationRuleMode.AutoApply;
     public List<AutomationCondition> Conditions { get; set; } = new();
     public List<Guid> DesignIds { get; set; } = new();
 
@@ -158,6 +167,10 @@ public class Configuration : IPluginConfiguration
     // When disabled, the Additional Design Layers panel is hidden and applying a base design never applies layers.
     public bool EnableRandomLayers { get; set; } = false;
 
+    // Independent visibility toggles for the tree/gallery's Designs and Personas sections.
+    public bool ShowDesignsSection { get; set; } = true;
+    public bool ShowPersonasSection { get; set; } = true;
+
     // Global default for the Base Design Layer, applied before every design (and before its own Applied
     // Before layers) unless overridden per-design via DesignBaseLayerOverrides. Null = no base layer.
     public Guid? BaseDesignLayerId { get; set; }
@@ -166,6 +179,13 @@ public class Configuration : IPluginConfiguration
     public bool GlamourPlateEnabled { get; set; } = true;
     public bool SimpleGlamourSwitcherEnabled { get; set; } = true;
     public bool WardrobeEnabled { get; set; } = true;
+
+    // Kill switches for the two persona-only integrations - unlike the design providers above, these
+    // don't source designs, they just let PersonaApplyService switch a Customize+ profile / set a
+    // Honorific title. Off means a persona's PenumbraCollectionId/CustomizePlusProfileId etc. that
+    // depend on them are simply skipped at apply time, not an error.
+    public bool CustomizePlusIntegrationEnabled { get; set; } = true;
+    public bool HonorificIntegrationEnabled { get; set; } = true;
 
     public bool IsProviderEnabled(DesignSource source) => source switch
     {
@@ -561,9 +581,22 @@ public class Configuration : IPluginConfiguration
     }
 
     // Null return covers both an explicit per-design "None" override and falling through to a global
-    // BaseDesignLayerId of null - callers don't need to tell the two apart.
-    public Guid? ResolveBaseDesignLayer(Guid id)
-        => DesignBaseLayerOverrides.TryGetValue(id, out var overrideValue) ? overrideValue : BaseDesignLayerId;
+    // BaseDesignLayerId (or a persona's own base layer) of null - callers don't need to tell the two apart.
+    // personaBaseLayerId only ever applies to a design with no override at all (Inherit) - an explicit
+    // per-design override (even "None") always wins regardless of persona.
+    //
+    // personaBaseLayerId itself carries a tri-state from the caller: null means the persona has no base
+    // layer opinion at all (falls through to the global BaseDesignLayerId, same as a design applied
+    // directly), Guid.Empty means the persona explicitly wants no base layer (skips the global default
+    // too), and any other value is a specific design to use as the base layer.
+    public Guid? ResolveBaseDesignLayer(Guid id, Guid? personaBaseLayerId = null)
+    {
+        if (DesignBaseLayerOverrides.TryGetValue(id, out var overrideValue))
+            return overrideValue;
+        if (personaBaseLayerId == Guid.Empty)
+            return null;
+        return personaBaseLayerId ?? BaseDesignLayerId;
+    }
 
     public VariantInfo? GetVariantInfo(Guid id) => DesignVariants.TryGetValue(id, out var v) ? v : null;
 
@@ -668,6 +701,41 @@ public class CharacterLoginSettings
     public bool AutomationsEnabled { get; set; } = false;
     public bool AutomationsDisableInDuties { get; set; } = true;
     public List<AutomationRule> AutomationRules { get; set; } = new();
+
+    public List<PersonaProfile> Personas { get; set; } = new();
+
+    // Whichever Customize+ profile the last persona-driven apply enabled, so the next one can disable
+    // it before enabling a different persona's profile - otherwise both stay enabled simultaneously.
+    public Guid? LastPersonaCustomizeProfileId { get; set; }
+}
+
+// A named context (Penumbra collection, Customize+ profile, Honorific title, base layer) around a
+// scoped, many-to-many set of designs. Applying one of AssignedDesignIds through the persona's own UI
+// section bundles that context along; applying the same design directly (regular tree, gallery,
+// random-apply, Automation, chat command) never touches persona-scoped settings at all - a design
+// belonging to a persona doesn't carry that persona with it outside the persona's own section.
+[Serializable]
+public class PersonaProfile
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "New Persona";
+    public List<Guid> AssignedDesignIds { get; set; } = new();
+
+    // Tri-state, mirroring DesignBaseLayerOverrides' own Inherit/None/specific shape: InheritBaseLayer
+    // true means fall through to the global BaseDesignLayerId (PersonaBaseLayerId is ignored), false with
+    // PersonaBaseLayerId null means explicitly no base layer for this persona, and false with a value
+    // means that specific design. Applies only to member designs with no per-design override of their own
+    // (i.e. set to Inherit) - an explicit per-design override still always wins regardless of persona.
+    public bool InheritBaseLayer { get; set; } = true;
+    public Guid? PersonaBaseLayerId { get; set; }
+
+    public Guid? PenumbraCollectionId { get; set; }
+    public Guid? CustomizePlusProfileId { get; set; }
+    public string? HonorificTitle { get; set; }
+    public bool HonorificTitleIsPrefix { get; set; }
+
+    public string? Description { get; set; }
+    public List<string> Tags { get; set; } = new();
 }
 
 [Serializable]
