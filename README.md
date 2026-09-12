@@ -1,5 +1,5 @@
 # Aetherfit
-![icon.png](Data/icon.png)
+![icon.png](Screenshots/aetherfit_promo_v6.png)
 
 **Requires:** [Penumbra](https://github.com/xivdev/Penumbra), [Glamourer](https://github.com/Ottermandias/Glamourer)
 
@@ -22,7 +22,7 @@ It also provides a quick and easy way to preview your designs with screenshots a
 It adds the following functionality:
 - Source designs from Glamourer, Glamaholic, Simple Glamour Switcher, Wardrobe, and the game's own Glamour Plates, all in one gallery
 - Create a brand-new Glamourer design directly from your currently-equipped gear and active Penumbra mods, optionally including your current customizations (race, face, hair, etc.)
-- Persona Profiles — bundle a Penumbra collection, Customize+ profile, and Honorific title around their own scoped set of designs, so switching persona switches all of those together; applying a persona-assigned design outside its persona never touches them
+- Persona Profiles — assume a whole separate "character" (its own Penumbra collection, Customize+ profile, Honorific title, and base layer) without switching characters. Activating one applies all of that together and stays active across logins/zone changes, including for whatever you wear afterward. A "Default" entry always reverts back to your plain in-game state. Each persona can also list designs made for it (purely for browsing/filtering — not a restriction), and a design shows which personas it belongs to
 - Browse designs by tags
 - Add screenshots to designs
 - Get AI-suggested tags for a design based on its own screenshots, powered by a local, on-device image tagger — nothing is ever uploaded anywhere

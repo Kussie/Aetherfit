@@ -23,11 +23,14 @@ public partial class MainWindow
     private bool renamePersonaReclaimFocus;
     private string personaBaseLayerFilter = string.Empty;
     private string personaDefaultDesignFilter = string.Empty;
+    private string personaAddDesignFilter = string.Empty;
     private bool personaImagesPanelOpen = true;
     private bool personaTagsPanelOpen = true;
     private bool personaDescriptionPanelOpen = true;
     private bool personaBaseLayerPanelOpen = true;
     private bool personaProfilesPanelOpen = true;
+    private bool personaAssignedDesignsPanelOpen = true;
+    private bool designPersonasPanelOpen = true;
 
     private const string AddPersonaTagPopupId = "AddPersonaTagPopup";
     private string addPersonaTagSearchText = string.Empty;
@@ -129,6 +132,35 @@ public partial class MainWindow
 
         DrawLeafDot(ImGui.GetColorU32(ImGuiCol.Text));
         DrawActivePersonaIndicator(isActive);
+    }
+
+    // Read-only back-reference; mirrors DrawVariantsOfSection's click-to-open pattern.
+    private void DrawDesignPersonasSection(Guid designId)
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+
+        var personas = plugin.Configuration.GetPersonasContainingDesign(Plugin.PlayerState.ContentId, designId).ToList();
+        if (personas.Count == 0)
+            return;
+
+        if (!Pills.DrawCollapsibleSubheader($"Personas ({personas.Count})", ref designPersonasPanelOpen))
+            return;
+
+        ImGui.Indent();
+        foreach (var persona in personas)
+        {
+            DesignDetailView.TextColoredUnformatted(ModLinkColor, persona.Name);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                ImGui.SetTooltip("Click to open in Aetherfit");
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    selectedPersona = persona.Id;
+            }
+        }
+        ImGui.Unindent();
+        ImGui.Spacing();
     }
 
     private static void DrawActivePersonaIndicator(bool isActive)
@@ -348,7 +380,130 @@ public partial class MainWindow
             ImGui.Spacing();
         }
 
+        if (Pills.DrawCollapsibleSubheader($"Assigned Designs ({persona.AssignedDesignIds.Count})", ref personaAssignedDesignsPanelOpen))
+        {
+            ImGui.Indent();
+            DrawPersonaAddDesignPicker(persona);
+            ImGui.Spacing();
+
+            if (persona.AssignedDesignIds.Count == 0)
+            {
+                ImGui.TextDisabled("No designs assigned yet.");
+            }
+            else
+            {
+                float removeW;
+                using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+                    removeW = ImGui.CalcTextSize(FontAwesomeIcon.Times.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
+
+                var listHeight = Math.Min(persona.AssignedDesignIds.Count, MaxVisibleDesignRows) * ImGui.GetFrameHeightWithSpacing();
+                Guid? toRemove = null;
+                using (ImRaii.Child("##personaAssignedDesignsList", new Vector2(-1, listHeight), true))
+                {
+                    foreach (var designId in persona.AssignedDesignIds)
+                    {
+                        using var rowId = ImRaii.PushId(designId.ToString());
+                        if (DrawPersonaAssignedDesignRow(persona, designId, removeW, frameH))
+                            toRemove = designId;
+                    }
+                }
+
+                if (toRemove is { } removeId)
+                {
+                    persona.AssignedDesignIds.Remove(removeId);
+                    plugin.Configuration.Save();
+                }
+            }
+            ImGui.Unindent();
+            ImGui.Spacing();
+        }
+
         DrawPersonaCustomizationsSection(persona);
+    }
+
+    private void DrawPersonaAddDesignPicker(PersonaProfile persona)
+    {
+        ImGui.SetNextItemWidth(280 * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("##personaAddDesign", "Assign a design...", ImGuiComboFlags.HeightLargest))
+        {
+            if (combo.Success)
+            {
+                if (ImGui.IsWindowAppearing())
+                    ImGui.SetKeyboardFocusHere();
+                ImGui.SetNextItemWidth(-1);
+                ImGui.InputTextWithHint("##personaAddDesignFilter", "Filter by name...", ref personaAddDesignFilter, 64);
+                ImGui.Separator();
+
+                var matches = plugin.Configuration.CachedOutfits
+                    .Where(kv => !persona.AssignedDesignIds.Contains(kv.Key))
+                    .Where(kv => personaAddDesignFilter.Length == 0
+                                 || kv.Value.Name.Contains(personaAddDesignFilter, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(kv => kv.Value.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (matches.Count == 0)
+                {
+                    ImGui.TextDisabled("No matching designs.");
+                }
+                else
+                {
+                    var listHeight = Math.Min(matches.Count, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
+                    using var scroll = ImRaii.Child("##personaAddDesignList", new Vector2(-1, listHeight), false);
+                    foreach (var (designId, outfit) in matches)
+                    {
+                        if (ImGui.Selectable($"{outfit.Name}##personaAddDesign{designId}"))
+                        {
+                            persona.AssignedDesignIds.Add(designId);
+                            plugin.Configuration.Save();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Click applies plainly, no persona activation; removal is returned so the list isn't mutated mid-loop.
+    private bool DrawPersonaAssignedDesignRow(PersonaProfile persona, Guid designId, float removeW, float frameH)
+    {
+        var displayName = designLeafById.TryGetValue(designId, out var leaf) ? leaf.DisplayName : "(missing design)";
+
+        var rowWidth = ImGui.GetContentRegionAvail().X - removeW - ImGui.GetStyle().ItemInnerSpacing.X;
+        if (ImGui.Selectable(displayName, false, ImGuiSelectableFlags.None, new Vector2(rowWidth, 0)))
+        {
+            if (ImGui.GetIO().KeyShift)
+            {
+                selectedDesign = designId;
+                RevealDesignInTree(designId);
+            }
+            else
+            {
+                plugin.DesignApply.ApplyDesignById(designId);
+            }
+        }
+        if (ImGui.IsItemHovered())
+            DrawPersonaAssignedDesignTooltip(persona, leaf, displayName, designId);
+
+        ImGui.SameLine();
+        var remove = HeaderIconButton("remove", FontAwesomeIcon.Times, null, new Vector2(removeW, frameH));
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Remove from this persona");
+
+        return remove;
+    }
+
+    // Same title line (the design's full tree path) and image as DrawDesignLeafTooltip.
+    private void DrawPersonaAssignedDesignTooltip(PersonaProfile persona, DesignLeaf? leaf, string displayName, Guid designId)
+    {
+        var hasPath = !string.IsNullOrEmpty(leaf?.FullPath);
+        var imagePath = plugin.Configuration.ShowThumbnailOnHover ? plugin.ImageStorage.GetCoverPath(designId) : null;
+
+        ImGui.BeginTooltip();
+        ImGui.TextUnformatted(hasPath ? leaf!.FullPath : displayName);
+        if (imagePath != null)
+            DrawImageScaled(imagePath, TooltipImageMax * ImGuiHelpers.GlobalScale);
+        ImGui.TextDisabled("Click to apply this design");
+        ImGui.TextDisabled("Shift + click to jump to this design in the edit view");
+        ImGui.EndTooltip();
     }
 
     // Read-only, mostly static - Default can't be renamed, deleted, or given tags/description/collection/

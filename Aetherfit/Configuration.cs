@@ -634,6 +634,12 @@ public class Configuration : IPluginConfiguration
     public PersonaProfile? GetActivePersonaForCurrentCharacter()
         => Plugin.PlayerState.IsLoaded ? GetActivePersona(Plugin.PlayerState.ContentId) : null;
 
+    // Reverse of PersonaProfile.AssignedDesignIds, for a design's own "Personas" section.
+    public IEnumerable<PersonaProfile> GetPersonasContainingDesign(ulong contentId, Guid designId)
+        => CharacterLoginSettings.TryGetValue(contentId, out var settings)
+            ? settings.Personas.Where(p => p.AssignedDesignIds.Contains(designId))
+            : Enumerable.Empty<PersonaProfile>();
+
     public VariantInfo? GetVariantInfo(Guid id) => DesignVariants.TryGetValue(id, out var v) ? v : null;
 
     public IEnumerable<KeyValuePair<Guid, VariantInfo>> GetVariantsOf(Guid parentId)
@@ -761,6 +767,9 @@ public class PersonaProfile
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "New Persona";
+
+    // Purely organizational - not tied to activation/apply logic (see DefaultDesignId for that).
+    public List<Guid> AssignedDesignIds { get; set; } = new();
 
     // Tri-state, mirroring DesignBaseLayerOverrides' own Inherit/None/specific shape: InheritBaseLayer
     // true means fall through to the global BaseDesignLayerId (PersonaBaseLayerId is ignored), false with

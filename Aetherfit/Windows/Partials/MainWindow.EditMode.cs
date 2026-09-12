@@ -299,6 +299,8 @@ public partial class MainWindow
                 if (childVariants.Count > 0)
                     DrawVariantsOfSection(childVariants);
 
+                DrawDesignPersonasSection(id);
+
                 if (Pills.DrawCollapsibleSubheader("Tags", ref tagsPanelOpen))
                 {
                     ImGui.Indent();

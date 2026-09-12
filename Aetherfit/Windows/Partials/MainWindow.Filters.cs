@@ -33,6 +33,7 @@ public partial class MainWindow
     private bool filterModdedOnly;
     private bool filterNeverWorn;
     private bool filterHealthReportIssues;
+    private bool filterActivePersonaOnly;
     private HashSet<Guid> cachedFlaggedDesignIds = new();
     private int cachedFlaggedGeneration = -1;
     private int cachedFlaggedIgnoreVersion = -1;
@@ -53,6 +54,7 @@ public partial class MainWindow
                               || filterModdedOnly
                               || filterNeverWorn
                               || filterHealthReportIssues
+                              || filterActivePersonaOnly
                               || filterEquipmentSlots.Count > 0;
 
     private int ActiveFilterCount => (filterName.Length > 0 ? 1 : 0)
@@ -65,6 +67,7 @@ public partial class MainWindow
                                    + (filterModdedOnly ? 1 : 0)
                                    + (filterNeverWorn ? 1 : 0)
                                    + (filterHealthReportIssues ? 1 : 0)
+                                   + (filterActivePersonaOnly ? 1 : 0)
                                    + filterEquipmentSlots.Count;
 
 
@@ -78,12 +81,13 @@ public partial class MainWindow
         bool VanillaOnly,
         bool ModdedOnly,
         bool NeverWorn,
-        bool HealthReportIssues);
+        bool HealthReportIssues,
+        bool ActivePersonaOnly);
 
     private FilterSnapshot CaptureFilterSnapshot() => new(
         filterName, searchDesignName, searchModName, searchEquipmentName,
         filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly,
-        filterNeverWorn, filterHealthReportIssues);
+        filterNeverWorn, filterHealthReportIssues, filterActivePersonaOnly);
 
     // extraControls renders view-specific rows (e.g. the "Group by..." checkboxes) inside the same
     // collapsible Filters panel, after the shared controls - each view owns its own grouping state,
@@ -156,6 +160,7 @@ public partial class MainWindow
         filterModdedOnly = false;
         filterNeverWorn = false;
         filterHealthReportIssues = false;
+        filterActivePersonaOnly = false;
         filterEquipmentSlots.Clear();
     }
 
@@ -215,6 +220,7 @@ public partial class MainWindow
     private const string ModdedToggleLabel = "Modded";
     private const string NeverWornToggleLabel = "Never Worn";
     private const string HealthReportToggleLabel = "⚠ Health Issues";
+    private const string ActivePersonaToggleLabel = "Active Persona";
 
     // Favourites / Vanilla / Modded / Never Worn / Health Issues as pill toggles, matching the D/M/E
     // scope style. In the narrow pane they wrap instead of overflowing.
@@ -241,6 +247,8 @@ public partial class MainWindow
             DrawNeverWornToggle();
             Pills.PlaceItem(PillWidth(HealthReportToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
             DrawHealthReportIssuesToggle();
+            Pills.PlaceItem(PillWidth(ActivePersonaToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
+            DrawActivePersonaOnlyToggle();
             return;
         }
 
@@ -253,6 +261,8 @@ public partial class MainWindow
         DrawNeverWornToggle();
         ImGui.SameLine();
         DrawHealthReportIssuesToggle();
+        ImGui.SameLine();
+        DrawActivePersonaOnlyToggle();
     }
 
     private void DrawFavouritesToggle()
@@ -281,6 +291,20 @@ public partial class MainWindow
             filterHealthReportIssues = !filterHealthReportIssues;
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Show only designs flagged in the Health Report");
+    }
+
+    // No-ops rather than hiding everything when no persona is active.
+    private void DrawActivePersonaOnlyToggle()
+    {
+        if (Pills.DrawToggle(ActivePersonaToggleLabel, "activePersonaFilter", filterActivePersonaOnly))
+            filterActivePersonaOnly = !filterActivePersonaOnly;
+        if (ImGui.IsItemHovered())
+        {
+            var activePersona = plugin.Configuration.GetActivePersonaForCurrentCharacter();
+            ImGui.SetTooltip(activePersona != null
+                ? $"Show only designs attached to \"{activePersona.Name}\""
+                : "Show only designs attached to the active persona (no persona is currently active, so this has no effect right now)");
+        }
     }
 
     // Compact letter toggle (D/M/E) standing in for a long checkbox label; the full meaning lives in the tooltip.
@@ -474,6 +498,11 @@ public partial class MainWindow
             return false;
 
         if (filterHealthReportIssues && !FlaggedDesignIds().Contains(design.Id))
+            return false;
+
+        if (filterActivePersonaOnly
+            && plugin.Configuration.GetActivePersonaForCurrentCharacter() is { } activePersona
+            && !activePersona.AssignedDesignIds.Contains(design.Id))
             return false;
 
         if (filterEquipmentSlots.Count > 0)
