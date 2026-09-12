@@ -120,10 +120,8 @@ public sealed class PersonaApplyService
             plugin.DesignApply.ApplyLayerOnly(id);
     }
 
-    // Chat-command entry point. An explicit design name overrides DefaultDesignId/keep-current for this
-    // one apply only - it never changes the persona's own DefaultDesignId setting. Design names are
-    // resolved globally (DesignApplyService.ApplyByName), not against a per-persona list, since designs
-    // are no longer assigned to personas at all.
+    // A given design name overrides DefaultDesignId/keep-current for this one apply, without changing
+    // it; "random" picks from AssignedDesignIds instead of resolving a name globally.
     public ApplyResult ApplyByName(string personaName, string? designName)
     {
         if (!Plugin.PlayerState.IsLoaded)
@@ -139,6 +137,16 @@ public sealed class PersonaApplyService
         if (designName == null)
         {
             ApplyPersonaDesign(settings, persona);
+            return ApplyResult.Ok(persona.Id);
+        }
+
+        if (string.Equals(designName, "random", StringComparison.OrdinalIgnoreCase))
+        {
+            var candidates = persona.AssignedDesignIds.Where(plugin.DesignApply.IsUsable).ToList();
+            if (candidates.Count == 0)
+                return ApplyResult.Fail($"\"{persona.Name}\" has no assigned designs to pick from.");
+
+            plugin.DesignApply.ApplyDesignById(candidates[Random.Shared.Next(candidates.Count)]);
             return ApplyResult.Ok(persona.Id);
         }
 

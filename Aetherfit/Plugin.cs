@@ -345,7 +345,7 @@ public sealed class Plugin : IDalamudPlugin
       + "/aetherfit job — apply a random outfit associated with your current job.\n"
       + "/aetherfit favourite [job] — apply a random favourite outfit, optionally only one associated with your current job.\n"
       + "/aetherfit wear \"design name\" — apply the design with this exact name (quotes required).\n"
-      + "/aetherfit persona \"persona name\" [\"design name\"] — activate a persona (its Default Design, or keep the current design if none is set), optionally wearing a specific design instead.\n"
+      + "/aetherfit persona \"persona name\" [\"design name\"|random] — activate a persona (its Default Design, or keep the current design if none is set), optionally wearing a specific design instead, or \"random\" to pick one of its Assigned Designs at random.\n"
       + "/aetherfit automations toggle|on|off — turn Automations on, off, or flip its current state.\n"
       + "/aetherfit automations snooze [minutes] — pause Automations for a while (default 15 minutes).\n"
       + "/aetherfit last — reapply the last known design.\n"
