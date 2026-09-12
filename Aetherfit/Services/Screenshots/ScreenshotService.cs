@@ -33,14 +33,26 @@ public sealed class ScreenshotService
                 var dir = EnsureTempDir();
                 var path = Path.Combine(dir, $"capture_{Guid.NewGuid():N}.png");
                 await File.WriteAllBytesAsync(path, png);
-                onAfterCapture();
-                onTempReady(path);
+
+                // Both awaits above resume on a thread-pool thread, not the game's framework thread -
+                // callers chain straight from onTempReady into applying the next design (Glamourer/Penumbra
+                // IPC touching live character draw data), which is not safe to do off the framework thread
+                // and was crashing the game intermittently (native access violation deep in weapon/animation
+                // reload) when it raced the main thread's own frame update. Marshal back before calling out.
+                await Plugin.Framework.RunOnFrameworkThread(() =>
+                {
+                    onAfterCapture();
+                    onTempReady(path);
+                });
             }
             catch (Exception ex)
             {
-                onAfterCapture();
                 Plugin.Log.Warning(ex, "Screenshot capture failed");
-                onError(ex);
+                await Plugin.Framework.RunOnFrameworkThread(() =>
+                {
+                    onAfterCapture();
+                    onError(ex);
+                });
             }
         }
     }
