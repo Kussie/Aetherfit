@@ -335,6 +335,18 @@ public partial class MainWindow
                     && quickOpenOutfit.Source == DesignSource.Glamourer)
                     plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
             }
+
+            if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && !ImGui.GetIO().KeyShift)
+                ImGui.OpenPopup($"##treeDesignContextMenu_{design.Id}");
+        }
+
+        using (var contextMenu = ImRaii.Popup($"##treeDesignContextMenu_{design.Id}"))
+        {
+            if (contextMenu.Success)
+            {
+                DrawAssignToPersonaSubmenu(design.Id);
+                DrawSetAsDefaultDesignSubmenu(design.Id);
+            }
         }
 
         if (ImGui.IsItemHovered())

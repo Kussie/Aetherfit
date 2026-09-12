@@ -134,6 +134,49 @@ public partial class MainWindow
         DrawActivePersonaIndicator(isActive);
     }
 
+    // Toggles membership in AssignedDesignIds - purely organizational (see the comment on that field).
+    private void DrawAssignToPersonaSubmenu(Guid designId)
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        using var submenu = ImRaii.Menu("Assign to Persona", settings.Personas.Count > 0);
+        if (!submenu.Success)
+            return;
+
+        foreach (var persona in settings.Personas)
+        {
+            if (ImGui.MenuItem(persona.Name, string.Empty, persona.AssignedDesignIds.Contains(designId)))
+            {
+                if (!persona.AssignedDesignIds.Remove(designId))
+                    persona.AssignedDesignIds.Add(designId);
+                plugin.Configuration.Save();
+            }
+        }
+    }
+
+    // Shared by the tree's own right-click menu and the gallery grid's context menu.
+    private void DrawSetAsDefaultDesignSubmenu(Guid designId)
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        using var submenu = ImRaii.Menu("Set as Default Design for", settings.Personas.Count > 0);
+        if (!submenu.Success)
+            return;
+
+        foreach (var persona in settings.Personas)
+        {
+            if (ImGui.MenuItem(persona.Name, string.Empty, persona.DefaultDesignId == designId))
+            {
+                persona.DefaultDesignId = designId;
+                plugin.Configuration.Save();
+            }
+        }
+    }
+
     // Read-only back-reference; mirrors DrawVariantsOfSection's click-to-open pattern.
     private void DrawDesignPersonasSection(Guid designId)
     {
@@ -267,12 +310,13 @@ public partial class MainWindow
         var isActive = settings.ActivePersonaId == persona.Id;
 
         var frameH = ImGui.GetFrameHeight();
-        float renameW, trashW, activateW;
+        float renameW, trashW, activateW, moveW;
         using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
         {
             renameW = ImGui.CalcTextSize(FontAwesomeIcon.Pen.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
             trashW = ImGui.CalcTextSize(FontAwesomeIcon.Trash.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
             activateW = ImGui.CalcTextSize(FontAwesomeIcon.Check.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
+            moveW = ImGui.CalcTextSize(FontAwesomeIcon.ArrowUp.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
         }
 
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (6f * ImGuiHelpers.GlobalScale));
@@ -315,6 +359,32 @@ public partial class MainWindow
             ConfirmDialog.Open(DeletePersonaPopupId);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Delete this persona");
+
+        var personaIndex = settings.Personas.IndexOf(persona);
+
+        ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
+        using (ImRaii.Disabled(personaIndex <= 0))
+        {
+            if (HeaderIconButton("movePersonaUp", FontAwesomeIcon.ArrowUp, null, new Vector2(moveW, frameH)))
+            {
+                (settings.Personas[personaIndex - 1], settings.Personas[personaIndex]) = (settings.Personas[personaIndex], settings.Personas[personaIndex - 1]);
+                plugin.Configuration.Save();
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Move up");
+
+        ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
+        using (ImRaii.Disabled(personaIndex >= settings.Personas.Count - 1))
+        {
+            if (HeaderIconButton("movePersonaDown", FontAwesomeIcon.ArrowDown, null, new Vector2(moveW, frameH)))
+            {
+                (settings.Personas[personaIndex + 1], settings.Personas[personaIndex]) = (settings.Personas[personaIndex], settings.Personas[personaIndex + 1]);
+                plugin.Configuration.Save();
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Move down");
 
         DrawRenamePersonaPopup(persona);
 

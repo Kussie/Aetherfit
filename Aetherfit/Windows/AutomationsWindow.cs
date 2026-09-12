@@ -719,6 +719,12 @@ public sealed class AutomationsWindow : Window, IDisposable
             condition.StartHour = start;
             plugin.Configuration.Save();
         }
+        ImGui.SameLine();
+        if (ImGui.Button("Now##startHourNow"))
+        {
+            condition.StartHour = currentHour;
+            plugin.Configuration.Save();
+        }
 
         ImGui.SameLine();
         var end = condition.EndHour;
@@ -726,6 +732,12 @@ public sealed class AutomationsWindow : Window, IDisposable
         if (ImGui.SliderInt($"To {suffix}##endHour", ref end, 0, 23))
         {
             condition.EndHour = end;
+            plugin.Configuration.Save();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Now##endHourNow"))
+        {
+            condition.EndHour = currentHour;
             plugin.Configuration.Save();
         }
 

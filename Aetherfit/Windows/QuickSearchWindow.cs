@@ -18,19 +18,22 @@ public sealed class QuickSearchWindow : Window, IDisposable
 {
     private const int MaxDesignResults = 12;
     private const int MaxTagResults = 5;
+    private const int MaxPersonaResults = 5;
     private const int MaxAllTagResults = 40;
     private const int MaxVisibleRows = 12;
     private const string TagBrowsePrefix = "tag:";
+    private const string PersonaBrowsePrefix = "persona:";
     private const float WidthPt = 480f;
     private const float ThumbnailMaxPt = 160f;
 
-    // Exactly one of DesignId/Tag/Command is set - a specific design to apply, a tag to apply a random
-    // match for, or a system command to run outright.
-    private readonly record struct SearchResult(string Label, Guid? DesignId, string? Tag, Action? Command = null, string? Description = null)
+    // Exactly one of DesignId/Tag/PersonaId/Command is set - a specific design to apply, a tag to apply
+    // a random match for, a persona to activate (Guid.Empty means Default), or a system command.
+    private readonly record struct SearchResult(string Label, Guid? DesignId, string? Tag, Guid? PersonaId = null, Action? Command = null, string? Description = null)
     {
         public static SearchResult ForDesign(Guid id, string name) => new(name, id, null);
         public static SearchResult ForTag(string tag) => new($"Tag: {tag} (random pick)", null, tag);
-        public static SearchResult ForCommand(string label, string description, Action command) => new(label, null, null, command, description);
+        public static SearchResult ForPersona(Guid? personaId, string name) => new($"Persona: {name}", null, null, personaId);
+        public static SearchResult ForCommand(string label, string description, Action command) => new(label, null, null, null, command, description);
     }
 
     private readonly Plugin plugin;
@@ -130,7 +133,7 @@ public sealed class QuickSearchWindow : Window, IDisposable
         {
             if (string.IsNullOrWhiteSpace(query))
             {
-                ImGui.TextDisabled("Type to search your designs or tags. Type \"tag:\" to browse every tag.");
+                ImGui.TextDisabled("Type to search your designs, tags, or personas. Type \"tag:\" to browse every tag, or \"persona:\" to browse every persona.");
                 ImGui.Spacing();
             }
 
@@ -172,6 +175,10 @@ public sealed class QuickSearchWindow : Window, IDisposable
             var count = plugin.Configuration.CachedOutfits.Values.Count(o => TagMatching.AnyMatch(o.Tags, tag));
             ImGui.SetTooltip($"Applies a random design tagged \"{tag}\" ({count} matching).");
         }
+        else if (result.PersonaId.HasValue)
+        {
+            ImGui.SetTooltip("Activates this persona.");
+        }
         else if (result.Description is { } description)
         {
             ImGui.SetTooltip(description);
@@ -207,6 +214,12 @@ public sealed class QuickSearchWindow : Window, IDisposable
             if (err != null)
                 Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{err}");
         }
+        else if (result.PersonaId.HasValue)
+        {
+            var applyResult = plugin.PersonaApply.ActivatePersona(result.PersonaId.Value == Guid.Empty ? null : result.PersonaId.Value);
+            if (applyResult.Error != null)
+                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{applyResult.Error}");
+        }
 
         IsOpen = false;
     }
@@ -232,6 +245,20 @@ public sealed class QuickSearchWindow : Window, IDisposable
         };
     }
 
+    // "Default" always sorts first, not alphabetized with the rest - matches the tree/gallery ordering.
+    private List<(Guid? Id, string Name)> PersonasForSearch()
+    {
+        var list = new List<(Guid? Id, string Name)> { (Guid.Empty, "Default") };
+        if (Plugin.PlayerState.IsLoaded)
+        {
+            var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+            list.AddRange(settings.Personas
+                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(p => ((Guid?)p.Id, p.Name)));
+        }
+        return list;
+    }
+
     private List<SearchResult> FindMatches()
     {
         var trimmed = query.Trim();
@@ -242,6 +269,15 @@ public sealed class QuickSearchWindow : Window, IDisposable
             return plugin.Configuration.DistinctSortedTags()
                 .Where(t => filter.Length == 0 || t.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 .Select(SearchResult.ForTag)
+                .ToList();
+        }
+
+        if (trimmed.StartsWith(PersonaBrowsePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var filter = trimmed[PersonaBrowsePrefix.Length..].Trim();
+            return PersonasForSearch()
+                .Where(p => filter.Length == 0 || p.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                .Select(p => SearchResult.ForPersona(p.Id, p.Name))
                 .ToList();
         }
 
@@ -256,6 +292,11 @@ public sealed class QuickSearchWindow : Window, IDisposable
             .Where(t => t.Contains(query, StringComparison.OrdinalIgnoreCase))
             .Take(MaxTagResults)
             .Select(SearchResult.ForTag));
+
+        results.AddRange(PersonasForSearch()
+            .Where(p => p.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Take(MaxPersonaResults)
+            .Select(p => SearchResult.ForPersona(p.Id, p.Name)));
 
         results.AddRange(plugin.Configuration.CachedOutfits
             .Where(kv => !plugin.Configuration.HiddenDesigns.Contains(kv.Key)

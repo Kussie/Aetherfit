@@ -874,6 +874,8 @@ public partial class MainWindow
         }
 
         DrawApplySingleSlotSubmenu(design);
+        DrawAssignToPersonaSubmenu(design.Id);
+        DrawSetAsDefaultDesignSubmenu(design.Id);
 
         var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
         if (ImGui.MenuItem(isFavourite ? "Remove from Favourites" : "Add to Favourites"))
