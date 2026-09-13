@@ -434,6 +434,7 @@ public sealed class AutomationsWindow : Window, IDisposable
         AutomationConditionType.Time => "Eorzea Time",
         AutomationConditionType.ServerTime => "Server Time",
         AutomationConditionType.LocalTime => "Local Time",
+        AutomationConditionType.ActivePersona => "Active Persona",
         _ => type.ToString(),
     };
 
@@ -596,6 +597,7 @@ public sealed class AutomationsWindow : Window, IDisposable
             case AutomationConditionType.Housing: DrawHousingConditionEditor(condition); break;
             case AutomationConditionType.Group: DrawGroupConditionEditor(condition); break;
             case AutomationConditionType.OnlineStatus: DrawOnlineStatusConditionEditor(condition); break;
+            case AutomationConditionType.ActivePersona: DrawActivePersonaConditionEditor(condition); break;
         }
     }
 
@@ -886,6 +888,30 @@ public sealed class AutomationsWindow : Window, IDisposable
         CharacterOnlineStatus.LookingForParty => "Looking for Party",
         _ => status.ToString(),
     };
+
+    private void DrawActivePersonaConditionEditor(AutomationCondition condition)
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+        {
+            ImGui.TextDisabled("Log in to a character to pick personas.");
+            return;
+        }
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        DrawActivePersonaCheckbox(condition, Guid.Empty, "Default");
+        foreach (var persona in settings.Personas)
+            DrawActivePersonaCheckbox(condition, persona.Id, persona.Name);
+    }
+
+    private void DrawActivePersonaCheckbox(AutomationCondition condition, Guid personaId, string label)
+    {
+        var on = condition.PersonaIds.Contains(personaId);
+        if (ImGui.Checkbox($"{label}##persona{personaId}", ref on))
+        {
+            if (on) condition.PersonaIds.Add(personaId); else condition.PersonaIds.Remove(personaId);
+            plugin.Configuration.Save();
+        }
+    }
 
     private void DrawAddDesignButton(AutomationRule rule)
     {

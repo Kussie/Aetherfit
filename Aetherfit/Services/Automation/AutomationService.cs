@@ -189,7 +189,7 @@ public sealed class AutomationService : IDisposable
 
     private readonly record struct MatchContext(uint JobId, uint TerritoryId, bool Mounted, ushort MountId,
         byte WeatherId, int EorzeaHour, int ServerHour, int LocalHour, bool Swimming, bool Diving,
-        GameDataService.HousingState Housing, GroupType GroupType, uint OnlineStatusId);
+        GameDataService.HousingState Housing, GroupType GroupType, uint OnlineStatusId, Guid ActivePersonaId);
 
     private MatchContext BuildMatchContext()
     {
@@ -207,7 +207,8 @@ public sealed class AutomationService : IDisposable
             Diving: Plugin.Condition[ConditionFlag.Diving],
             Housing: plugin.GameData.GetCurrentHousingState(),
             GroupType: ResolveGroupType(),
-            OnlineStatusId: Plugin.ObjectTable.LocalPlayer?.OnlineStatus.RowId ?? 0);
+            OnlineStatusId: Plugin.ObjectTable.LocalPlayer?.OnlineStatus.RowId ?? 0,
+            ActivePersonaId: plugin.Configuration.GetActivePersonaForCurrentCharacter()?.Id ?? Guid.Empty);
     }
 
     // Party/Raid boundary matches what "raid comp" colloquially means (a full 8-man party) rather than
@@ -260,6 +261,7 @@ public sealed class AutomationService : IDisposable
         AutomationConditionType.Housing => ctx.Housing.InHousing && c.HousingTargets.Any(t => MatchesHousing(t, ctx.Housing)),
         AutomationConditionType.Group => c.GroupTypes.Contains(ctx.GroupType),
         AutomationConditionType.OnlineStatus => c.OnlineStatuses.Any(s => (uint)s == ctx.OnlineStatusId),
+        AutomationConditionType.ActivePersona => c.PersonaIds.Contains(ctx.ActivePersonaId),
         _ => false,
     };
 
@@ -342,6 +344,7 @@ public sealed class AutomationService : IDisposable
         AutomationConditionType.Housing => c.HousingTargets.Count == 0,
         AutomationConditionType.Group => c.GroupTypes.Count == 0,
         AutomationConditionType.OnlineStatus => c.OnlineStatuses.Count == 0,
+        AutomationConditionType.ActivePersona => c.PersonaIds.Count == 0,
         _ => false,
     };
 

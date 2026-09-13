@@ -42,6 +42,7 @@ public enum AutomationConditionType
     // distinct from Time (the in-game Eorzea clock) and LocalTime (this PC's system clock).
     ServerTime,
     LocalTime,
+    ActivePersona,
 }
 
 public enum SwimState
@@ -116,6 +117,9 @@ public class AutomationCondition
 
     public List<GroupType> GroupTypes { get; set; } = new();
     public List<CharacterOnlineStatus> OnlineStatuses { get; set; } = new();
+
+    // Guid.Empty means Default (no persona active) - same sentinel used elsewhere for it.
+    public List<Guid> PersonaIds { get; set; } = new();
 }
 
 // AutoApply keeps today's silent behavior; Suggest surfaces a dismissible popup instead of applying
