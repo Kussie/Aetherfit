@@ -1,3 +1,6 @@
+using System;
+using System.Linq;
+using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
@@ -5,6 +8,7 @@ using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Glamourer.Api.Enums;
+using Newtonsoft.Json.Linq;
 
 namespace Aetherfit.Windows;
 
@@ -19,11 +23,15 @@ public partial class MainWindow
     private string importDesignInput = string.Empty;
     private string? importDesignInputError;
     private bool importDesignPopupRequested;
+    private Guid? importBaseDesignId;
+    private string importBaseDesignFilter = string.Empty;
 
     private void OpenImportDesignDialog()
     {
         importDesignInput = string.Empty;
         importDesignInputError = null;
+        importBaseDesignId = null;
+        importBaseDesignFilter = string.Empty;
         plugin.EorzeaCollection.Reset();
         importDesignPopupRequested = true;
     }
@@ -87,7 +95,8 @@ public partial class MainWindow
             return;
 
         ImGui.TextDisabled("Paste a design code or an Eorzea Collection glamour link below. Only gear");
-        ImGui.TextDisabled("(and facewear) comes across - tags, description and customizations aren't included.");
+        ImGui.TextDisabled("(and facewear) comes across - tags, description and customizations aren't included,");
+        ImGui.TextDisabled("unless you pick a design below to apply the gear on top of.");
         ImGui.Spacing();
 
         var fetching = plugin.EorzeaCollection.Phase == EorzeaCollectionImportPhase.Fetching;
@@ -98,6 +107,9 @@ public partial class MainWindow
         using (ImRaii.Disabled(fetching))
             submitted = ImGui.InputTextWithHint("##importDesignInput", "Paste code or link here...", ref importDesignInput, 8192,
                 ImGuiInputTextFlags.EnterReturnsTrue);
+
+        ImGui.Spacing();
+        DrawImportBaseDesignPicker();
 
         var error = importDesignInputError
             ?? (plugin.EorzeaCollection.Phase == EorzeaCollectionImportPhase.Error ? plugin.EorzeaCollection.ErrorMessage : null);
@@ -121,6 +133,49 @@ public partial class MainWindow
             ImGui.CloseCurrentPopup();
     }
 
+    // Optional: instead of building a brand-new equipment-only design, clone the picked design (gear,
+    // customizations, mods and its Aetherfit metadata included) and overwrite just the slots this import
+    // specifies - shared by both DoImportDesignCode and EorzeaCollectionService.ImportAsync below.
+    private void DrawImportBaseDesignPicker()
+    {
+        var preview = importBaseDesignId is { } id ? plugin.Configuration.ResolveDesignName(id) : "None - current appearance";
+
+        ImGui.TextDisabled("Base template:");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("A new design is always created. This just picks what it's based on: your "
+                + "current appearance (default), or an existing design - gear, customizations, mods and "
+                + "its tags/cover/favourite/persona links - with only the imported slots overwritten.");
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(250 * ImGuiHelpers.GlobalScale);
+        using var combo = ImRaii.Combo("##importBaseDesign", preview, ImGuiComboFlags.HeightLargest);
+        if (!combo.Success)
+            return;
+
+        if (ImGui.IsWindowAppearing())
+            ImGui.SetKeyboardFocusHere();
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##importBaseDesignFilter", "Filter by name...", ref importBaseDesignFilter, 64);
+        ImGui.Separator();
+
+        var matches = plugin.Configuration.CachedOutfits
+            .Select(kv => (Id: kv.Key, kv.Value.Name))
+            .Where(d => importBaseDesignFilter.Length == 0 || d.Name.Contains(importBaseDesignFilter, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var listHeight = Math.Min(matches.Count + 1, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
+        using var scroll = ImRaii.Child("##importBaseDesignList", new Vector2(-1, listHeight), false);
+
+        if (ImGui.Selectable("None - current appearance", importBaseDesignId == null))
+            importBaseDesignId = null;
+        ImGui.Separator();
+        foreach (var (matchId, name) in matches)
+        {
+            if (ImGui.Selectable($"{name}##importBaseDesign{matchId}", importBaseDesignId == matchId))
+                importBaseDesignId = matchId;
+        }
+    }
+
     private void DoImportDesignInput()
     {
         importDesignInputError = null;
@@ -128,14 +183,14 @@ public partial class MainWindow
 
         if (EorzeaCollectionService.IsEorzeaCollectionUrl(input))
         {
-            _ = plugin.EorzeaCollection.ImportAsync(plugin, input);
+            _ = plugin.EorzeaCollection.ImportAsync(plugin, input, importBaseDesignId);
             return;
         }
 
-        DoImportDesignCode(input);
+        DoImportDesignCode(input, importBaseDesignId);
     }
 
-    private void DoImportDesignCode(string code)
+    private void DoImportDesignCode(string code, Guid? baseDesignId)
     {
         if (!DesignShareCode.TryDecode(code, out var name, out var equipment, out var error))
         {
@@ -143,20 +198,37 @@ public partial class MainWindow
             return;
         }
 
-        var (stateResult, state) = plugin.Glamourer.GetState();
-        if (stateResult != GlamourerApiEc.Success || state == null)
+        JObject designJson;
+        if (baseDesignId is { } baseId)
         {
-            importDesignInputError = $"Couldn't read current Glamourer state ({stateResult}).";
-            return;
+            var baseJson = plugin.Glamourer.GetDesignJObject(baseId);
+            if (baseJson == null)
+            {
+                importDesignInputError = "Couldn't read that design's data from Glamourer.";
+                return;
+            }
+            designJson = GlamourerJsonSchema.OverlayEquipmentOntoDesign(baseJson, equipment!, null);
+        }
+        else
+        {
+            var (stateResult, state) = plugin.Glamourer.GetState();
+            if (stateResult != GlamourerApiEc.Success || state == null)
+            {
+                importDesignInputError = $"Couldn't read current Glamourer state ({stateResult}).";
+                return;
+            }
+            designJson = GlamourerJsonSchema.BuildEquipmentOnlyDesign(state, GlamourerJsonSchema.BuildEquipmentSection(equipment!));
         }
 
-        var designJson = GlamourerJsonSchema.BuildEquipmentOnlyDesign(state, GlamourerJsonSchema.BuildEquipmentSection(equipment!));
         var (addResult, newId) = plugin.Glamourer.AddDesign(designJson, name!);
         if (addResult != GlamourerApiEc.Success)
         {
             importDesignInputError = addResult.ToString();
             return;
         }
+
+        if (baseDesignId is { } sourceId)
+            plugin.DesignApply.DuplicateDesignMetadata(sourceId, newId);
 
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Imported \"{name}\" from a design code.");
         selectedDesign = newId;

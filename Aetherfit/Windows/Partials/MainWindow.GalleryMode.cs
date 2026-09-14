@@ -913,6 +913,18 @@ public partial class MainWindow
             hiddenVersion++;
         }
 
+        if (ImGui.MenuItem("Duplicate"))
+        {
+            var result = plugin.DesignApply.DuplicateDesign(design.Id);
+            if (result.Error != null)
+                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
+            else
+            {
+                RefreshDesigns();
+                selectedDesign = result.DesignId;
+            }
+        }
+
         ImGui.Separator();
 
         if (ImGui.MenuItem("Open in Edit Mode"))

@@ -316,6 +316,35 @@ internal static class GlamourerJsonSchema
         return design;
     }
 
+    // For "import gear onto an existing design": unlike BuildEquipmentOnlyDesign (which defers every
+    // slot the caller doesn't list), this only overwrites the slots actually given and leaves the rest
+    // of baseState - other equipment slots, Customize, mods - exactly as that design already had it.
+    public static JObject OverlayEquipmentOntoDesign(JObject baseState, IEnumerable<CachedEquipmentSlot> overlaySlots, CachedBonusItem? overlayBonus)
+    {
+        var design = (JObject)baseState.DeepClone();
+
+        var equipment = design["Equipment"] as JObject ?? (JObject)(design["Equipment"] = new JObject());
+        foreach (var slotData in overlaySlots)
+        {
+            equipment[slotData.Slot.ToString()] = new JObject
+            {
+                ["ItemId"] = (long)slotData.ItemId,
+                ["Stain"] = slotData.Stain,
+                ["Stain2"] = slotData.Stain2,
+                ["Apply"] = true,
+                ["ApplyStain"] = slotData.ApplyStain,
+            };
+        }
+
+        if (overlayBonus != null)
+        {
+            var bonus = design["Bonus"] as JObject ?? (JObject)(design["Bonus"] = new JObject());
+            bonus[overlayBonus.Slot] = new JObject { ["BonusId"] = (long)overlayBonus.ItemId, ["Apply"] = true };
+        }
+
+        return design;
+    }
+
     // Mutates state's own "Equipment" section in place: only slotData.Slot's item/stain will apply,
     // every other slot's Apply/ApplyStain is forced off. Hat/Weapon/Visor meta entries are left alone.
     public static void ApplySingleSlot(JObject state, CachedEquipmentSlot slotData)

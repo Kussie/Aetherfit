@@ -76,7 +76,7 @@ public sealed class EorzeaCollectionService
             && long.TryParse(segments[1], out id);
     }
 
-    public async Task ImportAsync(Plugin plugin, string url)
+    public async Task ImportAsync(Plugin plugin, string url, Guid? baseDesignId = null)
     {
         if (Phase == EorzeaCollectionImportPhase.Fetching)
             return;
@@ -174,16 +174,30 @@ public sealed class EorzeaCollectionService
 
         await Plugin.Framework.RunOnFrameworkThread(() =>
         {
-            var (stateResult, state) = plugin.Glamourer.GetState();
-            if (stateResult != GlamourerApiEc.Success || state == null)
+            JObject designJson;
+            if (baseDesignId is { } baseId)
             {
-                addError = $"Couldn't read current Glamourer state ({stateResult}).";
-                return;
+                var baseJson = plugin.Glamourer.GetDesignJObject(baseId);
+                if (baseJson == null)
+                {
+                    addError = "Couldn't read that design's data from Glamourer.";
+                    return;
+                }
+                designJson = GlamourerJsonSchema.OverlayEquipmentOntoDesign(baseJson, equipment, bonusItem);
             }
+            else
+            {
+                var (stateResult, state) = plugin.Glamourer.GetState();
+                if (stateResult != GlamourerApiEc.Success || state == null)
+                {
+                    addError = $"Couldn't read current Glamourer state ({stateResult}).";
+                    return;
+                }
 
-            var designJson = GlamourerJsonSchema.BuildEquipmentOnlyDesign(state, GlamourerJsonSchema.BuildEquipmentSection(equipment));
-            if (bonusItem != null)
-                GlamourerJsonSchema.ApplySingleBonusItem(designJson, bonusItem);
+                designJson = GlamourerJsonSchema.BuildEquipmentOnlyDesign(state, GlamourerJsonSchema.BuildEquipmentSection(equipment));
+                if (bonusItem != null)
+                    GlamourerJsonSchema.ApplySingleBonusItem(designJson, bonusItem);
+            }
 
             (addResult, newId) = plugin.Glamourer.AddDesign(designJson, name);
         });
@@ -201,6 +215,9 @@ public sealed class EorzeaCollectionService
 
         await Plugin.Framework.RunOnFrameworkThread(() =>
         {
+            if (baseDesignId is { } sourceId)
+                plugin.DesignApply.DuplicateDesignMetadata(sourceId, newId);
+
             Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Imported \"{name}\" from Eorzea Collection.");
             foreach (var warning in warnings)
                 Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{warning}");

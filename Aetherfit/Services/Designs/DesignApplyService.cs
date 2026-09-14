@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Utils;
+using Glamourer.Api.Enums;
 using Penumbra.Api.Enums;
 
 namespace Aetherfit.Services.Designs;
@@ -526,6 +527,55 @@ public sealed class DesignApplyService
         var pick = PickRandomDesign(matching);
         ApplyDesignById(pick);
         return ApplyResult.Ok(pick);
+    }
+
+    // A new Glamourer design with the same JSON as sourceId, plus all of sourceId's Aetherfit metadata.
+    public ApplyResult DuplicateDesign(Guid sourceId, string? newName = null)
+    {
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(sourceId, out var source))
+            return Fail("Design not found.");
+
+        var json = plugin.Glamourer.GetDesignJObject(sourceId);
+        if (json == null)
+            return Fail("Couldn't read that design's data from Glamourer.");
+
+        var (result, newId) = plugin.Glamourer.AddDesign(json, newName ?? $"{source.Name} (Copy)");
+        if (result != GlamourerApiEc.Success)
+            return Fail(result.ToString());
+
+        DuplicateDesignMetadata(sourceId, newId);
+        return ApplyResult.Ok(newId);
+    }
+
+    // The metadata half of DuplicateDesign, split out so the Eorzea Collection / design code importers
+    // can reuse it after building their own merged Glamourer JSON instead of a plain clone.
+    public void DuplicateDesignMetadata(Guid sourceId, Guid newId)
+    {
+        var config = plugin.Configuration;
+
+        if (config.DesignMeta.TryGetValue(sourceId, out var meta))
+        {
+            config.DesignMeta[newId] = new LocalDesignMeta
+            {
+                Description = meta.Description,
+                Tags = new List<string>(meta.Tags),
+            };
+        }
+
+        if (config.FavouriteDesigns.Contains(sourceId))
+            config.FavouriteDesigns.Add(newId);
+        if (config.HiddenDesigns.Contains(sourceId))
+            config.HiddenDesigns.Add(newId);
+
+        if (plugin.ImageStorage.GetCoverPath(sourceId) is { } coverPath)
+            plugin.ImageStorage.SetCover(newId, coverPath);
+
+        foreach (var settings in config.CharacterLoginSettings.Values)
+            foreach (var persona in settings.Personas)
+                if (persona.AssignedDesignIds.Contains(sourceId))
+                    persona.AssignedDesignIds.Add(newId);
+
+        config.Save();
     }
 
     public void RevertAppearance()
