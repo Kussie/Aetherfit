@@ -385,6 +385,8 @@ public partial class MainWindow
             return;
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        if (settings.Personas.Count == 0)
+            return;
 
         ImGui.Separator();
         if (!Pills.DrawCollapsibleSubheader($"Personas ({settings.Personas.Count})", ref personasSectionOpen))
