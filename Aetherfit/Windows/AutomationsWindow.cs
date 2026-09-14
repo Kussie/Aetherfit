@@ -532,7 +532,7 @@ public sealed class AutomationsWindow : Window, IDisposable
             ImGui.Spacing();
         }
 
-        if (ImGui.Button("Add Condition##addCondition"))
+        if (MainWindow.IconTextButton(FontAwesomeIcon.Plus, "Add Condition"))
             ImGui.OpenPopup("##addConditionPopup");
 
         using (var popup = ImRaii.Popup("##addConditionPopup"))
