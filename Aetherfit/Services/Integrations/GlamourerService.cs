@@ -129,9 +129,7 @@ public sealed class GlamourerService : IDisposable
                 return null;
 
             var outfit = ParseOutfit(jobject);
-            // GetDesignJObject doesn't carry CreationDate/LastEdit - they're file-level bookkeeping,
-            // not part of the design state the IPC is built to expose - so read them off Glamourer's
-            // own design file instead, the same one PushMetadataToGlamourer writes to.
+            // GetDesignJObject doesn't carry CreationDate/LastEdit - read them off the design file instead.
             if (outfit.CreatedAt is null || outfit.LastEdit is null)
             {
                 var (created, edited) = ReadDatesFromDesignFile(id);
@@ -289,11 +287,8 @@ public sealed class GlamourerService : IDisposable
     // StateFinalized-suppression to guard against.
     public (GlamourerApiEc Result, Guid NewId) AddDesign(JObject designJson, string name)
     {
-        // Neither a live GetState() snapshot nor GetDesignJObject's IPC shape carries these (see
-        // FetchDesignMetadata's file fallback above), and Glamourer itself doesn't backfill them for a
-        // design added through AddDesign - only stamping them at creation the way its own UI does. Every
-        // caller here is creating a genuinely new design (including a duplicate - it's a new entry in
-        // Glamourer's list, not an edit of the source), so "now" is correct for both.
+        // Every caller here is creating a genuinely new design, even a duplicate - stamp fresh dates
+        // since neither GetState() nor GetDesignJObject's shape carries them.
         var now = DateTimeOffset.Now;
         if (designJson["CreationDate"] == null)
             designJson["CreationDate"] = now;

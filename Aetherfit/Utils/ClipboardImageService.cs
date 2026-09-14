@@ -6,11 +6,8 @@ using SixLabors.ImageSharp.PixelFormats;
 
 namespace Aetherfit.Utils;
 
-// ImGui.SetClipboardText only ever writes plain text - there's no ImGui/Dalamud API for putting an
-// actual image on the Windows clipboard, so this goes straight to Win32. Sets both the registered
-// "PNG" format (what Chromium-based apps like Discord's desktop client read first, alpha and all) and
-// a legacy CF_DIB bitmap as a fallback for older/native apps that don't know the PNG format - the same
-// two-format dance WinForms' own Clipboard.SetImage does internally.
+// No ImGui/Dalamud API puts an image on the clipboard, so this goes straight to Win32. Sets both the
+// registered "PNG" format (Chromium apps like Discord read this first) and legacy CF_DIB as a fallback.
 internal static class ClipboardImageService
 {
     private const uint CfDib = 8;

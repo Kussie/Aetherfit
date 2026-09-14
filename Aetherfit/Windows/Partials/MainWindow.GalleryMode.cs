@@ -396,8 +396,7 @@ public partial class MainWindow
         DrawCoverGridRange(visible, 0, visible.Count, columns, thumbWidth, thumbHeight);
     }
 
-    // A "what's new" shelf, most-recently-created first regardless of the gallery's own sort field -
-    // purely a preview strip, so these designs still appear again in their normal place below.
+    // Preview strip only - these designs still appear again in their normal place below.
     private void DrawRecentlyAddedGallerySection()
     {
         var cutoff = DateTimeOffset.Now - TimeSpan.FromDays(RecentlyAddedDays);

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Aetherfit.Services.Integrations;
@@ -206,11 +207,29 @@ public partial class MainWindow
                 if (HeaderIconButton("shareImageCard", FontAwesomeIcon.Clipboard, null, new Vector2(cardW, frameH)))
                 {
                     var coverPath = plugin.ImageStorage.GetCoverPath(id);
-                    using var card = plugin.ShareCard.RenderCard(details.Name, details.Tags, details.Description, coverPath);
+                    var modNames = details.Mods.Where(m => m.State == ModState.Enabled)
+                        .OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).Select(m => m.Name).ToList();
+                    using var card = plugin.ShareCard.RenderCard(details.Name, details.Tags, modNames, details.Description, coverPath);
                     if (ClipboardImageService.TryCopyToClipboard(card))
+                    {
                         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Copied \"{details.Name}\" as an image card to the clipboard.");
+                        Plugin.NotificationManager.AddNotification(new Notification
+                        {
+                            Content = "Image copied to clipboard",
+                            Title = "Aetherfit",
+                            Type = NotificationType.Success,
+                        });
+                    }
                     else
+                    {
                         Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to copy the image card to the clipboard.");
+                        Plugin.NotificationManager.AddNotification(new Notification
+                        {
+                            Content = "Failed to copy image to clipboard",
+                            Title = "Aetherfit",
+                            Type = NotificationType.Error,
+                        });
+                    }
                 }
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Copy a shareable image card (cover, name, tags, description) to the clipboard");

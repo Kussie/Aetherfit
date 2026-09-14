@@ -43,16 +43,14 @@ public sealed class ShareCardService
         return SystemFonts.Families.First().CreateFont(size, style);
     }
 
-    // Tags/description are optional and simply omitted - same "no row if absent" convention as the
-    // design detail pane's own footer (MainWindow.EditMode.cs).
-    public Image<Rgba32> RenderCard(string name, IReadOnlyList<string> tags, string? description, string? coverPath)
+    // Tags/mods/description are optional and simply omitted, like the design detail pane's own footer.
+    public Image<Rgba32> RenderCard(string name, IReadOnlyList<string> tags, IReadOnlyList<string> mods,
+        string? description, string? coverPath)
     {
         var contentWidth = CardWidth - Margin * 2;
 
-        // The image box is sized to the cover's own aspect ratio (clamped to a sane range) rather than
-        // a fixed 16:9 crop - a crop was cutting off most of a tall/portrait screenshot (e.g. a cropped
-        // full-body shot) to force it into a landscape box. Sized this way, the whole thumbnail always
-        // fits with nothing trimmed off.
+        // Box height follows the cover's own aspect ratio (clamped) rather than a fixed crop, so the
+        // whole thumbnail always fits.
         Image<Rgba32>? cover = null;
         var imageHeight = PlaceholderImageHeight;
         if (coverPath != null && File.Exists(coverPath))
@@ -62,8 +60,7 @@ public sealed class ShareCardService
                 cover = Image.Load<Rgba32>(coverPath);
                 var aspect = (double)cover.Width / cover.Height;
                 imageHeight = Math.Clamp((int)Math.Round(contentWidth / aspect), MinImageHeight, MaxImageHeight);
-                // Pad (not a plain Resize) so an aspect ratio extreme enough to hit the clamp above
-                // still fits without distortion - it just picks up thin letterbox bars instead.
+                // Pad, not a plain Resize - avoids distortion if the clamp above kicks in.
                 cover.Mutate(ctx => ctx.Resize(new ResizeOptions
                 {
                     Size = new Size(contentWidth, imageHeight),
@@ -82,7 +79,7 @@ public sealed class ShareCardService
 
         try
         {
-            return RenderCardWithCover(name, tags, description, cover, imageHeight, contentWidth);
+            return RenderCardWithCover(name, tags, mods, description, cover, imageHeight, contentWidth);
         }
         finally
         {
@@ -90,14 +87,19 @@ public sealed class ShareCardService
         }
     }
 
-    private Image<Rgba32> RenderCardWithCover(string name, IReadOnlyList<string> tags, string? description,
-        Image<Rgba32>? cover, int imageHeight, int contentWidth)
+    private Image<Rgba32> RenderCardWithCover(string name, IReadOnlyList<string> tags, IReadOnlyList<string> mods,
+        string? description, Image<Rgba32>? cover, int imageHeight, int contentWidth)
     {
         var fittedName = FitSingleLine(string.IsNullOrWhiteSpace(name) ? "(unnamed)" : name, NameFont, contentWidth);
 
         var tagsText = tags.Count > 0 ? string.Join("   •   ", tags) : null;
         var tagsHeight = tagsText != null
             ? (int)Math.Ceiling(TextMeasurer.MeasureSize(tagsText, new RichTextOptions(TagsFont) { WrappingLength = contentWidth }).Height)
+            : 0;
+
+        var modsText = mods.Count > 0 ? "Mods: " + string.Join("   •   ", mods) : null;
+        var modsHeight = modsText != null
+            ? (int)Math.Ceiling(TextMeasurer.MeasureSize(modsText, new RichTextOptions(TagsFont) { WrappingLength = contentWidth }).Height)
             : 0;
 
         var descText = string.IsNullOrWhiteSpace(description) ? null : CapLength(description!, DescriptionMaxChars);
@@ -116,6 +118,9 @@ public sealed class ShareCardService
         var tagsY = y;
         if (tagsText != null)
             y += tagsHeight + 14;
+        var modsY = y;
+        if (modsText != null)
+            y += modsHeight + 14;
         var descY = y;
         if (descText != null)
             y += descHeight + 14;
@@ -134,6 +139,12 @@ public sealed class ShareCardService
         {
             var tagsDrawOptions = new RichTextOptions(TagsFont) { WrappingLength = contentWidth, Origin = new PointF(Margin, tagsY) };
             canvas.Mutate(ctx => ctx.DrawText(tagsDrawOptions, tagsText, MutedTextColor));
+        }
+
+        if (modsText != null)
+        {
+            var modsDrawOptions = new RichTextOptions(TagsFont) { WrappingLength = contentWidth, Origin = new PointF(Margin, modsY) };
+            canvas.Mutate(ctx => ctx.DrawText(modsDrawOptions, modsText, MutedTextColor));
         }
 
         if (descText != null)
