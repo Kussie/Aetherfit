@@ -390,6 +390,20 @@ public partial class MainWindow : Window, IDisposable
                 outfit.LastAppliedAt = meta.LastApplied;
                 outfit.WornCount = meta.WornCount;
 
+                // Glamourer only ever stamps CreationDate/LastEdit itself when a design is created
+                // through its own UI - one made via IPC (AddDesign, used by every Aetherfit import/create
+                // flow) comes back with neither, and Glamourer never backfills them later either, even
+                // once the design is edited natively. Falling back to "the first time Aetherfit ever saw
+                // this design" is the closest we can get on our own, and - once recorded - sticks from
+                // then on instead of drifting on every refresh.
+                outfit.CreatedAt ??= plugin.Configuration.GetLocalCreatedAt(aetherfitId);
+                if (outfit.CreatedAt is null)
+                {
+                    plugin.Configuration.RecordDesignCreated(aetherfitId);
+                    outfit.CreatedAt = plugin.Configuration.GetLocalCreatedAt(aetherfitId);
+                }
+                outfit.LastEdit ??= outfit.CreatedAt;
+
                 if (outfit.Source == DesignSource.Glamourer
                     && plugin.Configuration.GearImportOverrides.TryGetValue(aetherfitId, out var gearOverride))
                 {
@@ -449,6 +463,12 @@ public partial class MainWindow : Window, IDisposable
             .ToList();
         foreach (var stale in staleMeta)
             plugin.Configuration.DesignMeta.Remove(stale);
+
+        var staleLocalCreatedAt = plugin.Configuration.DesignLocalCreatedAt.Keys
+            .Where(k => !validIds.Contains(k))
+            .ToList();
+        foreach (var stale in staleLocalCreatedAt)
+            plugin.Configuration.DesignLocalCreatedAt.Remove(stale);
 
         var staleGearOverrides = plugin.Configuration.GearImportOverrides.Keys
             .Where(k => !validIds.Contains(k))

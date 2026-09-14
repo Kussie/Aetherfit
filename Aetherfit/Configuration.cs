@@ -240,6 +240,11 @@ public class Configuration : IPluginConfiguration
 
     public Dictionary<Guid, LocalDesignMeta> DesignMeta { get; set; } = new();
 
+    // Fallback "Created" date for designs Glamourer itself never stamped a CreationDate/LastEdit for
+    // (see RecordDesignCreated) - the moment Aetherfit first saw the design, not necessarily when it
+    // was actually created.
+    public Dictionary<Guid, DateTimeOffset> DesignLocalCreatedAt { get; set; } = new();
+
     // Survives CachedOutfits being wholly rebuilt on refresh, same as DesignMeta above.
     public Dictionary<Guid, GearImportOverride> GearImportOverrides { get; set; } = new();
 
@@ -456,6 +461,19 @@ public class Configuration : IPluginConfiguration
         };
         DesignMeta[id] = seeded;
         return seeded;
+    }
+
+    public DateTimeOffset? GetLocalCreatedAt(Guid id) =>
+        DesignLocalCreatedAt.TryGetValue(id, out var dt) ? dt : null;
+
+    // Idempotent - only the first call for a given id actually stamps/saves anything, so it's safe to
+    // call on every refresh tick for a design that still has no real date.
+    public void RecordDesignCreated(Guid id)
+    {
+        if (DesignLocalCreatedAt.ContainsKey(id))
+            return;
+        DesignLocalCreatedAt[id] = DateTimeOffset.UtcNow;
+        Save();
     }
 
     // Bumped on every RecordLastApplied so gallery sort/filter caches (which key off the design-list

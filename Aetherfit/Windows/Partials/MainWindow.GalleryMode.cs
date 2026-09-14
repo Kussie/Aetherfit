@@ -64,6 +64,8 @@ public partial class MainWindow
     private bool favouritesSectionOpen = true;
     private bool otherDesignsSectionOpen = true;
     private bool personasSectionOpen = true;
+    private bool recentlyAddedSectionOpen = true;
+    private const int RecentlyAddedDays = 7;
 
     private void DrawCoverModePane()
     {
@@ -373,6 +375,7 @@ public partial class MainWindow
                     ImGui.Spacing();
                 }
 
+                DrawRecentlyAddedGallerySection();
                 DrawPersonasGallerySection();
 
                 if (splitIdx < visible.Count)
@@ -388,8 +391,31 @@ public partial class MainWindow
             }
         }
 
+        DrawRecentlyAddedGallerySection();
         DrawPersonasGallerySection();
         DrawCoverGridRange(visible, 0, visible.Count, columns, thumbWidth, thumbHeight);
+    }
+
+    // A "what's new" shelf, most-recently-created first regardless of the gallery's own sort field -
+    // purely a preview strip, so these designs still appear again in their normal place below.
+    private void DrawRecentlyAddedGallerySection()
+    {
+        var cutoff = DateTimeOffset.Now - TimeSpan.FromDays(RecentlyAddedDays);
+        var recent = cachedVisible
+            .Where(l => GetCreatedAt(l.Id) is { } created && created >= cutoff)
+            .OrderByDescending(l => GetCreatedAt(l.Id))
+            .ToList();
+
+        if (recent.Count == 0)
+            return;
+
+        ImGui.Separator();
+        if (!Pills.DrawCollapsibleSubheader($"Recently Added ({recent.Count})", ref recentlyAddedSectionOpen))
+            return;
+
+        ImGui.Spacing();
+        var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
+        DrawCoverGridRange(recent, 0, recent.Count, columns, thumbWidth, thumbHeight);
     }
 
     // A lightweight card row, not the full editor - clicking a persona jumps to its rich detail view

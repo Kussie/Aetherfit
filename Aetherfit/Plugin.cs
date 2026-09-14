@@ -72,6 +72,7 @@ public sealed class Plugin : IDalamudPlugin
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
     public LookBookExportService LookBookExport { get; init; }
+    public ShareCardService ShareCard { get; init; }
     public TagModelStore TagModel { get; init; }
     public TagSuggestionService TagSuggestions { get; init; }
     public GalleryLiveShareService LiveShare { get; init; }
@@ -224,6 +225,7 @@ public sealed class Plugin : IDalamudPlugin
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
         LookBookExport = new LookBookExportService(Configuration, ImageStorage);
+        ShareCard = new ShareCardService();
         TagModel = new TagModelStore(Configuration);
         TagSuggestions = new TagSuggestionService(TagModel, Configuration);
         LiveShare = new GalleryLiveShareService(this);

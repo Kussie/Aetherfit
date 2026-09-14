@@ -97,10 +97,12 @@ public partial class MainWindow
 
                 // Measure the action cluster first so the title can be ellipsized to the space that remains.
                 var frameH = ImGui.GetFrameHeight();
-                float starW, eyeW, revealW, linkW, syncW, importW, importGearW, bulkLayerW, variantW, shareW;
+                float starW, eyeW, revealW, linkW, syncW, importW, importGearW, bulkLayerW, variantW, shareW, cardW;
                 using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
                 {
                     shareW = ImGui.CalcTextSize(FontAwesomeIcon.Share.ToIconString()).X
+                          + (style.FramePadding.X * 2);
+                    cardW = ImGui.CalcTextSize(FontAwesomeIcon.Clipboard.ToIconString()).X
                           + (style.FramePadding.X * 2);
                     starW = ImGui.CalcTextSize(FontAwesomeIcon.Star.ToIconString()).X
                           + (style.FramePadding.X * 2);
@@ -199,6 +201,19 @@ public partial class MainWindow
                 }
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Copy as a shareable design code (gear only)");
+
+                ImGui.SameLine(0, inner);
+                if (HeaderIconButton("shareImageCard", FontAwesomeIcon.Clipboard, null, new Vector2(cardW, frameH)))
+                {
+                    var coverPath = plugin.ImageStorage.GetCoverPath(id);
+                    using var card = plugin.ShareCard.RenderCard(details.Name, details.Tags, details.Description, coverPath);
+                    if (ClipboardImageService.TryCopyToClipboard(card))
+                        Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Copied \"{details.Name}\" as an image card to the clipboard.");
+                    else
+                        Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to copy the image card to the clipboard.");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Copy a shareable image card (cover, name, tags, description) to the clipboard");
 
                 if (isGlamourer)
                 {
