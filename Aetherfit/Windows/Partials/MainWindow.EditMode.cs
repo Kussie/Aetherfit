@@ -72,9 +72,10 @@ public partial class MainWindow
             return;
         }
 
-        // Always exactly two rows now: Created/Last worn, then Last edited/Source - Created and Last
-        // edited are omitted when absent, but Last worn and Source always occupy their row regardless.
-        var datesBlockHeight = 2 * ImGui.GetTextLineHeightWithSpacing();
+        // Always exactly three rows now: Worn count above Last worn, then Created/Last worn, then Last
+        // edited/Source - Created and Last edited are omitted when absent, but Worn count, Last worn and
+        // Source always occupy their row regardless.
+        var datesBlockHeight = 3 * ImGui.GetTextLineHeightWithSpacing();
 
         var bodyHeight = Math.Max(0, ImGui.GetContentRegionAvail().Y - datesBlockHeight);
 
@@ -352,6 +353,8 @@ public partial class MainWindow
         // Last worn is always shown ("Never" rather than hidden - it's itself a meaningful, common
         // state), paired on a row with Created above Last edited/Source below, mirroring how Created
         // and Last worn both describe "when," same as Last edited and Source both sit on the bottom row.
+        var wornCountText = details.WornCount == 1 ? "Worn 1 time" : $"Worn {details.WornCount} times";
+
         var lastWornText = details.LastAppliedAt is { } worn ? $"Last worn: {FormatFriendlyRelative(worn)}" : "Last worn: Never";
         var lastWornTooltip = details.LastAppliedAt is { } w ? FormatFullDate(w) : null;
 
@@ -370,6 +373,7 @@ public partial class MainWindow
         }
 
         ImGui.Indent();
+        DrawFooterRow(null, null, wornCountText, null);
         DrawFooterRow(createdText, createdTooltip, lastWornText, lastWornTooltip);
         DrawFooterRow(lastEditedText, lastEditedTooltip, sourceText, null);
         ImGui.Unindent();

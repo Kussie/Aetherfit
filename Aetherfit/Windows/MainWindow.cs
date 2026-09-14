@@ -388,6 +388,7 @@ public partial class MainWindow : Window, IDisposable
                 outfit.Description = meta.Description;
                 outfit.Tags = new List<string>(meta.Tags);
                 outfit.LastAppliedAt = meta.LastApplied;
+                outfit.WornCount = meta.WornCount;
 
                 if (outfit.Source == DesignSource.Glamourer
                     && plugin.Configuration.GearImportOverrides.TryGetValue(aetherfitId, out var gearOverride))

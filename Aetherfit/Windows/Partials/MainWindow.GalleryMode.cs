@@ -19,7 +19,7 @@ namespace Aetherfit.Windows;
 
 public partial class MainWindow
 {
-    private enum GallerySortField { Name, LastModified, Created, LastWorn }
+    private enum GallerySortField { Name, LastModified, Created, LastWorn, WornCount }
 
     private const string BulkAddTagPopupId = "BulkAddDesignTagPopup";
 
@@ -198,7 +198,7 @@ public partial class MainWindow
 
         ImGui.SetNextItemWidth(190f * scale);
         var fieldIdx = (int)gallerySortField;
-        var fieldOptions = new[] { "Name (alphabetical)", "Last modified", "Created", "Last worn" };
+        var fieldOptions = new[] { "Name (alphabetical)", "Last modified", "Created", "Last worn", "Times worn" };
         if (ImGui.Combo("##gallerySortField", ref fieldIdx, fieldOptions, fieldOptions.Length))
             gallerySortField = (GallerySortField)fieldIdx;
 
@@ -536,6 +536,8 @@ public partial class MainWindow
                     return CompareDates(GetCreatedAt(a.Id), GetCreatedAt(b.Id), asc);
                 case GallerySortField.LastWorn:
                     return CompareDates(GetLastAppliedAt(a.Id), GetLastAppliedAt(b.Id), asc);
+                case GallerySortField.WornCount:
+                    return CompareCounts(GetWornCount(a.Id), GetWornCount(b.Id), asc);
                 default:
                     var cmp = NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName);
                     return asc ? cmp : -cmp;
@@ -552,6 +554,9 @@ public partial class MainWindow
     private DateTimeOffset? GetLastAppliedAt(Guid id) =>
         plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.LastAppliedAt : null;
 
+    private int GetWornCount(Guid id) =>
+        plugin.Configuration.CachedOutfits.TryGetValue(id, out var c) ? c.WornCount : 0;
+
     // Missing dates always sink to the bottom, regardless of direction.
     private static int CompareDates(DateTimeOffset? a, DateTimeOffset? b, bool ascending)
     {
@@ -559,6 +564,12 @@ public partial class MainWindow
         if (a is null) return 1;
         if (b is null) return -1;
         var cmp = a.Value.CompareTo(b.Value);
+        return ascending ? cmp : -cmp;
+    }
+
+    private static int CompareCounts(int a, int b, bool ascending)
+    {
+        var cmp = a.CompareTo(b);
         return ascending ? cmp : -cmp;
     }
 

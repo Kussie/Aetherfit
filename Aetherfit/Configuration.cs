@@ -475,7 +475,9 @@ public class Configuration : IPluginConfiguration
         }
         var now = DateTimeOffset.UtcNow;
         meta.LastApplied = now;
+        meta.WornCount++;
         outfit.LastAppliedAt = now;
+        outfit.WornCount = meta.WornCount;
         LastAppliedVersion++;
         Save();
     }
@@ -803,6 +805,7 @@ public class LocalDesignMeta
     public string? Description { get; set; }
     public List<string> Tags { get; set; } = new();
     public DateTimeOffset? LastApplied { get; set; }
+    public int WornCount { get; set; }
 }
 
 [Serializable]
@@ -852,6 +855,7 @@ public class CachedOutfit
     public DateTimeOffset? LastEdit { get; set; }
 
     public DateTimeOffset? LastAppliedAt { get; set; }
+    public int WornCount { get; set; }
 
     public List<CachedEquipmentSlot> Equipment { get; set; } = new();
     public List<CachedBonusItem> BonusItems { get; set; } = new();

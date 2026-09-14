@@ -62,6 +62,6 @@ public sealed class GlamourerDesignFileService
         }
     }
 
-    private static string ResolveDesignFilePath(Guid id)
+    internal static string ResolveDesignFilePath(Guid id)
         => Path.Combine(Plugin.PluginInterface.ConfigDirectory.Parent!.FullName, "Glamourer", "designs", $"{id}.json");
 }

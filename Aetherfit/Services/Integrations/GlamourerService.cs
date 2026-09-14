@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Aetherfit.Services.Game;
 using Aetherfit.Utils;
@@ -124,12 +125,43 @@ public sealed class GlamourerService : IDisposable
         try
         {
             var jobject = getDesignJObject.Invoke(id);
-            return jobject != null ? ParseOutfit(jobject) : null;
+            if (jobject == null)
+                return null;
+
+            var outfit = ParseOutfit(jobject);
+            // GetDesignJObject doesn't carry CreationDate/LastEdit - they're file-level bookkeeping,
+            // not part of the design state the IPC is built to expose - so read them off Glamourer's
+            // own design file instead, the same one PushMetadataToGlamourer writes to.
+            if (outfit.CreatedAt is null || outfit.LastEdit is null)
+            {
+                var (created, edited) = ReadDatesFromDesignFile(id);
+                outfit.CreatedAt ??= created;
+                outfit.LastEdit ??= edited;
+            }
+            return outfit;
         }
         catch (Exception ex)
         {
             Plugin.Log.Warning(ex, "Failed to cache metadata for design {Id}", id);
             return null;
+        }
+    }
+
+    private static (DateTimeOffset? Created, DateTimeOffset? Edited) ReadDatesFromDesignFile(Guid id)
+    {
+        try
+        {
+            var path = GlamourerDesignFileService.ResolveDesignFilePath(id);
+            if (!File.Exists(path))
+                return (null, null);
+
+            var obj = JObject.Parse(File.ReadAllText(path));
+            return (ReadDateTimeOffset(obj["CreationDate"]), ReadDateTimeOffset(obj["LastEdit"]));
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to read Created/Last edited from design file for {Id}", id);
+            return (null, null);
         }
     }
 
@@ -257,6 +289,17 @@ public sealed class GlamourerService : IDisposable
     // StateFinalized-suppression to guard against.
     public (GlamourerApiEc Result, Guid NewId) AddDesign(JObject designJson, string name)
     {
+        // Neither a live GetState() snapshot nor GetDesignJObject's IPC shape carries these (see
+        // FetchDesignMetadata's file fallback above), and Glamourer itself doesn't backfill them for a
+        // design added through AddDesign - only stamping them at creation the way its own UI does. Every
+        // caller here is creating a genuinely new design (including a duplicate - it's a new entry in
+        // Glamourer's list, not an edit of the source), so "now" is correct for both.
+        var now = DateTimeOffset.Now;
+        if (designJson["CreationDate"] == null)
+            designJson["CreationDate"] = now;
+        if (designJson["LastEdit"] == null)
+            designJson["LastEdit"] = now;
+
         var result = addDesign.Invoke(designJson.ToString(Formatting.None), name, out var newId);
         if (result != GlamourerApiEc.Success)
             Plugin.Log.Warning("Failed to add Glamourer design {Name}: {Result}", name, result);
