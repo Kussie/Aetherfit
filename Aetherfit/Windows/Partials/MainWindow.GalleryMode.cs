@@ -290,18 +290,28 @@ public partial class MainWindow
         {
             coverGroupByTags = false;
             coverGroupBySource = false;
+            coverGroupByFolder = false;
         }
         ImGui.SameLine();
         if (ImGui.Checkbox("Group by tags", ref coverGroupByTags) && coverGroupByTags)
         {
             coverGroupByJob = false;
             coverGroupBySource = false;
+            coverGroupByFolder = false;
         }
         ImGui.SameLine();
         if (ImGui.Checkbox("Group by source", ref coverGroupBySource) && coverGroupBySource)
         {
             coverGroupByJob = false;
             coverGroupByTags = false;
+            coverGroupByFolder = false;
+        }
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Group by Folder", ref coverGroupByFolder) && coverGroupByFolder)
+        {
+            coverGroupByJob = false;
+            coverGroupByTags = false;
+            coverGroupBySource = false;
         }
         ImGui.SameLine();
         ImGui.Checkbox("Show variants separately", ref coverUnstackVariants);
@@ -335,6 +345,11 @@ public partial class MainWindow
         if (coverGroupBySource)
         {
             DrawCoverGroupedBySource();
+            return;
+        }
+        if (coverGroupByFolder)
+        {
+            DrawCoverGroupedByFolder();
             return;
         }
 

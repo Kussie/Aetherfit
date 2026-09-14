@@ -67,6 +67,7 @@ public partial class MainWindow : Window, IDisposable
     private bool coverGroupByJob;
     private bool coverGroupByTags;
     private bool coverGroupBySource;
+    private bool coverGroupByFolder;
     // When on, variants show as their own flat cells instead of stacked behind their parent's.
     private bool coverUnstackVariants;
 
