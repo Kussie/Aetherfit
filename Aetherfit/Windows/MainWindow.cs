@@ -757,6 +757,9 @@ public partial class MainWindow : Window, IDisposable
 
         if (ImGui.MenuItem("Design Layer Report"))
             plugin.ToggleDesignLayerReportUi();
+
+        if (ImGui.MenuItem("Wardrobe Analytics"))
+            plugin.ToggleWardrobeAnalyticsUi();
     }
 
     // The "Share your Designs" dropdown: export everything, or just the designs left after the active filters.
