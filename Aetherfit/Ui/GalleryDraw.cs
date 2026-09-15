@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading.Tasks;
+using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
@@ -92,20 +95,19 @@ internal static class GalleryDraw
         return (size, offset);
     }
 
-    // Draws the thumbnail in whichever fit mode is set. Leaves the image (or, for letterbox, the hit-button) as the
-    // last item so the caller can check IsItemHovered() right after.
-    public static void DrawFittedImage(IDalamudTextureWrap tex, Vector2 thumbStart, Vector2 thumbVec,
+    // Draws the thumbnail in whichever fit mode is set (letterboxBarColor only applies to Letterbox). Leaves
+    // the image (or, for letterbox, the hit-button) as the last item so the caller can check IsItemHovered().
+    public static void DrawFittedImage(IDalamudTextureWrap tex, Vector4 letterboxBarColor, Vector2 thumbStart, Vector2 thumbVec,
         float thumbWidth, float thumbHeight, float containerAspect, GalleryFitMode fitMode)
     {
         switch (fitMode)
         {
             case GalleryFitMode.Letterbox:
             {
-                // Letterbox the image to fit, painting bars in the placeholder colour.
                 ImGui.InvisibleButton("##cellHit", thumbVec);
                 var dl = ImGui.GetWindowDrawList();
                 dl.AddRectFilled(thumbStart, thumbStart + thumbVec,
-                    ImGui.ColorConvertFloat4ToU32(UiTheme.PlaceholderBg), ThumbRounding);
+                    ImGui.ColorConvertFloat4ToU32(letterboxBarColor), ThumbRounding);
 
                 var (fitted, offset) = ComputeFitSize(thumbVec, tex.Width, tex.Height);
                 dl.AddImage(tex.Handle, thumbStart + offset, thumbStart + offset + fitted);
@@ -136,6 +138,47 @@ internal static class GalleryDraw
                 break;
             }
         }
+    }
+
+    // What colour DrawFittedImage's Letterbox case should paint its bars, per Configuration.GalleryLetterboxColorMode.
+    public static Vector4 ResolveLetterboxBarColor(Configuration config, string? imagePath) => config.GalleryLetterboxColorMode switch
+    {
+        GalleryLetterboxColorMode.Custom => config.GalleryLetterboxCustomColor,
+        GalleryLetterboxColorMode.AutoDetect => (imagePath != null ? TryGetDetectedBackgroundColor(imagePath) : null) ?? UiTheme.PlaceholderBg,
+        _ => UiTheme.PlaceholderBg,
+    };
+
+    // ImageBackgroundColor reads the image off disk, so results are cached per path and detection is
+    // kicked off on a background thread - callers get null (the placeholder colour) until it's ready.
+    private static readonly ConcurrentDictionary<string, Vector4?> DetectedBackgroundCache = new();
+    private static readonly ConcurrentDictionary<string, byte> DetectionInFlight = new();
+
+    private static Vector4? TryGetDetectedBackgroundColor(string imagePath)
+    {
+        if (DetectedBackgroundCache.TryGetValue(imagePath, out var cached))
+            return cached;
+
+        if (DetectionInFlight.TryAdd(imagePath, 0))
+        {
+            Task.Run(() =>
+            {
+                try
+                {
+                    DetectedBackgroundCache[imagePath] = ImageBackgroundColor.DetectSolidEdgeColor(imagePath);
+                }
+                catch (Exception ex)
+                {
+                    // Not cached - e.g. the file was still being written when this ran. Next frame's
+                    // request tries again instead of giving up on this image forever.
+                    Plugin.Log.Warning(ex, "Failed to sample background colour for {Path}", imagePath);
+                }
+                finally
+                {
+                    DetectionInFlight.TryRemove(imagePath, out _);
+                }
+            });
+        }
+        return null;
     }
 
     // The grey "No Image" box. Invisible button stays the last item so IsItemHovered() still works afterwards.

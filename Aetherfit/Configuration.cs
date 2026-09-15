@@ -3,6 +3,7 @@ using Dalamud.Game.ClientState.Keys;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Aetherfit.Services.Integrations;
 using Newtonsoft.Json;
 
@@ -21,6 +22,14 @@ public enum GalleryFitMode
     Crop,
     Letterbox,
     Stretch,
+}
+
+// Only meaningful for GalleryFitMode.Letterbox - what colour fills the bars around a fitted thumbnail.
+public enum GalleryLetterboxColorMode
+{
+    None,
+    AutoDetect,
+    Custom,
 }
 
 public enum AutomationConditionType
@@ -170,6 +179,8 @@ public class Configuration : IPluginConfiguration
     public bool ImageViewerFollowsSelection { get; set; } = false;
     public bool DefaultToCoverMode { get; set; } = false;
     public GalleryFitMode GalleryFitMode { get; set; } = GalleryFitMode.Crop;
+    public GalleryLetterboxColorMode GalleryLetterboxColorMode { get; set; } = GalleryLetterboxColorMode.None;
+    public Vector4 GalleryLetterboxCustomColor { get; set; } = new(0.22f, 0.22f, 0.25f, 1f);
 
     public bool GalleryPinFavouritesFirst { get; set; } = true;
     public float GalleryThumbTargetWidth { get; set; } = 220f;

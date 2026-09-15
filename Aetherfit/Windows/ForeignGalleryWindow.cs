@@ -387,8 +387,8 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
         {
             var tex = Plugin.TextureProvider.GetFromFile(currentImage).GetWrapOrEmpty();
             if (tex.Width > 0 && tex.Height > 0)
-                GalleryDraw.DrawFittedImage(tex, thumbStart, thumbVec, thumbWidth, thumbHeight, containerAspect,
-                    plugin.Configuration.GalleryFitMode);
+                GalleryDraw.DrawFittedImage(tex, GalleryDraw.ResolveLetterboxBarColor(plugin.Configuration, currentImage),
+                    thumbStart, thumbVec, thumbWidth, thumbHeight, containerAspect, plugin.Configuration.GalleryFitMode);
             else
                 ImGui.Dummy(thumbVec);
         }

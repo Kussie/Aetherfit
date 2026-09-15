@@ -124,6 +124,34 @@ public class ConfigWindow : Window, IDisposable
         }
         ImGui.PopItemWidth();
 
+        if (cfg.GalleryFitMode == GalleryFitMode.Letterbox)
+        {
+            ImGui.TextDisabled("Letterbox bar colour:");
+            ImGui.SameLine();
+            var colorIdx = (int)cfg.GalleryLetterboxColorMode;
+            var colorOptions = new[] { "None", "Auto-detect", "Custom" };
+            ImGui.PushItemWidth(160 * ImGuiHelpers.GlobalScale);
+            if (ImGui.Combo("##galleryLetterboxColorMode", ref colorIdx, colorOptions, colorOptions.Length))
+            {
+                cfg.GalleryLetterboxColorMode = (GalleryLetterboxColorMode)colorIdx;
+                cfg.Save();
+            }
+            ImGui.PopItemWidth();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("None: the plain placeholder colour.\nAuto-detect: matches each thumbnail's own edge colour, when it's a single flat colour.\nCustom: one fixed colour for every thumbnail.");
+
+            if (cfg.GalleryLetterboxColorMode == GalleryLetterboxColorMode.Custom)
+            {
+                ImGui.SameLine();
+                var customColor = cfg.GalleryLetterboxCustomColor;
+                if (ImGui.ColorEdit4("##galleryLetterboxCustomColor", ref customColor, ImGuiColorEditFlags.NoInputs))
+                {
+                    cfg.GalleryLetterboxCustomColor = customColor;
+                    cfg.Save();
+                }
+            }
+        }
+
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
