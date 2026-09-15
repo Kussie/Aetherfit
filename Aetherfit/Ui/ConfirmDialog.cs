@@ -8,10 +8,8 @@ namespace Aetherfit.Ui;
 
 internal static class ConfirmDialog
 {
-    // Base (unfilled) and fill colors for the hold-to-confirm button - a plain red button is too easy
-    // to misclick on a destructive action, so the confirm itself has to be held down to fill.
-    private static readonly Vector4 HoldBase = new(0.28f, 0.10f, 0.10f, 1f);
-    private static readonly Vector4 HoldFill = new(0.82f, 0.16f, 0.16f, 1f);
+    // A plain red button is too easy to misclick on a destructive action, so the confirm itself
+    // has to be held down to fill.
     private const float HoldSeconds = 1.1f;
 
     // Per-popup fill progress, keyed by popup id. Reset whenever the popup (re)opens.
@@ -85,15 +83,15 @@ internal static class ConfirmDialog
 
         var dl = ImGui.GetWindowDrawList();
         var rounding = style.FrameRounding;
-        dl.AddRectFilled(pos, pos + size, ImGui.ColorConvertFloat4ToU32(HoldBase), rounding);
+        dl.AddRectFilled(pos, pos + size, ImGui.ColorConvertFloat4ToU32(UiTheme.ConfirmHoldBase), rounding);
         if (progress > 0f)
         {
             dl.PushClipRect(pos, pos + new Vector2(size.X * progress, size.Y), true);
-            dl.AddRectFilled(pos, pos + size, ImGui.ColorConvertFloat4ToU32(HoldFill), rounding);
+            dl.AddRectFilled(pos, pos + size, ImGui.ColorConvertFloat4ToU32(UiTheme.ConfirmHoldFill), rounding);
             dl.PopClipRect();
         }
         if (hovered)
-            dl.AddRect(pos, pos + size, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.35f)), rounding);
+            dl.AddRect(pos, pos + size, ImGui.ColorConvertFloat4ToU32(UiTheme.ConfirmHoldHoverBorder), rounding);
 
         var textPos = pos + (size - textSize) / 2;
         dl.AddText(textPos, ImGui.ColorConvertFloat4ToU32(Vector4.One), label);

@@ -78,6 +78,12 @@ internal static class UiTheme
     // Dims the area outside the active selection in the screenshot cropper.
     public static readonly Vector4 CropDimOverlay = new(0f, 0f, 0f, 0.5f);
 
+    // Hold-to-confirm button on destructive actions: unfilled base, the red fill that sweeps in as you
+    // hold, and the hover ring.
+    public static readonly Vector4 ConfirmHoldBase = new(0.28f, 0.10f, 0.10f, 1f);
+    public static readonly Vector4 ConfirmHoldFill = new(0.82f, 0.16f, 0.16f, 1f);
+    public static readonly Vector4 ConfirmHoldHoverBorder = new(1f, 1f, 1f, 0.35f);
+
     public static readonly Vector4 KofiBase = new(0.92f, 0.30f, 0.30f, 1.0f);
     public static readonly Vector4 KofiHovered = new(1.00f, 0.40f, 0.40f, 1.0f);
     public static readonly Vector4 KofiActive = new(0.76f, 0.22f, 0.22f, 1.0f);
