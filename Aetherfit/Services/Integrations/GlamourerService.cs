@@ -510,6 +510,9 @@ public sealed class GlamourerService : IDisposable
             DateTime dt => new DateTimeOffset(
                 dt.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : dt),
             string s when DateTimeOffset.TryParse(s, out var parsed) => parsed,
+            // Newer Glamourer versions write these as Unix epoch milliseconds instead of an ISO string.
+            long ms => DateTimeOffset.FromUnixTimeMilliseconds(ms),
+            double msd => DateTimeOffset.FromUnixTimeMilliseconds((long)msd),
             _ => null,
         };
     }
