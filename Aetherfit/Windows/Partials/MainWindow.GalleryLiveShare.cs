@@ -36,7 +36,8 @@ public partial class MainWindow
         importDesignPopupRequested = true;
     }
 
-    // The "Open Shared Gallery" dropdown: a local file, a live pull from another player, or a pasted design code.
+    // The top toolbar's "Import" dropdown: a local gallery file, a live pull from another player, or the
+    // Create Design submenu (from worn gear, or a pasted design code/Eorzea Collection link).
     private void DrawOpenGalleryPopup()
     {
         using var popup = ImRaii.Popup("##openGalleryPopup");
@@ -74,10 +75,19 @@ public partial class MainWindow
 
         ImGui.Separator();
 
-        if (ImGui.Selectable("Design from Code / Eorzea Collection..."))
-            OpenImportDesignDialog();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Paste a design code (gear only) shared by another Aetherfit user, or an Eorzea Collection glamour link.");
+        using (var createDesignMenu = ImRaii.Menu("Create Design"))
+        {
+            if (createDesignMenu.Success)
+            {
+                if (ImGui.MenuItem("From Worn"))
+                    RequestCreateNewDesignFromWorn();
+
+                if (ImGui.MenuItem("From Code / Eorzea Collection..."))
+                    OpenImportDesignDialog();
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Paste a design code (gear only) shared by another Aetherfit user, or an Eorzea Collection glamour link.");
+            }
+        }
     }
 
     // One dialog for both "paste a design code" and "paste an Eorzea Collection link" - detected from

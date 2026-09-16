@@ -11,8 +11,8 @@ using Aetherfit.Ui;
 
 namespace Aetherfit.Windows;
 
-// The "Create new design" flow reached from the tree's own leaf: From Worn (this file's own popup),
-// From Code/Eorzea Collection (MainWindow.GalleryLiveShare.cs's shared import popup).
+// The "Create new design" flow, reached from both the tree's leaf and the toolbar's Import -> Create
+// Design submenu: From Worn (this file's own popup), From Code/Eorzea Collection (GalleryLiveShare.cs's).
 public partial class MainWindow
 {
     private const string CreateNewDesignPopupId = "Create new design?##createNewDesignConfirm";
@@ -38,16 +38,10 @@ public partial class MainWindow
         DrawCreateLeafPlusIcon();
 
         DrawCreateNewDesignMenu();
-        DrawCreateNewDesignPopup();
     }
 
-    // Offered from the same click that used to jump straight into "From Worn". "From Worn" only sets a
-    // flag rather than calling ImGui.OpenPopup(CreateNewDesignPopupId) directly - the modal is drawn from
-    // DrawCreateNewDesignPopup, one scope up from this menu's own popup, so calling OpenPopup from in here
-    // would compute the wrong ID (the exact ID-stack scoping bug the Personas "Create new persona" popup
-    // hit earlier) and the modal would silently never open. "From Code / Eorzea Collection" reuses the
-    // existing flag-based trigger untouched (OpenImportDesignDialog), which has no such issue since its
-    // own draw call already lives at MainWindow's stable top-level location regardless of caller depth.
+    // "From Worn" only sets a flag - DrawCreateNewDesignPopup is drawn from DrawTopToolbar instead of here
+    // so it stays reachable in Gallery Mode too, which never draws this tree.
     private void DrawCreateNewDesignMenu()
     {
         using var popup = ImRaii.Popup("##createNewDesignMenu");
@@ -55,21 +49,25 @@ public partial class MainWindow
             return;
 
         if (ImGui.Selectable("From Worn"))
-        {
-            createNewDesignName = string.Empty;
-            createNewDesignReclaimFocus = true;
-            createNewDesignIncludeCustomizations = false;
-            createNewDesignAdvancedImport = false;
-            createNewDesignExcludedSlots.Clear();
-            createNewDesignExcludedBonusSlots.Clear();
-            createNewDesignLiveEquipment = null;
-            createNewDesignLiveBonusItems = null;
-            createNewDesignBaseId = null;
-            createNewDesignBaseFilter = string.Empty;
-            createNewDesignPopupRequested = true;
-        }
+            RequestCreateNewDesignFromWorn();
         if (ImGui.Selectable("From Code / Eorzea Collection"))
             OpenImportDesignDialog();
+    }
+
+    // Shared by the tree leaf's own menu and the toolbar's Import -> Create Design submenu.
+    private void RequestCreateNewDesignFromWorn()
+    {
+        createNewDesignName = string.Empty;
+        createNewDesignReclaimFocus = true;
+        createNewDesignIncludeCustomizations = false;
+        createNewDesignAdvancedImport = false;
+        createNewDesignExcludedSlots.Clear();
+        createNewDesignExcludedBonusSlots.Clear();
+        createNewDesignLiveEquipment = null;
+        createNewDesignLiveBonusItems = null;
+        createNewDesignBaseId = null;
+        createNewDesignBaseFilter = string.Empty;
+        createNewDesignPopupRequested = true;
     }
 
     private void DrawCreateNewDesignPopup()

@@ -576,6 +576,7 @@ public partial class MainWindow : Window, IDisposable
             ImGui.OpenPopup("##openGalleryPopup");
         DrawOpenGalleryPopup();
         DrawImportDesignPopup();
+        DrawCreateNewDesignPopup();
         ImGui.SameLine();
 
         if (IconTextButton(FontAwesomeIcon.Stethoscope, "Reports", dropdown: true, warning: HasHealthIssues(),
