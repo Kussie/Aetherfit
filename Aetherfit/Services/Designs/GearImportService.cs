@@ -45,22 +45,31 @@ public sealed class GearImportService
             GlamourerService.ParseBonusItems(state["Bonus"]));
     }
 
-    // excludedSlots/excludedBonusSlots are the Advanced Import picker's choice of slots to leave out of
-    // the new design entirely (their Apply/ApplyStain flags are forced off, same as a slot matched by
-    // the base layer below) - null/empty behaves exactly as before, capturing everything worn.
+    // excludedSlots/excludedBonusSlots normally force a slot's Apply/ApplyStain off; with a baseDesignId
+    // given, "excluded" instead means "leave that slot as the base template already had it".
     public CreateFreshDesignResult CreateFreshDesign(string name, bool includeCustomizations,
-        IReadOnlySet<EquipmentSlot>? excludedSlots = null, IReadOnlySet<string>? excludedBonusSlots = null)
+        IReadOnlySet<EquipmentSlot>? excludedSlots = null, IReadOnlySet<string>? excludedBonusSlots = null,
+        Guid? baseDesignId = null)
     {
         var (result, state) = glamourer.GetState();
         if (result != GlamourerApiEc.Success || state == null)
             return new CreateFreshDesignResult(false, $"Couldn't read current Glamourer state ({result}).", default);
+
+        JObject? baseDesignJson = null;
+        if (baseDesignId is { } baseId)
+        {
+            baseDesignJson = glamourer.GetDesignJObject(baseId);
+            if (baseDesignJson == null)
+                return new CreateFreshDesignResult(false, "Couldn't read that design's data from Glamourer.", default);
+        }
+        var hasBase = baseDesignJson != null;
 
         var baseLayerOutfit = configuration.BaseDesignLayerId is { } baseLayerId
             && configuration.CachedOutfits.TryGetValue(baseLayerId, out var layerOutfit)
                 ? layerOutfit
                 : null;
 
-        var designJson = (JObject)state.DeepClone();
+        var designJson = (JObject)(baseDesignJson ?? state).DeepClone();
         var customize = state["Customize"] as JObject;
         var liveEquipment = GlamourerService.ParseEquipment(state["Equipment"] as JObject);
         var liveBonusItems = GlamourerService.ParseBonusItems(state["Bonus"]);
@@ -74,7 +83,7 @@ public sealed class GearImportService
         {
             if (excludedSlots?.Contains(slot) == true)
             {
-                if (designJson["Equipment"]?[slot.ToString()] is JObject excludedEntry)
+                if (!hasBase && designJson["Equipment"]?[slot.ToString()] is JObject excludedEntry)
                 {
                     excludedEntry["Apply"] = false;
                     excludedEntry["ApplyStain"] = false;
@@ -88,7 +97,7 @@ public sealed class GearImportService
 
             if (layerEntry != null && (!liveIsWorn || MatchesEquipment(live, layerEntry)))
             {
-                if (designJson["Equipment"]?[slot.ToString()] is JObject entry)
+                if (!hasBase && designJson["Equipment"]?[slot.ToString()] is JObject entry)
                 {
                     entry["Apply"] = false;
                     entry["ApplyStain"] = false;
@@ -105,7 +114,7 @@ public sealed class GearImportService
             if (excludedBonusSlots?.Contains(bonus.Slot) != true)
                 continue;
 
-            if (designJson["Bonus"]?[bonus.Slot] is JObject excludedBonusEntry)
+            if (!hasBase && designJson["Bonus"]?[bonus.Slot] is JObject excludedBonusEntry)
                 excludedBonusEntry["Apply"] = false;
             effectiveBonusItems.RemoveAll(b => b.Slot == bonus.Slot);
         }
@@ -120,7 +129,7 @@ public sealed class GearImportService
                 if (liveIsWorn && !MatchesBonusItem(live, layerBonus))
                     continue;
 
-                if (designJson["Bonus"]?[layerBonus.Slot] is JObject entry)
+                if (!hasBase && designJson["Bonus"]?[layerBonus.Slot] is JObject entry)
                     entry["Apply"] = false;
                 effectiveBonusItems.RemoveAll(b => b.Slot == layerBonus.Slot);
             }
@@ -135,17 +144,24 @@ public sealed class GearImportService
                 if (!liveByKey.TryGetValue(layerCustom.Key, out var live) || live.RawValue != layerCustom.RawValue)
                     continue;
 
-                if (designJson["Customize"]?[layerCustom.Key] is JObject entry)
+                if (!hasBase && designJson["Customize"]?[layerCustom.Key] is JObject entry)
                     entry["Apply"] = false;
                 if (layerCustom.Key == "Hairstyle")
                     hairstyleIsLayerWinner = true;
             }
         }
 
-        // The toggle is about the design's own Customize section only - mod detection (including a hair
-        // mod affecting whatever hairstyle is currently active) runs the same either way.
-        if (!includeCustomizations)
+        if (hasBase)
+        {
+            // The base template's own gear/customizations are left as-is except for what was captured above.
+            designJson = GlamourerJsonSchema.OverlayEquipmentOntoDesign(designJson, effectiveEquipment, effectiveBonusItems);
+            if (includeCustomizations && designJson["Customize"] is JObject baseCustomize)
+                designJson["Customize"] = GlamourerJsonSchema.MergeCustomizeSection(baseCustomize, liveCustomizations);
+        }
+        else if (!includeCustomizations)
+        {
             GlamourerJsonSchema.ZeroApplyFlags(designJson["Customize"] as JObject);
+        }
 
         var mods = DetectActiveMods(effectiveEquipment, effectiveBonusItems, liveCustomizations, clan, gender, hairstyleIsLayerWinner);
 
@@ -160,7 +176,7 @@ public sealed class GearImportService
             return new CreateFreshDesignResult(true, null, firstId);
 
         var patched = (JObject)savedJson.DeepClone();
-        patched["Mods"] = GlamourerJsonSchema.AppendModsSection(null, mods);
+        patched["Mods"] = GlamourerJsonSchema.AppendModsSection(savedJson["Mods"], mods);
 
         var (secondResult, secondId) = glamourer.AddDesign(patched, name);
         if (secondResult != GlamourerApiEc.Success)

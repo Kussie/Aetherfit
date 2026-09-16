@@ -183,7 +183,7 @@ public sealed class EorzeaCollectionService
                     addError = "Couldn't read that design's data from Glamourer.";
                     return;
                 }
-                designJson = GlamourerJsonSchema.OverlayEquipmentOntoDesign(baseJson, equipment, bonusItem);
+                designJson = GlamourerJsonSchema.OverlayEquipmentOntoDesign(baseJson, equipment, bonusItem is { } b ? [b] : null);
             }
             else
             {

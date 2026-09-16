@@ -109,7 +109,7 @@ public partial class MainWindow
                 ImGuiInputTextFlags.EnterReturnsTrue);
 
         ImGui.Spacing();
-        DrawImportBaseDesignPicker();
+        DrawBaseDesignPicker("importBaseDesign", ref importBaseDesignId, ref importBaseDesignFilter);
 
         var error = importDesignInputError
             ?? (plugin.EorzeaCollection.Phase == EorzeaCollectionImportPhase.Error ? plugin.EorzeaCollection.ErrorMessage : null);
@@ -133,46 +133,47 @@ public partial class MainWindow
             ImGui.CloseCurrentPopup();
     }
 
-    // Optional: instead of building a brand-new equipment-only design, clone the picked design (gear,
-    // customizations, mods and its Aetherfit metadata included) and overwrite just the slots this import
-    // specifies - shared by both DoImportDesignCode and EorzeaCollectionService.ImportAsync below.
-    private void DrawImportBaseDesignPicker()
+    // Shared by the Code/Eorzea import popup here and the "From Worn" create-design popup - idSuffix
+    // keeps their ImGui ids and combo state independent.
+    private void DrawBaseDesignPicker(string idSuffix, ref Guid? baseDesignId, ref string filterText)
     {
-        var preview = importBaseDesignId is { } id ? plugin.Configuration.ResolveDesignName(id) : "None - current appearance";
+        var preview = baseDesignId is { } id ? plugin.Configuration.ResolveDesignName(id) : "None - current appearance";
 
         ImGui.TextDisabled("Base template:");
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("A new design is always created. This just picks what it's based on: your "
                 + "current appearance (default), or an existing design - gear, customizations, mods and "
-                + "its tags/cover/favourite/persona links - with only the imported slots overwritten.");
+                + "its tags/cover/favourite/persona links - with only the captured slots overwritten.");
         ImGui.SameLine();
         ImGui.SetNextItemWidth(250 * ImGuiHelpers.GlobalScale);
-        using var combo = ImRaii.Combo("##importBaseDesign", preview, ImGuiComboFlags.HeightLargest);
+        using var combo = ImRaii.Combo($"##{idSuffix}", preview, ImGuiComboFlags.HeightLargest);
         if (!combo.Success)
             return;
 
         if (ImGui.IsWindowAppearing())
             ImGui.SetKeyboardFocusHere();
         ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##importBaseDesignFilter", "Filter by name...", ref importBaseDesignFilter, 64);
+        ImGui.InputTextWithHint($"##{idSuffix}Filter", "Filter by name...", ref filterText, 64);
         ImGui.Separator();
 
+        // Snapshot before the LINQ lambda below - a ref parameter can't be captured by a closure.
+        var filterSnapshot = filterText;
         var matches = plugin.Configuration.CachedOutfits
             .Select(kv => (Id: kv.Key, kv.Value.Name))
-            .Where(d => importBaseDesignFilter.Length == 0 || d.Name.Contains(importBaseDesignFilter, StringComparison.OrdinalIgnoreCase))
+            .Where(d => filterSnapshot.Length == 0 || d.Name.Contains(filterSnapshot, StringComparison.OrdinalIgnoreCase))
             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var listHeight = Math.Min(matches.Count + 1, MaxVisibleDesignRows) * ImGui.GetTextLineHeightWithSpacing();
-        using var scroll = ImRaii.Child("##importBaseDesignList", new Vector2(-1, listHeight), false);
+        using var scroll = ImRaii.Child($"##{idSuffix}List", new Vector2(-1, listHeight), false);
 
-        if (ImGui.Selectable("None - current appearance", importBaseDesignId == null))
-            importBaseDesignId = null;
+        if (ImGui.Selectable("None - current appearance", baseDesignId == null))
+            baseDesignId = null;
         ImGui.Separator();
         foreach (var (matchId, name) in matches)
         {
-            if (ImGui.Selectable($"{name}##importBaseDesign{matchId}", importBaseDesignId == matchId))
-                importBaseDesignId = matchId;
+            if (ImGui.Selectable($"{name}##{idSuffix}{matchId}", baseDesignId == matchId))
+                baseDesignId = matchId;
         }
     }
 

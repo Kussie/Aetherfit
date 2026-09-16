@@ -319,7 +319,8 @@ internal static class GlamourerJsonSchema
     // For "import gear onto an existing design": unlike BuildEquipmentOnlyDesign (which defers every
     // slot the caller doesn't list), this only overwrites the slots actually given and leaves the rest
     // of baseState - other equipment slots, Customize, mods - exactly as that design already had it.
-    public static JObject OverlayEquipmentOntoDesign(JObject baseState, IEnumerable<CachedEquipmentSlot> overlaySlots, CachedBonusItem? overlayBonus)
+    public static JObject OverlayEquipmentOntoDesign(JObject baseState, IEnumerable<CachedEquipmentSlot> overlaySlots,
+        IEnumerable<CachedBonusItem>? overlayBonusItems)
     {
         var design = (JObject)baseState.DeepClone();
 
@@ -336,10 +337,11 @@ internal static class GlamourerJsonSchema
             };
         }
 
-        if (overlayBonus != null)
+        if (overlayBonusItems != null)
         {
             var bonus = design["Bonus"] as JObject ?? (JObject)(design["Bonus"] = new JObject());
-            bonus[overlayBonus.Slot] = new JObject { ["BonusId"] = (long)overlayBonus.ItemId, ["Apply"] = true };
+            foreach (var overlayBonus in overlayBonusItems)
+                bonus[overlayBonus.Slot] = new JObject { ["BonusId"] = (long)overlayBonus.ItemId, ["Apply"] = true };
         }
 
         return design;

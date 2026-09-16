@@ -22,6 +22,8 @@ public partial class MainWindow
     private bool createNewDesignAdvancedImport;
     private readonly HashSet<EquipmentSlot> createNewDesignExcludedSlots = new();
     private readonly HashSet<string> createNewDesignExcludedBonusSlots = new();
+    private Guid? createNewDesignBaseId;
+    private string createNewDesignBaseFilter = string.Empty;
     private List<CachedEquipmentSlot>? createNewDesignLiveEquipment;
     private List<CachedBonusItem>? createNewDesignLiveBonusItems;
     private bool createNewDesignPopupRequested;
@@ -62,6 +64,8 @@ public partial class MainWindow
             createNewDesignExcludedBonusSlots.Clear();
             createNewDesignLiveEquipment = null;
             createNewDesignLiveBonusItems = null;
+            createNewDesignBaseId = null;
+            createNewDesignBaseFilter = string.Empty;
             createNewDesignPopupRequested = true;
         }
         if (ImGui.Selectable("From Code / Eorzea Collection"))
@@ -98,6 +102,9 @@ public partial class MainWindow
         var canConfirm = trimmed.Length > 0;
 
         ImGui.Spacing();
+        DrawBaseDesignPicker("createNewDesignBase", ref createNewDesignBaseId, ref createNewDesignBaseFilter);
+
+        ImGui.Spacing();
         ImGui.Checkbox("Also include customizations (race, face, hair, etc.)", ref createNewDesignIncludeCustomizations);
 
         ImGui.Spacing();
@@ -121,7 +128,8 @@ public partial class MainWindow
                 ImGui.CloseCurrentPopup();
                 DoCreateNewDesignFromScratch(trimmed, createNewDesignIncludeCustomizations,
                     createNewDesignAdvancedImport ? createNewDesignExcludedSlots : null,
-                    createNewDesignAdvancedImport ? createNewDesignExcludedBonusSlots : null);
+                    createNewDesignAdvancedImport ? createNewDesignExcludedBonusSlots : null,
+                    createNewDesignBaseId);
             }
         }
         ImGui.SameLine();
@@ -224,14 +232,17 @@ public partial class MainWindow
     private static readonly Dictionary<string, string> EmptyAffectedMap = new();
 
     private void DoCreateNewDesignFromScratch(string name, bool includeCustomizations,
-        IReadOnlySet<EquipmentSlot>? excludedSlots, IReadOnlySet<string>? excludedBonusSlots = null)
+        IReadOnlySet<EquipmentSlot>? excludedSlots, IReadOnlySet<string>? excludedBonusSlots = null, Guid? baseDesignId = null)
     {
-        var result = plugin.GearImport.CreateFreshDesign(name, includeCustomizations, excludedSlots, excludedBonusSlots);
+        var result = plugin.GearImport.CreateFreshDesign(name, includeCustomizations, excludedSlots, excludedBonusSlots, baseDesignId);
         if (!result.Success)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Create new design failed: {result.Error}");
             return;
         }
+
+        if (baseDesignId is { } baseId)
+            plugin.DesignApply.DuplicateDesignMetadata(baseId, result.NewId);
 
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Created \"{name}\" from currently worn equipment.");
         selectedDesign = result.NewId;
