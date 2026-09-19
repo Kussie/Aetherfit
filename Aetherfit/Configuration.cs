@@ -275,6 +275,13 @@ public class Configuration : IPluginConfiguration
     // doesn't reappear on the next check run.
     public Dictionary<Guid, HashSet<string>> IgnoredHealthChecks { get; set; } = new();
 
+    // Orphaned Mod Finder dismissals, keyed by mod directory (plain List, matched case-insensitively -
+    // a HashSet's custom comparer doesn't reliably survive a Newtonsoft round-trip).
+    public List<string> IgnoredOrphanedMods { get; set; } = new();
+
+    // Folder-prefix counterpart to IgnoredOrphanedMods - see IsOrphanedModPathIgnored below.
+    public List<string> IgnoredOrphanedModPaths { get; set; } = new();
+
     // Provider -> (that provider's own native design id -> the stable Aetherfit-owned Guid for it).
     // Only ever grows; Glamourer never appears here (see DesignIdentity.Resolve).
     public Dictionary<DesignSource, Dictionary<Guid, Guid>> DesignIdentityMap { get; set; } = new();
@@ -535,6 +542,57 @@ public class Configuration : IPluginConfiguration
         Save();
     }
 
+    [JsonIgnore]
+    public int OrphanedModIgnoreVersion { get; private set; }
+
+    public bool IsOrphanedModIgnored(string directory)
+        => IgnoredOrphanedMods.Contains(directory, StringComparer.OrdinalIgnoreCase);
+
+    public void IgnoreOrphanedMod(string directory)
+    {
+        if (IsOrphanedModIgnored(directory))
+            return;
+        IgnoredOrphanedMods.Add(directory);
+        OrphanedModIgnoreVersion++;
+        Save();
+    }
+
+    public void ClearIgnoredOrphanedMods()
+    {
+        IgnoredOrphanedMods.Clear();
+        OrphanedModIgnoreVersion++;
+        Save();
+    }
+
+    // Folder-prefix dismissals, matched against a mod's Penumbra sort-order path (e.g. "Upscales/My Mod")
+    // rather than its on-disk directory - lets a whole category be dismissed at once.
+    public bool IsOrphanedModPathIgnored(string? penumbraPath)
+    {
+        if (string.IsNullOrEmpty(penumbraPath))
+            return false;
+        return IgnoredOrphanedModPaths.Any(prefix
+            => string.Equals(penumbraPath, prefix, StringComparison.OrdinalIgnoreCase)
+            || penumbraPath.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public void IgnoreOrphanedModPath(string pathPrefix)
+    {
+        pathPrefix = pathPrefix.Trim().Trim('/');
+        if (pathPrefix.Length == 0 || IgnoredOrphanedModPaths.Contains(pathPrefix, StringComparer.OrdinalIgnoreCase))
+            return;
+        IgnoredOrphanedModPaths.Add(pathPrefix);
+        OrphanedModIgnoreVersion++;
+        Save();
+    }
+
+    public void RemoveIgnoredOrphanedModPath(string pathPrefix)
+    {
+        if (IgnoredOrphanedModPaths.RemoveAll(p => string.Equals(p, pathPrefix, StringComparison.OrdinalIgnoreCase)) == 0)
+            return;
+        OrphanedModIgnoreVersion++;
+        Save();
+    }
+
     public int MergeTagsFromGlamourer(Guid id, CachedOutfit outfit)
     {
         var meta = GetOrSeedDesignMeta(id, outfit.GlamourerDescription, outfit.GlamourerTags);
@@ -584,6 +642,7 @@ public class Configuration : IPluginConfiguration
 
         meta.Tags.Add(tag);
         outfit.Tags = new List<string>(meta.Tags);
+        TagVersion++;
         Save();
         return true;
     }
@@ -596,8 +655,66 @@ public class Configuration : IPluginConfiguration
             return;
 
         outfit.Tags = new List<string>(meta.Tags);
+        TagVersion++;
         Save();
     }
+
+    // Bumped by AddTag/RemoveTag/RenameTag - lets the Tag Manager window's cache know to recompute.
+    [JsonIgnore]
+    public int TagVersion { get; private set; }
+
+    // Shared by RenameTag for every place a tag name is stored as a literal match criterion.
+    private static bool ReplaceTagInPlace(List<string> tags, string oldTag, string newTag)
+    {
+        var removed = tags.RemoveAll(t => string.Equals(t, oldTag, StringComparison.OrdinalIgnoreCase)) > 0;
+        if (removed && !tags.Contains(newTag, StringComparer.OrdinalIgnoreCase))
+            tags.Add(newTag);
+        return removed;
+    }
+
+    // Also covers "merge": if newTag already exists on a design, that design just keeps the one
+    // combined tag instead of ending up with a duplicate - same rename path either way.
+    public int RenameTag(string oldTag, string newTag)
+    {
+        newTag = newTag.Trim();
+        if (string.IsNullOrEmpty(newTag) || string.Equals(oldTag, newTag, StringComparison.Ordinal))
+            return 0;
+
+        var affected = 0;
+        foreach (var (id, meta) in DesignMeta)
+        {
+            if (!ReplaceTagInPlace(meta.Tags, oldTag, newTag))
+                continue;
+            if (CachedOutfits.TryGetValue(id, out var outfit))
+                outfit.Tags = new List<string>(meta.Tags);
+            affected++;
+        }
+
+        ReplaceTagInPlace(LoginTags, oldTag, newTag);
+        foreach (var settings in CharacterLoginSettings.Values)
+        {
+            ReplaceTagInPlace(settings.LoginTags, oldTag, newTag);
+            foreach (var rule in settings.AutomationRules)
+                foreach (var pool in rule.TagPools)
+                    ReplaceTagInPlace(pool, oldTag, newTag);
+        }
+
+        foreach (var variantId in DesignVariants.Keys)
+            ApplyVariantTagDescriptionFallback(variantId);
+
+        TagVersion++;
+        Save();
+        return affected;
+    }
+
+    // Literal stored tags with counts - unlike DistinctSortedTags(), no composite-segment expansion,
+    // since a rename must act on the exact string a design has.
+    public List<(string Tag, int Count)> TagUsageCounts()
+        => CachedOutfits.Values.SelectMany(o => o.Tags)
+            .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (Tag: g.First(), Count: g.Count()))
+            .OrderBy(t => t.Tag, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     // Falls back to the parent's own slots when this design is a variant with none of its own -
     // a single hop, since variant-of-a-variant chains aren't allowed (see SetVariantParent).

@@ -21,6 +21,7 @@ public sealed class PenumbraService
     private readonly GetCollections getCollections;
     private readonly SetCollectionForObject setCollectionForObject;
     private readonly GetCurrentModSettingsWithTemp getCurrentModSettingsWithTemp;
+    private readonly GetModPath getModPath;
 
     // A mod changes the same items no matter which design pulls it in, so we look them up once per mod
     // directory and reuse that across every design.
@@ -46,6 +47,7 @@ public sealed class PenumbraService
         getCollections = new GetCollections(Plugin.PluginInterface);
         setCollectionForObject = new SetCollectionForObject(Plugin.PluginInterface);
         getCurrentModSettingsWithTemp = new GetCurrentModSettingsWithTemp(Plugin.PluginInterface);
+        getModPath = new GetModPath(Plugin.PluginInterface);
     }
 
     // Penumbra's own reported ApiVersion (BreakingVersion/FeatureVersion in its PenumbraApi.cs) - confirmed
@@ -225,6 +227,22 @@ public sealed class PenumbraService
         {
             Plugin.Log.Warning(ex, "Failed to query installed mod list for names");
             return new Dictionary<string, string>();
+        }
+    }
+
+    // Penumbra's own internal sort-order/folder path for a mod (e.g. "Upscales/My Mod") - the virtual
+    // folder structure the user organizes in Penumbra's UI, distinct from its on-disk Directory.
+    public string? GetModPath(string directory, string name)
+    {
+        try
+        {
+            var (result, fullPath, _, _) = getModPath.Invoke(directory, name);
+            return result == PenumbraApiEc.Success ? fullPath : null;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Failed to query mod path for {Dir}", directory);
+            return null;
         }
     }
 

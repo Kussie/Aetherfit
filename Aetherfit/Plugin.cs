@@ -70,6 +70,7 @@ public sealed class Plugin : IDalamudPlugin
     public HealthReportService HealthReport { get; init; }
     public DesignLayerReportService LayerReport { get; init; }
     public WardrobeAnalyticsService WardrobeAnalytics { get; init; }
+    public OrphanedModService OrphanedMods { get; init; }
     public ImageStorageService ImageStorage { get; init; }
     public ScreenshotService Screenshot { get; init; }
     public GallerySharingService GallerySharing { get; init; }
@@ -90,6 +91,8 @@ public sealed class Plugin : IDalamudPlugin
     private HealthReportWindow HealthReportWindow { get; init; }
     private DesignLayerReportWindow DesignLayerReportWindow { get; init; }
     private WardrobeAnalyticsWindow WardrobeAnalyticsWindow { get; init; }
+    private OrphanedModWindow OrphanedModWindow { get; init; }
+    private TagManagerWindow TagManagerWindow { get; init; }
     private QuickSearchWindow QuickSearchWindow { get; init; }
     private BatchScreenshotWindow BatchScreenshotWindow { get; init; }
     private ChangelogWindow ChangelogWindow { get; init; }
@@ -225,6 +228,7 @@ public sealed class Plugin : IDalamudPlugin
         HealthReport = new HealthReportService(Configuration, GameData, Attribution);
         LayerReport = new DesignLayerReportService(this);
         WardrobeAnalytics = new WardrobeAnalyticsService(Configuration, DesignProviders);
+        OrphanedMods = new OrphanedModService(Configuration, Penumbra);
         ImageStorage = new ImageStorageService(Configuration);
         Screenshot = new ScreenshotService();
         GallerySharing = new GallerySharingService(Configuration, ImageStorage, GameData, Attribution);
@@ -249,6 +253,8 @@ public sealed class Plugin : IDalamudPlugin
         HealthReportWindow = new HealthReportWindow(this);
         DesignLayerReportWindow = new DesignLayerReportWindow(this);
         WardrobeAnalyticsWindow = new WardrobeAnalyticsWindow(this);
+        OrphanedModWindow = new OrphanedModWindow(this);
+        TagManagerWindow = new TagManagerWindow(this);
         QuickSearchWindow = new QuickSearchWindow(this);
         BatchScreenshotWindow = new BatchScreenshotWindow(this);
         ChangelogWindow = new ChangelogWindow(this);
@@ -265,6 +271,8 @@ public sealed class Plugin : IDalamudPlugin
         WindowSystem.AddWindow(HealthReportWindow);
         WindowSystem.AddWindow(DesignLayerReportWindow);
         WindowSystem.AddWindow(WardrobeAnalyticsWindow);
+        WindowSystem.AddWindow(OrphanedModWindow);
+        WindowSystem.AddWindow(TagManagerWindow);
         WindowSystem.AddWindow(QuickSearchWindow);
         WindowSystem.AddWindow(BatchScreenshotWindow);
         WindowSystem.AddWindow(ChangelogWindow);
@@ -326,6 +334,8 @@ public sealed class Plugin : IDalamudPlugin
         HealthReportWindow.Dispose();
         DesignLayerReportWindow.Dispose();
         WardrobeAnalyticsWindow.Dispose();
+        OrphanedModWindow.Dispose();
+        TagManagerWindow.Dispose();
         QuickSearchWindow.Dispose();
         BatchScreenshotWindow.Dispose();
         ChangelogWindow.Dispose();
@@ -619,6 +629,8 @@ public sealed class Plugin : IDalamudPlugin
     public void ToggleHealthReportUi() => HealthReportWindow.Toggle();
     public void ToggleDesignLayerReportUi() => DesignLayerReportWindow.Toggle();
     public void ToggleWardrobeAnalyticsUi() => WardrobeAnalyticsWindow.Toggle();
+    public void ToggleOrphanedModsUi() => OrphanedModWindow.Toggle();
+    public void ToggleTagManagerUi() => TagManagerWindow.Toggle();
     public void ToggleBatchScreenshotUi() => BatchScreenshotWindow.Toggle();
     public void ToggleAutomationsUi() => AutomationsWindow.Toggle();
 

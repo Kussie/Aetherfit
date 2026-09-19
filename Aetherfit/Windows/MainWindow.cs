@@ -761,6 +761,9 @@ public partial class MainWindow : Window, IDisposable
 
         if (ImGui.MenuItem("Wardrobe Analytics"))
             plugin.ToggleWardrobeAnalyticsUi();
+
+        if (ImGui.MenuItem("Orphaned Mods"))
+            plugin.ToggleOrphanedModsUi();
     }
 
     // The "Share your Designs" dropdown: export everything, or just the designs left after the active filters.

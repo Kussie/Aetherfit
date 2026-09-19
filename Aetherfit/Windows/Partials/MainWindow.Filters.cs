@@ -373,6 +373,13 @@ public partial class MainWindow
             : "No matching tags, jobs or mods.";
         Pills.DrawTagJobFilterList(matchingTags, matchingJobs, matchingMods, filterTags, filterJobs, filterMods,
             plugin.GameData.GetJobIcon, "filter", 260 * scale, emptyMessage);
+
+        ImGui.Separator();
+        if (ImGui.Selectable("Manage Tags (rename/merge)..."))
+        {
+            ImGui.CloseCurrentPopup();
+            plugin.ToggleTagManagerUi();
+        }
     }
 
     // Styled to match DrawTagJobPickerButton.
