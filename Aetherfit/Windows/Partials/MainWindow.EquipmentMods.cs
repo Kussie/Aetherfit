@@ -328,7 +328,8 @@ public partial class MainWindow
         var canApply = applied && itemName != GameDataService.NothingItemName;
         var applyDesignId = itemWinner?.SourceDesignId ?? designId;
         DrawSlotContextMenu($"slot_{slot}", rowStart, rowWidth, canApply, modHovered, stainHovered, warningHovered,
-            itemName, rowAffectedBy, () => plugin.DesignApply.ApplySingleEquipmentSlot(applyDesignId, slot, label));
+            itemName, rowAffectedBy, () => plugin.DesignApply.ApplySingleEquipmentSlot(applyDesignId, slot, label),
+            () => plugin.DesignApply.RemoveSingleEquipmentSlot(slot, label));
     }
 
     private CachedEquipmentSlot? ResolveLayerEquipmentEntry(DesignLayerResolutionService.FieldSource? winner, EquipmentSlot slot)
@@ -412,7 +413,8 @@ public partial class MainWindow
         var canApply = applied && itemName != GameDataService.NothingItemName;
         var applyDesignId = winner?.SourceDesignId ?? designId;
         DrawSlotContextMenu($"bonus_{slotKey}", rowStart, rowWidth, canApply, modHovered, stainHovered: false, warningHovered: false,
-            itemName, rowAffectedBy, () => plugin.DesignApply.ApplySingleBonusItem(applyDesignId, slotKey, label));
+            itemName, rowAffectedBy, () => plugin.DesignApply.ApplySingleBonusItem(applyDesignId, slotKey, label),
+            () => plugin.DesignApply.RemoveSingleBonusItem(slotKey, label));
     }
 
     private CachedBonusItem? ResolveLayerBonusEntry(DesignLayerResolutionService.FieldSource? winner, string slotKey)
@@ -422,34 +424,41 @@ public partial class MainWindow
         return outfit.BonusItems.FirstOrDefault(b => b.Slot == slotKey);
     }
 
-    // Right-click anywhere on the row (when it's actually equipped) to apply just that item - the
-    // existing "affected by mod" hover/click behavior still wins when that specific text is hovered.
+    // Right-click anywhere on the row to wear or remove just that item - "affected by mod" hover/click
+    // still wins when that text is hovered. Remove is offered even if this design has nothing equipped
+    // in the slot, since it just clears whatever's currently worn.
     private void DrawSlotContextMenu(string idSuffix, Vector2 rowStart, float rowWidth, bool canApply,
-        bool modHovered, bool stainHovered, bool warningHovered, string? itemName, AffectedBy affectedBy, Action onApply)
+        bool modHovered, bool stainHovered, bool warningHovered, string? itemName, AffectedBy affectedBy,
+        Action onApply, Action onRemove)
     {
         var popupId = $"##{idSuffix}Menu";
         if (modHovered && itemName != null && affectedBy.Mods.TryGetValue(itemName, out var mod))
         {
             HandleAffectedModHover(mod);
         }
-        else if (canApply && !ImGui.IsPopupOpen(popupId))
+        else if (!ImGui.IsPopupOpen(popupId))
         {
             var rowEnd = new Vector2(rowStart.X + rowWidth, ImGui.GetCursorScreenPos().Y);
             if (ImGui.IsMouseHoveringRect(rowStart, rowEnd))
             {
                 // The dye swatch and the not-wearable warning icon each draw their own tooltip - don't
-                // fight them for the frame, but right-click still applies from anywhere in the row,
-                // swatch/icon included.
+                // fight them for the frame, but right-click still opens the menu from anywhere in the
+                // row, swatch/icon included.
                 if (!stainHovered && !warningHovered)
-                    ImGui.SetTooltip("Right-click to apply just this item to your current outfit.");
+                    ImGui.SetTooltip("Right-click to wear or remove just this item.");
                 if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
                     ImGui.OpenPopup(popupId);
             }
         }
 
         using var popup = ImRaii.Popup(popupId);
-        if (popup.Success && ImGui.MenuItem("Apply Just This"))
+        if (!popup.Success)
+            return;
+
+        if (canApply && ImGui.MenuItem("Wear Just This"))
             onApply();
+        if (ImGui.MenuItem("Remove Just This"))
+            onRemove();
     }
 
     private void HandleAffectedModHover(CachedMod mod)

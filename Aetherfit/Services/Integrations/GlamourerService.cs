@@ -21,6 +21,8 @@ public sealed class GlamourerService : IDisposable
     private readonly OpenDesign openDesign;
     private readonly GetState getState;
     private readonly ApplyState applyState;
+    private readonly SetItem setItem;
+    private readonly SetBonusItem setBonusItem;
     private readonly AddDesign addDesign;
     private readonly DeleteDesign deleteDesign;
     private readonly EventSubscriber<nint, StateFinalizationType> stateFinalized;
@@ -41,6 +43,8 @@ public sealed class GlamourerService : IDisposable
         openDesign = new OpenDesign(Plugin.PluginInterface);
         getState = new GetState(Plugin.PluginInterface);
         applyState = new ApplyState(Plugin.PluginInterface);
+        setItem = new SetItem(Plugin.PluginInterface);
+        setBonusItem = new SetBonusItem(Plugin.PluginInterface);
         addDesign = new AddDesign(Plugin.PluginInterface);
         deleteDesign = new DeleteDesign(Plugin.PluginInterface);
         stateFinalized = StateFinalized.Subscriber(Plugin.PluginInterface, OnStateFinalized);
@@ -353,6 +357,38 @@ public sealed class GlamourerService : IDisposable
     public bool ApplySingleBonusItem(Guid designNativeId, CachedBonusItem bonusData, string label)
         => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-slot",
             state => GlamourerJsonSchema.ApplySingleBonusItem(state, bonusData), state => ApplyEquipmentState(state));
+
+    // Un-wear counterpart to ApplySingleEquipmentSlot/ApplySingleBonusItem - uses SetItem/SetBonusItem
+    // (itemId 0 = empty) rather than guessing at Glamourer's own empty-slot sentinels ourselves.
+    // Flags 0 (not Once, not Locked) so it sticks the same way a normal apply does.
+    public bool RemoveSingleEquipmentSlot(EquipmentSlot slot, string label)
+    {
+        var apiSlot = Enum.Parse<ApiEquipSlot>(slot.ToString());
+        var result = InvokeOwnChange(() => setItem.Invoke(0, apiSlot, 0, Array.Empty<byte>(), 0, 0));
+        return ReportSingleSlotRemoval(result, label);
+    }
+
+    public bool RemoveSingleBonusItem(string bonusSlotKey, string label)
+    {
+        var apiSlot = Enum.Parse<ApiBonusSlot>(bonusSlotKey);
+        var result = InvokeOwnChange(() => setBonusItem.Invoke(0, apiSlot, 0, 0, 0));
+        return ReportSingleSlotRemoval(result, label);
+    }
+
+    private static bool ReportSingleSlotRemoval(GlamourerApiEc result, string label)
+    {
+        if (result != GlamourerApiEc.Success)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to remove \"{label}\": {result}");
+            Plugin.Log.Warning("Failed to remove single-slot {Label}: {Result}", label, result);
+            return false;
+        }
+
+        SoundService.PlayApply();
+        Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Removed \"{label}\"");
+        Plugin.Log.Info("Removed single-slot {Label}", label);
+        return true;
+    }
 
     public GlamourerApiEc ApplyCustomizationState(JObject state, int objectIndex = 0)
         => InvokeOwnChange(() => applyState.Invoke(state, objectIndex, 0, ApplyFlag.Customization));

@@ -91,9 +91,13 @@ public partial class MainWindow : Window, IDisposable
     private readonly FileDialogManager fileDialog = new();
     private const string ImageFilters = "Image{.png,.jpg,.jpeg,.webp}";
 
-    // Applied at the top of the next Draw rather than immediately: OnOpen resets the view mode when
-    // the window was closed, and this has to win over that.
+    // Applied at the top of the next Draw rather than immediately: on a fresh session OnOpen resets
+    // the view mode, and this has to win over that.
     private Guid? pendingRevealDesign;
+
+    // Starts false so OnOpen's view-mode reset below only ever fires once per plugin session - after
+    // that, closing and reopening the window keeps whatever view the user left it on.
+    private bool hasOpenedThisSession;
 
     private float leftPaneWidth = 260f;
     private const float MinLeftPaneWidth = 260f;
@@ -122,14 +126,19 @@ public partial class MainWindow : Window, IDisposable
 
     public override void OnOpen()
     {
-        coverMode = plugin.Configuration.DefaultToCoverMode;
-        groupByJob = false;
-        groupByTags = false;
-        groupBySource = false;
-        coverGroupByJob = false;
-        coverGroupByTags = false;
-        coverGroupBySource = false;
-        coverUnstackVariants = false;
+        if (!hasOpenedThisSession)
+        {
+            hasOpenedThisSession = true;
+            coverMode = plugin.Configuration.DefaultToCoverMode;
+            groupByJob = false;
+            groupByTags = false;
+            groupBySource = false;
+            coverGroupByJob = false;
+            coverGroupByTags = false;
+            coverGroupBySource = false;
+            coverUnstackVariants = false;
+        }
+
         RefreshDesigns();
     }
 

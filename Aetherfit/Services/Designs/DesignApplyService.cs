@@ -120,6 +120,21 @@ public sealed class DesignApplyService
         plugin.Glamourer.ApplySingleBonusItem(designId, bonusData, $"{slotLabel} from {name}");
     }
 
+    // Un-wear counterparts to ApplySingleEquipmentSlot/ApplySingleBonusItem above - not tied to any
+    // particular design, since unequipping just clears whatever's currently worn in that slot. Also
+    // drops the single-slot mod association, if any, since nothing's left at the slot for it to apply to.
+    public void RemoveSingleEquipmentSlot(EquipmentSlot slot, string slotLabel)
+    {
+        ApplySingleSlotMod(null);
+        plugin.Glamourer.RemoveSingleEquipmentSlot(slot, slotLabel);
+    }
+
+    public void RemoveSingleBonusItem(string bonusSlotKey, string slotLabel)
+    {
+        ApplySingleSlotMod(null);
+        plugin.Glamourer.RemoveSingleBonusItem(bonusSlotKey, slotLabel);
+    }
+
     public void ApplySingleCustomization(Guid designId, string customizeKey, string slotLabel)
     {
         var name = plugin.Configuration.ResolveDesignName(designId);
