@@ -16,6 +16,7 @@ namespace Aetherfit.Windows;
 public partial class MainWindow
 {
     private const string CreateNewDesignPopupId = "Create new design?##createNewDesignConfirm";
+    private const string CreateNewDesignMenuPopupId = "##createNewDesignMenu";
     private string createNewDesignName = string.Empty;
     private bool createNewDesignReclaimFocus;
     private bool createNewDesignIncludeCustomizations;
@@ -27,24 +28,32 @@ public partial class MainWindow
     private List<CachedEquipmentSlot>? createNewDesignLiveEquipment;
     private List<CachedBonusItem>? createNewDesignLiveBonusItems;
     private bool createNewDesignPopupRequested;
+    private bool createNewDesignMenuRequested;
 
     // Always the last row in the tree regardless of grouping mode (called once, after whichever tree
     // draws) - a plain leaf with a + in place of the usual dot, opening a name-only creation popup.
     private void DrawCreateNewDesignLeaf()
     {
         if (ImGui.Selectable("   Create new design##createNewDesignLeaf"))
-            ImGui.OpenPopup("##createNewDesignMenu");
+            OpenCreateNewDesignMenu();
 
         DrawCreateLeafPlusIcon();
-
-        DrawCreateNewDesignMenu();
     }
 
-    // "From Worn" only sets a flag - DrawCreateNewDesignPopup is drawn from DrawTopToolbar instead of here
-    // so it stays reachable in Gallery Mode too, which never draws this tree.
+    // Also opened directly by QuickCreateWindow's own Create Design button. Only ever sets a flag -
+    // OpenPopup itself happens inside DrawCreateNewDesignMenu, since OpenPopup/BeginPopup have to share
+    // the same ID-stack context (window/child) to match, and this is called from several different ones.
+    internal void OpenCreateNewDesignMenu() => createNewDesignMenuRequested = true;
+
     private void DrawCreateNewDesignMenu()
     {
-        using var popup = ImRaii.Popup("##createNewDesignMenu");
+        if (createNewDesignMenuRequested)
+        {
+            createNewDesignMenuRequested = false;
+            ImGui.OpenPopup(CreateNewDesignMenuPopupId);
+        }
+
+        using var popup = ImRaii.Popup(CreateNewDesignMenuPopupId);
         if (!popup.Success)
             return;
 
@@ -52,6 +61,22 @@ public partial class MainWindow
             RequestCreateNewDesignFromWorn();
         if (ImGui.Selectable("From Code / Eorzea Collection"))
             OpenImportDesignDialog();
+    }
+
+    // Popups need an active window's Begin/End, so both MainWindow and QuickCreateWindow call this from
+    // their own Draw() - the frame guard stops it rendering (and ID-colliding) twice if both are open.
+    private int createDesignOverlaysFrame = -1;
+
+    internal void DrawCreateDesignOverlaysOnce()
+    {
+        var frame = ImGui.GetFrameCount();
+        if (createDesignOverlaysFrame == frame)
+            return;
+        createDesignOverlaysFrame = frame;
+
+        DrawCreateNewDesignMenu();
+        DrawCreateNewDesignPopup();
+        DrawImportDesignPopup();
     }
 
     // Shared by the tree leaf's own menu and the toolbar's Import -> Create Design submenu.
@@ -65,7 +90,11 @@ public partial class MainWindow
         createNewDesignExcludedBonusSlots.Clear();
         createNewDesignLiveEquipment = null;
         createNewDesignLiveBonusItems = null;
-        createNewDesignBaseId = null;
+        // Falls back to "current appearance" if the configured default was since deleted.
+        createNewDesignBaseId = plugin.Configuration.DefaultBaseDesignTemplate is { } defaultBaseId
+                                 && plugin.Configuration.CachedOutfits.ContainsKey(defaultBaseId)
+            ? defaultBaseId
+            : null;
         createNewDesignBaseFilter = string.Empty;
         createNewDesignPopupRequested = true;
     }
@@ -245,5 +274,10 @@ public partial class MainWindow
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Created \"{name}\" from currently worn equipment.");
         selectedDesign = result.NewId;
         RefreshDesigns();
+        DesignCreated?.Invoke(result.NewId);
     }
+
+    // QuickCreateWindow's Snap/Open Aetherfit buttons key off this rather than selectedDesign, which
+    // also changes for unrelated reasons (e.g. browsing the tree) while that window stays open.
+    internal event Action<Guid>? DesignCreated;
 }

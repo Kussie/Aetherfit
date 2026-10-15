@@ -156,6 +156,16 @@ public class ConfigWindow : Window, IDisposable
         ImGui.Separator();
         ImGui.Spacing();
 
+        ImGui.TextDisabled("Default Base Design Template:");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Pre-selects this design as the \"Create new design\" popup's Base template,\ninstead of its own default of \"None - current appearance\".");
+        ImGui.SameLine();
+        DrawDefaultBaseDesignTemplatePicker();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
         if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Trash, "Delete All Images", Vector2.Zero))
             ConfirmDialog.Open(DeleteAllImagesPopupId);
         if (ImGui.IsItemHovered())
@@ -285,6 +295,62 @@ public class ConfigWindow : Window, IDisposable
             .Where(kv => kv.Value.Source == DesignSource.Glamourer)
             .Select(kv => (kv.Key, kv.Value.Name))
             .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase);
+
+    private string defaultBaseDesignTemplateFilter = string.Empty;
+
+    // Same picker as "Create new design"'s own Base template combo (MainWindow.DrawBaseDesignPicker) -
+    // any design source, not just Glamourer, since that popup just duplicates metadata onto a fresh design.
+    private void DrawDefaultBaseDesignTemplatePicker()
+    {
+        var cfg = plugin.Configuration;
+        var preview = cfg.DefaultBaseDesignTemplate is { } sel ? cfg.ResolveDesignName(sel) : "None - current appearance";
+
+        ImGui.PushItemWidth(250 * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("##defaultBaseDesignTemplate", preview, ImGuiComboFlags.HeightLargest))
+        {
+            if (combo.Success)
+            {
+                if (ImGui.IsWindowAppearing())
+                    ImGui.SetKeyboardFocusHere();
+                ImGui.SetNextItemWidth(-1);
+                ImGui.InputTextWithHint("##defaultBaseDesignTemplateFilter", "Filter by name...", ref defaultBaseDesignTemplateFilter, 64);
+                ImGui.Separator();
+
+                if (ImGui.Selectable("None - current appearance", cfg.DefaultBaseDesignTemplate == null))
+                {
+                    cfg.DefaultBaseDesignTemplate = null;
+                    cfg.Save();
+                }
+                ImGui.Separator();
+
+                var matches = cfg.CachedOutfits
+                    .Select(kv => (Id: kv.Key, kv.Value.Name))
+                    .Where(d => defaultBaseDesignTemplateFilter.Length == 0
+                                || d.Name.Contains(defaultBaseDesignTemplateFilter, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (matches.Count == 0)
+                {
+                    ImGui.TextDisabled("No matching designs.");
+                }
+                else
+                {
+                    var listHeight = Math.Min(matches.Count, 15) * ImGui.GetTextLineHeightWithSpacing();
+                    using var scroll = ImRaii.Child("##defaultBaseDesignTemplateList", new Vector2(-1, listHeight), false);
+                    foreach (var (id, name) in matches)
+                    {
+                        if (ImGui.Selectable($"{name}##defaultBaseDesignTemplate{id}", cfg.DefaultBaseDesignTemplate == id))
+                        {
+                            cfg.DefaultBaseDesignTemplate = id;
+                            cfg.Save();
+                        }
+                    }
+                }
+            }
+        }
+        ImGui.PopItemWidth();
+    }
 
     private void DrawTagSuggestionsSection()
     {
@@ -522,6 +588,7 @@ public class ConfigWindow : Window, IDisposable
             "Pause Automations for a while without turning it off (default 15 minutes).");
         DrawCommand("/aetherfit last", "Reapply the last design you had worn.");
         DrawCommand("/aetherfit revert", "Revert your character's appearance back to the game's state.");
+        DrawCommand("/aetherfit qc|quickcreate", "Toggle the Quick Create window.");
     }
 
     private static void DrawCommand(string command, string description)

@@ -94,6 +94,7 @@ public sealed class Plugin : IDalamudPlugin
     private OrphanedModWindow OrphanedModWindow { get; init; }
     private TagManagerWindow TagManagerWindow { get; init; }
     private QuickSearchWindow QuickSearchWindow { get; init; }
+    private QuickCreateWindow QuickCreateWindow { get; init; }
     private BatchScreenshotWindow BatchScreenshotWindow { get; init; }
     private ChangelogWindow ChangelogWindow { get; init; }
     private AutomationsWindow AutomationsWindow { get; init; }
@@ -265,6 +266,7 @@ public sealed class Plugin : IDalamudPlugin
         AutomationsWindow = new AutomationsWindow(this);
         SuggestionPopupWindow = new SuggestionPopupWindow(this);
         MainWindow = new MainWindow(this);
+        QuickCreateWindow = new QuickCreateWindow(this);
         ImageViewer = new ImageViewerWindow();
         ScreenshotSetup = new ScreenshotSetupWindow(this);
         ScreenshotCrop = new ScreenshotCropWindow(this);
@@ -283,6 +285,7 @@ public sealed class Plugin : IDalamudPlugin
         WindowSystem.AddWindow(AutomationsWindow);
         WindowSystem.AddWindow(SuggestionPopupWindow);
         WindowSystem.AddWindow(MainWindow);
+        WindowSystem.AddWindow(QuickCreateWindow);
         WindowSystem.AddWindow(ImageViewer);
         WindowSystem.AddWindow(ScreenshotSetup);
         WindowSystem.AddWindow(ScreenshotCrop);
@@ -345,6 +348,7 @@ public sealed class Plugin : IDalamudPlugin
         ChangelogWindow.Dispose();
         AutomationsWindow.Dispose();
         MainWindow.Dispose();
+        QuickCreateWindow.Dispose();
         ImageViewer.Dispose();
         ScreenshotSetup.Dispose();
         ScreenshotCrop.Dispose();
@@ -373,6 +377,7 @@ public sealed class Plugin : IDalamudPlugin
       + "/aetherfit automations snooze [minutes] — pause Automations for a while (default 15 minutes).\n"
       + "/aetherfit last — reapply the last known design.\n"
       + "/aetherfit revert — revert appearance to the game state.\n"
+      + "/aetherfit qc|quickcreate — toggle the Quick Create window.\n"
       + "/aetherfit help — show this list.";
 
     private void PrintUsage()
@@ -557,6 +562,11 @@ public sealed class Plugin : IDalamudPlugin
                 MainWindow.RevertAppearance();
                 break;
 
+            case "qc":
+            case "quickcreate":
+                ToggleQuickCreateUi();
+                break;
+
             case "help":
                 PrintUsage();
                 break;
@@ -637,6 +647,7 @@ public sealed class Plugin : IDalamudPlugin
     public void ToggleTagManagerUi() => TagManagerWindow.Toggle();
     public void ToggleBatchScreenshotUi() => BatchScreenshotWindow.Toggle();
     public void ToggleAutomationsUi() => AutomationsWindow.Toggle();
+    public void ToggleQuickCreateUi() => QuickCreateWindow.Toggle();
 
     // Not a plain Toggle() - opening needs to reset the search text and recompute the popup's
     // on-screen position each time, not just flip visibility.

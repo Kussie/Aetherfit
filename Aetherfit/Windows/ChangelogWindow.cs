@@ -47,6 +47,10 @@ internal static class ChangelogData
             "Added ability to import designs from the Eorzea Collection website.",
             "Added a new command to change the state of automations."
         }),
+        new(6, "Quick Create Window", new[]
+        {
+            "Added a new command /aetherfit quickcreate to open a new window that allows you to quickly create a design from your current gear, take a screenshot.  Useful if you added a lot of mods and want to create a bunch of outfits quickly without needing to have the full aetherfit window open.",
+        }),
     };
 
     public static int LatestRevision => Entries.Length == 0 ? 0 : Entries.Max(e => e.Revision);

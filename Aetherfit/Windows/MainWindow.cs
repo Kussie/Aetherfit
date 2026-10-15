@@ -584,8 +584,7 @@ public partial class MainWindow : Window, IDisposable
         if (IconTextButton(FontAwesomeIcon.FolderOpen, "Import", dropdown: true))
             ImGui.OpenPopup("##openGalleryPopup");
         DrawOpenGalleryPopup();
-        DrawImportDesignPopup();
-        DrawCreateNewDesignPopup();
+        DrawCreateDesignOverlaysOnce();
         ImGui.SameLine();
 
         if (IconTextButton(FontAwesomeIcon.Stethoscope, "Reports", dropdown: true, warning: HasHealthIssues(),

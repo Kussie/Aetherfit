@@ -197,6 +197,10 @@ public class Configuration : IPluginConfiguration
     // Before layers) unless overridden per-design via DesignBaseLayerOverrides. Null = no base layer.
     public Guid? BaseDesignLayerId { get; set; }
 
+    // Pre-selects this design as the "Create new design" popup's Base Template, instead of its own
+    // default of "None - current appearance". Null = no change to that default.
+    public Guid? DefaultBaseDesignTemplate { get; set; }
+
     public bool GlamaholicEnabled { get; set; } = true;
     public bool GlamourPlateEnabled { get; set; } = true;
     public bool SimpleGlamourSwitcherEnabled { get; set; } = true;
