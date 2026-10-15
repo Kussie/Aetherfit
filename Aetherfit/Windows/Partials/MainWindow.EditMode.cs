@@ -7,6 +7,7 @@ using Dalamud.Interface;
 using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
+using Glamourer.Api.Enums;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
@@ -20,6 +21,7 @@ namespace Aetherfit.Windows;
 public partial class MainWindow
 {
     private const string ForceSyncPopupId = "Force Sync?##forceSyncConfirm";
+    private const string DeleteDesignPopupId = "Delete Design?##deleteDesignConfirm";
 
     private void DrawWelcomePlaceholder()
     {
@@ -98,7 +100,7 @@ public partial class MainWindow
 
                 // Measure the action cluster first so the title can be ellipsized to the space that remains.
                 var frameH = ImGui.GetFrameHeight();
-                float starW, eyeW, revealW, linkW, syncW, importW, importGearW, bulkLayerW, variantW, shareW, cardW;
+                float starW, eyeW, revealW, linkW, syncW, importW, importGearW, bulkLayerW, variantW, shareW, cardW, trashW;
                 using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
                 {
                     shareW = ImGui.CalcTextSize(FontAwesomeIcon.Share.ToIconString()).X
@@ -122,6 +124,8 @@ public partial class MainWindow
                     bulkLayerW = ImGui.CalcTextSize(FontAwesomeIcon.LayerGroup.ToIconString()).X
                           + (style.FramePadding.X * 2);
                     variantW = ImGui.CalcTextSize(FontAwesomeIcon.CodeBranch.ToIconString()).X
+                          + (style.FramePadding.X * 2);
+                    trashW = ImGui.CalcTextSize(FontAwesomeIcon.Trash.ToIconString()).X
                           + (style.FramePadding.X * 2);
                 }
                 // Glamourer gets both the open-in-native-UI link and the sync button; Glamaholic (no native UI
@@ -250,9 +254,31 @@ public partial class MainWindow
                     }
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Import current gear - capture what you're actually wearing (including anything Glamourer is forcing), plus any Penumbra mods affecting it");
+
+                    ImGui.SameLine(0, inner);
+                    if (HeaderIconButton("deleteDesign", FontAwesomeIcon.Trash, UiTheme.ErrorText, new Vector2(trashW, frameH)))
+                        ConfirmDialog.Open(DeleteDesignPopupId);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Delete this design from Glamourer");
                 }
 
                 DrawImportGearPopup(id, details);
+
+                if (isGlamourer && ConfirmDialog.Draw(DeleteDesignPopupId,
+                        $"Delete the Glamourer design \"{details.Name}\"? This cannot be undone.", "Delete", holdToConfirm: true))
+                {
+                    var result = plugin.Glamourer.DeleteDesign(details.ProviderDesignId);
+                    if (result == GlamourerApiEc.Success)
+                    {
+                        Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Deleted \"{details.Name}\" from Glamourer");
+                        selectedDesign = null;
+                        RefreshDesigns();
+                    }
+                    else
+                    {
+                        Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to delete \"{details.Name}\" from Glamourer: {result}");
+                    }
+                }
 
                 if (showForceSync)
                 {

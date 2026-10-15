@@ -28,7 +28,9 @@ internal static class ScreenshotCaptureService
         }
 
         using var ms = new MemoryStream();
-        image.SaveAsJpeg(ms, new JpegEncoder { Quality = quality });
+        // Forced, not auto: ImageSharp will otherwise pick a direct-RGB (Adobe APP14) encoding for some
+        // source images, which PDFsharp's own JPEG decoder can't read (look-book export consumes this).
+        image.SaveAsJpeg(ms, new JpegEncoder { Quality = quality, ColorType = JpegColorType.YCbCrRatio420 });
         return ms.ToArray();
     }
 

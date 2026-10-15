@@ -50,6 +50,13 @@ jobs:
               with:
                   dotnet-version: '10.x'
 
+            - name: Write SixLabors license file
+              shell: pwsh
+              run: |
+                  [System.IO.File]::WriteAllBytes("Aetherfit/sixlabors.lic", [System.Convert]::FromBase64String($env:SIXLABORS_LICENSE_B64))
+              env:
+                  SIXLABORS_LICENSE_B64: ${{ secrets.SIXLABORS_LICENSE_B64 }}
+
             - name: Build
               run: dotnet build Aetherfit/Aetherfit.csproj -c Release
 

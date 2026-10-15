@@ -111,6 +111,10 @@ public sealed class Plugin : IDalamudPlugin
 
     public Plugin()
     {
+        // PDFsharp 6.x is dual-licensed (AGPL or commercial) and throws at runtime without one -
+        // Aetherfit is AGPL-3.0-or-later itself, so this is the free tier, not a workaround.
+        PdfSharp.PdfSharpLicense.SetAgplLicense();
+
         var loadedConfig = PluginInterface.GetPluginConfig() as Configuration;
         Configuration = loadedConfig ?? new Configuration();
 

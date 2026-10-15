@@ -9,3 +9,6 @@ repo.json
 # Local fetch cache for tools/generate_composite_tags.py; recreated on demand.
 tools/danbooru_cache.json
 Aetherfit.code-workspace
+
+# SixLabors commercial license file - personal, never committed; CI writes its own from a secret.
+sixlabors.lic

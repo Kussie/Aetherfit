@@ -5,7 +5,6 @@ using System.Linq;
 using Aetherfit.Utils;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
@@ -24,12 +23,12 @@ public sealed class ShareCardService
     private const int PlaceholderImageHeight = 420;
     private const int DescriptionMaxChars = 480;
 
-    private static readonly Color BackgroundColor = Color.FromRgb(24, 24, 27);
-    private static readonly Color PlaceholderColor = Color.FromRgb(56, 56, 61);
-    private static readonly Color GoldAccent = Color.FromRgb(255, 217, 102);
-    private static readonly Color GoldRule = Color.FromRgba(255, 217, 102, 120);
-    private static readonly Color BodyTextColor = Color.FromRgb(214, 214, 218);
-    private static readonly Color MutedTextColor = Color.FromRgb(158, 158, 165);
+    private static readonly Color BackgroundColor = Color.FromPixel(new Rgba32(24, 24, 27));
+    private static readonly Color PlaceholderColor = Color.FromPixel(new Rgba32(56, 56, 61));
+    private static readonly Color GoldAccent = Color.FromPixel(new Rgba32(255, 217, 102));
+    private static readonly Color GoldRule = Color.FromPixel(new Rgba32(255, 217, 102, 120));
+    private static readonly Color BodyTextColor = Color.FromPixel(new Rgba32(214, 214, 218));
+    private static readonly Color MutedTextColor = Color.FromPixel(new Rgba32(158, 158, 165));
 
     private static readonly Font NameFont = ResolveFont("Georgia", "Segoe UI", 32, FontStyle.Bold);
     private static readonly Font TagsFont = ResolveFont("Segoe UI", "Verdana", 15, FontStyle.Italic);
@@ -89,7 +88,7 @@ public sealed class ShareCardService
                 cover = Image.Load<Rgba32>(coverPath);
                 // Sampled before Resize touches the pixels - see cardColor's use below for where it lands.
                 if (ImageBackgroundColor.DetectSolidEdgeColor(cover) is { } detected)
-                    cardColor = new Color(detected);
+                    cardColor = Color.FromScaledVector(detected);
 
                 var aspect = (double)cover.Width / cover.Height;
                 imageHeight = Math.Clamp((int)Math.Round(contentWidth / aspect), MinImageHeight, MaxImageHeight);
@@ -128,20 +127,20 @@ public sealed class ShareCardService
 
         var tagsText = tags.Count > 0 ? string.Join("   •   ", tags) : null;
         var tagsHeight = tagsText != null
-            ? (int)Math.Ceiling(TextMeasurer.MeasureSize(tagsText, NewOptions(TagsFont, wrappingLength: contentWidth)).Height)
+            ? (int)Math.Ceiling(TextMeasurer.Measure(tagsText, NewOptions(TagsFont, wrappingLength: contentWidth)).Bounds.Height)
             : 0;
 
         var modsText = mods.Count > 0 ? "Mods: " + string.Join("   •   ", mods) : null;
         var modsHeight = modsText != null
-            ? (int)Math.Ceiling(TextMeasurer.MeasureSize(modsText, NewOptions(TagsFont, wrappingLength: contentWidth)).Height)
+            ? (int)Math.Ceiling(TextMeasurer.Measure(modsText, NewOptions(TagsFont, wrappingLength: contentWidth)).Bounds.Height)
             : 0;
 
         var descText = string.IsNullOrWhiteSpace(description) ? null : CapLength(description!, DescriptionMaxChars);
         var descHeight = descText != null
-            ? (int)Math.Ceiling(TextMeasurer.MeasureSize(descText, NewOptions(BodyFont, wrappingLength: contentWidth)).Height)
+            ? (int)Math.Ceiling(TextMeasurer.Measure(descText, NewOptions(BodyFont, wrappingLength: contentWidth)).Bounds.Height)
             : 0;
 
-        var nameHeight = (int)Math.Ceiling(TextMeasurer.MeasureSize(fittedName, NewOptions(NameFont)).Height);
+        var nameHeight = (int)Math.Ceiling(TextMeasurer.Measure(fittedName, NewOptions(NameFont)).Bounds.Height);
         const int footerHeight = 20;
 
         var y = Margin;
@@ -165,35 +164,35 @@ public sealed class ShareCardService
 
         // Only the image band gets the detected backdrop colour - everything below the rule (name
         // onward) keeps the card's own dark background regardless.
-        canvas.Mutate(ctx => ctx.Fill(cardColor, new RectangularPolygon(0, 0, CardWidth, Margin + imageHeight + 9)));
+        canvas.Mutate(ctx => ctx.Paint(c => c.Fill(Brushes.Solid(cardColor), new Rectangle(0, 0, CardWidth, Margin + imageHeight + 9))));
 
         DrawCoverImage(canvas, cover, Margin, Margin, contentWidth, imageHeight);
-        canvas.Mutate(ctx => ctx.Fill(GoldRule, new RectangularPolygon(Margin, Margin + imageHeight + 9, contentWidth, 2)));
+        canvas.Mutate(ctx => ctx.Paint(c => c.Fill(Brushes.Solid(GoldRule), new Rectangle(Margin, Margin + imageHeight + 9, contentWidth, 2))));
 
         var nameOptions = NewOptions(NameFont, origin: new PointF(Margin, nameY));
-        canvas.Mutate(ctx => ctx.DrawText(nameOptions, fittedName, GoldAccent));
+        canvas.Mutate(ctx => ctx.Paint(c => c.DrawText(nameOptions, fittedName, Brushes.Solid(GoldAccent), null)));
 
         if (tagsText != null)
         {
             var tagsDrawOptions = NewOptions(TagsFont, wrappingLength: contentWidth, origin: new PointF(Margin, tagsY));
-            canvas.Mutate(ctx => ctx.DrawText(tagsDrawOptions, tagsText, MutedTextColor));
+            canvas.Mutate(ctx => ctx.Paint(c => c.DrawText(tagsDrawOptions, tagsText, Brushes.Solid(MutedTextColor), null)));
         }
 
         if (modsText != null)
         {
             var modsDrawOptions = NewOptions(TagsFont, wrappingLength: contentWidth, origin: new PointF(Margin, modsY));
-            canvas.Mutate(ctx => ctx.DrawText(modsDrawOptions, modsText, MutedTextColor));
+            canvas.Mutate(ctx => ctx.Paint(c => c.DrawText(modsDrawOptions, modsText, Brushes.Solid(MutedTextColor), null)));
         }
 
         if (descText != null)
         {
             var descDrawOptions = NewOptions(BodyFont, wrappingLength: contentWidth, origin: new PointF(Margin, descY));
-            canvas.Mutate(ctx => ctx.DrawText(descDrawOptions, descText, BodyTextColor));
+            canvas.Mutate(ctx => ctx.Paint(c => c.DrawText(descDrawOptions, descText, Brushes.Solid(BodyTextColor), null)));
         }
 
         var footerOptions = NewOptions(FooterFont, origin: new PointF(Margin + contentWidth, footerY),
             horizontalAlignment: HorizontalAlignment.Right);
-        canvas.Mutate(ctx => ctx.DrawText(footerOptions, "AETHERFIT", MutedTextColor));
+        canvas.Mutate(ctx => ctx.Paint(c => c.DrawText(footerOptions, "AETHERFIT", Brushes.Solid(MutedTextColor), null)));
 
         return canvas;
     }
@@ -207,23 +206,23 @@ public sealed class ShareCardService
             return;
         }
 
-        canvas.Mutate(ctx => ctx.Fill(PlaceholderColor, new RectangularPolygon(x, y, w, h)));
+        canvas.Mutate(ctx => ctx.Paint(c => c.Fill(Brushes.Solid(PlaceholderColor), new Rectangle(x, y, w, h))));
         var placeholderOptions = NewOptions(PlaceholderFont, origin: new PointF(x + w / 2f, y + h / 2f),
             horizontalAlignment: HorizontalAlignment.Center, verticalAlignment: VerticalAlignment.Center);
-        canvas.Mutate(ctx => ctx.DrawText(placeholderOptions, "No Image", MutedTextColor));
+        canvas.Mutate(ctx => ctx.Paint(c => c.DrawText(placeholderOptions, "No Image", Brushes.Solid(MutedTextColor), null)));
     }
 
     private static string FitSingleLine(string text, Font font, int maxWidth)
     {
         var options = NewOptions(font);
-        if (TextMeasurer.MeasureSize(text, options).Width <= maxWidth)
+        if (TextMeasurer.Measure(text, options).Bounds.Width <= maxWidth)
             return text;
 
         var trimmed = text;
         while (trimmed.Length > 1)
         {
             trimmed = trimmed[..^1];
-            if (TextMeasurer.MeasureSize(trimmed + "…", options).Width <= maxWidth)
+            if (TextMeasurer.Measure(trimmed + "…", options).Bounds.Width <= maxWidth)
                 return trimmed + "…";
         }
         return "…";
