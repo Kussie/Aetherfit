@@ -20,7 +20,9 @@ public sealed class LookBookExportService
     public const string FileExtension = ".pdf";
     private const string Masthead = "Look Book";
 
-    private static readonly XColor GoldAccent = XColor.FromArgb(255, 255, 217, 102);
+    // A property, not a static readonly field - a PdfSharp-typed field would force the CLR to resolve
+    // PdfSharp.dll just to lay out this class, at Plugin's eager `new LookBookExportService(...)`.
+    private static XColor GoldAccent => XColor.FromArgb(255, 255, 217, 102);
 
     private const int Columns = 3;
     private const int Rows = 3;
@@ -40,11 +42,6 @@ public sealed class LookBookExportService
 
     private readonly Configuration configuration;
     private readonly ImageStorageService imageStorage;
-
-    static LookBookExportService()
-    {
-        GlobalFontSettings.FontResolver ??= new WindowsFontResolver();
-    }
 
     public LookBookExportService(Configuration configuration, ImageStorageService imageStorage)
     {
@@ -114,8 +111,39 @@ public sealed class LookBookExportService
         });
     }
 
+    private static bool pdfSharpInitialized;
+
+    // Everything here only runs on first actual export, not at plugin load - a failure resolving
+    // PdfSharp.dll must only break export, not crash the whole plugin (see ExportToFileAsync's try/catch).
+    private static void EnsurePdfSharpInitialized()
+    {
+        if (pdfSharpInitialized)
+            return;
+        pdfSharpInitialized = true;
+
+        try
+        {
+            GlobalFontSettings.FontResolver ??= new WindowsFontResolver();
+            // Free AGPL tier, matching Aetherfit's own license.
+            PdfSharp.PdfSharpLicense.SetAgplLicense();
+        }
+        catch (Exception ex)
+        {
+            // Rethrown - ExportToFileAsync's own catch still owns the user-facing message. This is
+            // purely to capture what's actually loaded if PdfSharp.dll itself fails to resolve.
+            var relevant = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetName())
+                .Where(n => n.Name is "PdfSharp" or "Microsoft.Extensions.Logging.Abstractions" or "System.Security.Cryptography.Pkcs")
+                .Select(n => $"{n.Name} {n.Version}");
+            Plugin.Log.Error(ex, "PDFsharp failed to initialize. Loaded: {Loaded}", string.Join(", ", relevant) is { Length: > 0 } s ? s : "(none)");
+            throw;
+        }
+    }
+
     private static PdfDocument BuildDocument(List<(Guid Id, string Name, string? CoverPath)> items, string subtitle, string? heroPath)
     {
+        EnsurePdfSharpInitialized();
+
         var document = new PdfDocument();
         document.Info.Title = $"Aetherfit {Masthead}";
 

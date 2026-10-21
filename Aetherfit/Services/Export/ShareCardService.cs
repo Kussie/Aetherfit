@@ -23,18 +23,21 @@ public sealed class ShareCardService
     private const int PlaceholderImageHeight = 420;
     private const int DescriptionMaxChars = 480;
 
-    private static readonly Color BackgroundColor = Color.FromPixel(new Rgba32(24, 24, 27));
-    private static readonly Color PlaceholderColor = Color.FromPixel(new Rgba32(56, 56, 61));
-    private static readonly Color GoldAccent = Color.FromPixel(new Rgba32(255, 217, 102));
-    private static readonly Color GoldRule = Color.FromPixel(new Rgba32(255, 217, 102, 120));
-    private static readonly Color BodyTextColor = Color.FromPixel(new Rgba32(214, 214, 218));
-    private static readonly Color MutedTextColor = Color.FromPixel(new Rgba32(158, 158, 165));
+    // Properties, not static readonly fields - a SixLabors-typed field forces assembly resolution at
+    // Plugin's eager `new ShareCardService()`. Properties defer that to first actual call in RenderCard,
+    // so a failure to resolve ImageSharp/Fonts only breaks the share card, not the whole plugin.
+    private static Color BackgroundColor => Color.FromPixel(new Rgba32(24, 24, 27));
+    private static Color PlaceholderColor => Color.FromPixel(new Rgba32(56, 56, 61));
+    private static Color GoldAccent => Color.FromPixel(new Rgba32(255, 217, 102));
+    private static Color GoldRule => Color.FromPixel(new Rgba32(255, 217, 102, 120));
+    private static Color BodyTextColor => Color.FromPixel(new Rgba32(214, 214, 218));
+    private static Color MutedTextColor => Color.FromPixel(new Rgba32(158, 158, 165));
 
-    private static readonly Font NameFont = ResolveFont("Georgia", "Segoe UI", 32, FontStyle.Bold);
-    private static readonly Font TagsFont = ResolveFont("Segoe UI", "Verdana", 15, FontStyle.Italic);
-    private static readonly Font BodyFont = ResolveFont("Segoe UI", "Verdana", 16, FontStyle.Regular);
-    private static readonly Font FooterFont = ResolveFont("Segoe UI", "Verdana", 13, FontStyle.Regular);
-    private static readonly Font PlaceholderFont = ResolveFont("Segoe UI", "Verdana", 16, FontStyle.Italic);
+    private static Font NameFont => ResolveFont("Georgia", "Segoe UI", 32, FontStyle.Bold);
+    private static Font TagsFont => ResolveFont("Segoe UI", "Verdana", 15, FontStyle.Italic);
+    private static Font BodyFont => ResolveFont("Segoe UI", "Verdana", 16, FontStyle.Regular);
+    private static Font FooterFont => ResolveFont("Segoe UI", "Verdana", 13, FontStyle.Regular);
+    private static Font PlaceholderFont => ResolveFont("Segoe UI", "Verdana", 16, FontStyle.Italic);
 
     private static Font ResolveFont(string preferred, string fallback, int size, FontStyle style)
     {
@@ -45,7 +48,7 @@ public sealed class ShareCardService
 
     // None of the fonts above cover CJK, so an unmodded design name/tag/mod name in Japanese, Chinese
     // or Korean would otherwise draw as tofu boxes - these are standard Windows fonts, tried in order.
-    private static readonly IReadOnlyList<FontFamily> FallbackFamilies = BuildFallbackFamilies();
+    private static IReadOnlyList<FontFamily> FallbackFamilies => BuildFallbackFamilies();
 
     private static IReadOnlyList<FontFamily> BuildFallbackFamilies()
     {
