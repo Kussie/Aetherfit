@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Aetherfit.Services.Screenshots;
 using Aetherfit.Utils;
@@ -113,6 +114,16 @@ public sealed class LookBookExportService
 
     private static bool pdfSharpInitialized;
 
+    // A direct call can get JIT-inlined into whoever calls it, collapsing PdfSharp's own stack frame -
+    // its license check reads Assembly.GetCallingAssembly() and rejects anyone but PdfSharp itself. The
+    // delegate indirection plus NoInlining keeps that frame genuine (a known fix for this PdfSharp issue).
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void SetAgplLicenseWithoutInlining()
+    {
+        Action setAgplLicense = PdfSharp.PdfSharpLicense.SetAgplLicense;
+        setAgplLicense();
+    }
+
     // Everything here only runs on first actual export, not at plugin load - a failure resolving
     // PdfSharp.dll must only break export, not crash the whole plugin (see ExportToFileAsync's try/catch).
     private static void EnsurePdfSharpInitialized()
@@ -124,8 +135,7 @@ public sealed class LookBookExportService
         try
         {
             GlobalFontSettings.FontResolver ??= new WindowsFontResolver();
-            // Free AGPL tier, matching Aetherfit's own license.
-            PdfSharp.PdfSharpLicense.SetAgplLicense();
+            SetAgplLicenseWithoutInlining();
         }
         catch (Exception ex)
         {
