@@ -186,7 +186,7 @@ public sealed class AutomationsWindow : Window, IDisposable
         ImGui.TextColored(UiTheme.SectionHeader, "Snooze:");
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Temporarily pauses Automations without turning it off - rules stay configured "
-                + "and resume automatically once the timer runs out.");
+                + "and resume automatically once the timer (or chosen event) ends it.");
         ImGui.SameLine();
 
         var snoozed = plugin.Automation.IsSnoozed;
@@ -208,10 +208,24 @@ public sealed class AutomationsWindow : Window, IDisposable
             plugin.Automation.StartSnooze(TimeSpan.FromMinutes(snoozeMinutes));
         }
 
-        if (snoozed && plugin.Automation.SnoozeRemaining is { } remaining)
+        using (ImRaii.Disabled(snoozed))
         {
             ImGui.SameLine();
-            ImGui.TextColored(UiTheme.GoldAccent, $"Resuming in {FormatSnoozeRemaining(remaining)}");
+            if (ImGui.Button("Until Zone Change"))
+                plugin.Automation.StartSnoozeUntilZoneChange();
+
+            ImGui.SameLine();
+            if (ImGui.Button("Until Job Change"))
+                plugin.Automation.StartSnoozeUntilJobChange();
+        }
+
+        if (snoozed)
+        {
+            ImGui.SameLine();
+            if (plugin.Automation.SnoozeRemaining is { } remaining)
+                ImGui.TextColored(UiTheme.GoldAccent, $"Resuming in {FormatSnoozeRemaining(remaining)}");
+            else if (plugin.Automation.SnoozeEventDescription is { } description)
+                ImGui.TextColored(UiTheme.GoldAccent, $"Resuming on {description}");
         }
     }
 

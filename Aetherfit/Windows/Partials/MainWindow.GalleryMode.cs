@@ -960,6 +960,19 @@ public partial class MainWindow
                 selectedDesign = result.DesignId;
             }
         }
+        if (ImGui.MenuItem("Duplicate as Variant"))
+        {
+            var result = plugin.DesignApply.DuplicateDesign(design.Id);
+            if (result.Error != null)
+                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
+            else
+            {
+                plugin.Configuration.SetVariantParent(result.DesignId!.Value, design.Id);
+                plugin.Configuration.Save();
+                RefreshDesigns();
+                selectedDesign = result.DesignId;
+            }
+        }
 
         ImGui.Separator();
 

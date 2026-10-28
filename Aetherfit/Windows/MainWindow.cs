@@ -573,6 +573,11 @@ public partial class MainWindow : Window, IDisposable
         }
         ImGui.SameLine();
 
+        if (IconTextButton(FontAwesomeIcon.Plus, "Create", dropdown: true))
+            OpenCreateNewDesignMenu();
+        DrawCreateOverlaysOnce();
+        ImGui.SameLine();
+
         // Each dropdown's individual entries disable themselves against their own relevant busy
         // flag (see DrawSharePopup/DrawOpenGalleryPopup) rather than gating the whole button, so
         // e.g. waiting on a live-share peer doesn't lock out an unrelated plain export/import.
@@ -584,7 +589,6 @@ public partial class MainWindow : Window, IDisposable
         if (IconTextButton(FontAwesomeIcon.FolderOpen, "Import", dropdown: true))
             ImGui.OpenPopup("##openGalleryPopup");
         DrawOpenGalleryPopup();
-        DrawCreateDesignOverlaysOnce();
         ImGui.SameLine();
 
         if (IconTextButton(FontAwesomeIcon.Stethoscope, "Reports", dropdown: true, warning: HasHealthIssues(),
@@ -631,10 +635,15 @@ public partial class MainWindow : Window, IDisposable
             return null;
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-        if (settings.AutomationsEnabled && plugin.Automation.SnoozeRemaining is { } remaining)
+        if (settings.AutomationsEnabled && plugin.Automation.IsSnoozed)
         {
-            var minutes = (int)Math.Ceiling(remaining.TotalMinutes);
-            return ($"SNOOZED ({(minutes >= 1 ? $"{minutes}m" : "<1m")})", UiTheme.CautionText);
+            if (plugin.Automation.SnoozeRemaining is { } remaining)
+            {
+                var minutes = (int)Math.Ceiling(remaining.TotalMinutes);
+                return ($"SNOOZED ({(minutes >= 1 ? $"{minutes}m" : "<1m")})", UiTheme.CautionText);
+            }
+            if (plugin.Automation.SnoozeEventDescription is { } description)
+                return ($"SNOOZED (until {description})", UiTheme.CautionText);
         }
 
         return settings.AutomationsEnabled ? ("ON", UiTheme.StateOn) : ("OFF", UiTheme.StateOff);

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
@@ -6,6 +8,7 @@ using Dalamud.Interface.Utility.Raii;
 using Glamourer.Api.Enums;
 using Newtonsoft.Json.Linq;
 using Aetherfit.Services.Designs;
+using Aetherfit.Services.Game;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
 
@@ -24,6 +27,11 @@ public partial class MainWindow
     private bool importGearCreateNew;
     private string importGearNewName = string.Empty;
     private bool importGearReclaimFocus;
+    private bool importGearAdvancedImport;
+    private readonly HashSet<EquipmentSlot> importGearExcludedSlots = new();
+    private readonly HashSet<string> importGearExcludedBonusSlots = new();
+    private List<CachedEquipmentSlot>? importGearLiveEquipment;
+    private List<CachedBonusItem>? importGearLiveBonusItems;
 
     private void DrawImportToGlamourerPopup(Guid id, CachedOutfit details, bool isGlamaholic, bool isGearOverride)
     {
@@ -178,6 +186,21 @@ public partial class MainWindow
             + $"mods affecting it. Only customizations \"{details.Name}\" already sets get checked for changes - nothing new is added.");
         ImGui.Spacing();
 
+        if (ImGui.Checkbox("Advanced Import", ref importGearAdvancedImport) && importGearAdvancedImport)
+            EnsureImportGearLiveEquipmentLoaded();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Choose which equipment slots to capture.");
+
+        if (importGearAdvancedImport)
+        {
+            EnsureImportGearLiveEquipmentLoaded();
+            ImGui.Spacing();
+            DrawAdvancedImportSlotPicker("importGear", importGearLiveEquipment!,
+                importGearLiveBonusItems!, importGearExcludedSlots, importGearExcludedBonusSlots);
+        }
+
+        ImGui.Spacing();
+
         if (!importGearCreateNew)
         {
             if (ImGui.Button($"Update \"{details.Name}\""))
@@ -224,9 +247,21 @@ public partial class MainWindow
             importGearCreateNew = false;
     }
 
+    private void EnsureImportGearLiveEquipmentLoaded()
+    {
+        if (importGearLiveEquipment != null)
+            return;
+
+        var preview = plugin.GearImport.GetLiveEquipmentForPreview();
+        importGearLiveEquipment = preview.Success ? preview.Equipment.ToList() : new List<CachedEquipmentSlot>();
+        importGearLiveBonusItems = preview.Success ? preview.BonusItems.ToList() : new List<CachedBonusItem>();
+    }
+
     private void DoImportCurrentGear(Guid id, CachedOutfit details)
     {
-        var capture = plugin.GearImport.Capture(details, plugin.LayerResolution.Resolve(id));
+        var capture = plugin.GearImport.Capture(details, plugin.LayerResolution.Resolve(id),
+            importGearAdvancedImport ? importGearExcludedSlots : null,
+            importGearAdvancedImport ? importGearExcludedBonusSlots : null);
         if (!capture.Success || capture.Override == null)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Import current gear failed: {capture.Error}");
@@ -244,7 +279,9 @@ public partial class MainWindow
 
     private void DoCreateDesignFromCurrentGear(Guid id, CachedOutfit details, string name)
     {
-        var capture = plugin.GearImport.Capture(details, plugin.LayerResolution.Resolve(id));
+        var capture = plugin.GearImport.Capture(details, plugin.LayerResolution.Resolve(id),
+            importGearAdvancedImport ? importGearExcludedSlots : null,
+            importGearAdvancedImport ? importGearExcludedBonusSlots : null);
         if (!capture.Success || capture.Override == null)
         {
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Import current gear failed: {capture.Error}");

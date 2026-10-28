@@ -186,7 +186,8 @@ public sealed class GearImportService
         return new CreateFreshDesignResult(true, null, secondId);
     }
 
-    public CaptureResult Capture(CachedOutfit design, DesignLayerResolutionService.Result layers)
+    public CaptureResult Capture(CachedOutfit design, DesignLayerResolutionService.Result layers,
+        IReadOnlySet<EquipmentSlot>? excludedSlots = null, IReadOnlySet<string>? excludedBonusSlots = null)
     {
         var (result, state) = glamourer.GetState();
         if (result != GlamourerApiEc.Success || state == null)
@@ -217,6 +218,15 @@ public sealed class GearImportService
         var equipment = new List<CachedEquipmentSlot>();
         foreach (EquipmentSlot slot in Enum.GetValues<EquipmentSlot>())
         {
+            // Excluded means "capture nothing new here" - keep whatever the design already had,
+            // ignoring layer resolution entirely for this slot.
+            if (excludedSlots?.Contains(slot) == true)
+            {
+                if (designEquipmentBySlot.TryGetValue(slot, out var existing))
+                    equipment.Add(existing);
+                continue;
+            }
+
             var itemRes = layers.ItemSource.GetValueOrDefault(slot);
             var live = liveEquipmentBySlot.GetValueOrDefault(slot);
             var liveIsWorn = live != null && gameData.ResolveItemName(live.ItemId) != GameDataService.NothingItemName;
@@ -243,6 +253,13 @@ public sealed class GearImportService
         var bonusItems = new List<CachedBonusItem>();
         foreach (var slotKey in liveBonusBySlot.Keys.Union(designBonusBySlot.Keys))
         {
+            if (excludedBonusSlots?.Contains(slotKey) == true)
+            {
+                if (designBonusBySlot.TryGetValue(slotKey, out var existingBonus))
+                    bonusItems.Add(existingBonus);
+                continue;
+            }
+
             var bonusRes = layers.BonusItemSource.GetValueOrDefault(slotKey);
             var live = liveBonusBySlot.GetValueOrDefault(slotKey);
             var liveIsWorn = live != null && gameData.ResolveBonusItemName(live.Slot, live.ItemId) != GameDataService.NothingItemName;

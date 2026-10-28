@@ -11,8 +11,10 @@ using Aetherfit.Ui;
 
 namespace Aetherfit.Windows;
 
-// The "Create new design" flow, reached from both the tree's leaf and the toolbar's Import -> Create
-// Design submenu: From Worn (this file's own popup), From Code/Eorzea Collection (GalleryLiveShare.cs's).
+// The "Create new design" flow, reached from the toolbar's own Create dropdown (also triggered by
+// QuickCreateWindow): From Worn (this file's own popup), From Code/Eorzea Collection
+// (GalleryLiveShare.cs's). That same dropdown also offers Create Persona (MainWindow.Personas.cs's own
+// popup) and Quick Create, neither of which QuickCreateWindow's own button needs to re-offer.
 public partial class MainWindow
 {
     private const string CreateNewDesignPopupId = "Create new design?##createNewDesignConfirm";
@@ -30,20 +32,18 @@ public partial class MainWindow
     private bool createNewDesignPopupRequested;
     private bool createNewDesignMenuRequested;
 
-    // Always the last row in the tree regardless of grouping mode (called once, after whichever tree
-    // draws) - a plain leaf with a + in place of the usual dot, opening a name-only creation popup.
-    private void DrawCreateNewDesignLeaf()
-    {
-        if (ImGui.Selectable("   Create new design##createNewDesignLeaf"))
-            OpenCreateNewDesignMenu();
+    private bool createNewDesignMenuShowExtras;
 
-        DrawCreateLeafPlusIcon();
-    }
-
-    // Also opened directly by QuickCreateWindow's own Create Design button. Only ever sets a flag -
+    // Opened by the toolbar's Create button and QuickCreateWindow's own. Only ever sets a flag -
     // OpenPopup itself happens inside DrawCreateNewDesignMenu, since OpenPopup/BeginPopup have to share
     // the same ID-stack context (window/child) to match, and this is called from several different ones.
-    internal void OpenCreateNewDesignMenu() => createNewDesignMenuRequested = true;
+    // showExtras is false from QuickCreateWindow's own button - Create Persona and Quick Create itself
+    // don't belong on a "quickly create a design" bar.
+    internal void OpenCreateNewDesignMenu(bool showExtras = true)
+    {
+        createNewDesignMenuRequested = true;
+        createNewDesignMenuShowExtras = showExtras;
+    }
 
     private void DrawCreateNewDesignMenu()
     {
@@ -57,26 +57,49 @@ public partial class MainWindow
         if (!popup.Success)
             return;
 
+        ImGui.TextDisabled("Designs");
         if (ImGui.Selectable("From Worn"))
             RequestCreateNewDesignFromWorn();
         if (ImGui.Selectable("From Code / Eorzea Collection"))
             OpenImportDesignDialog();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Paste a design code (gear only) shared by another Aetherfit user, or an Eorzea Collection glamour link.");
+
+        if (createNewDesignMenuShowExtras)
+        {
+            if (ImGui.Selectable("Quick Create..."))
+            {
+                plugin.OpenQuickCreateUi();
+                IsOpen = false;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Create designs without the full Aetherfit window open.");
+
+            if (Plugin.PlayerState.IsLoaded)
+            {
+                ImGui.Separator();
+                ImGui.TextDisabled("Personas");
+                if (ImGui.Selectable("Create Persona"))
+                    OpenCreatePersonaPopup();
+            }
+        }
     }
 
     // Popups need an active window's Begin/End, so both MainWindow and QuickCreateWindow call this from
     // their own Draw() - the frame guard stops it rendering (and ID-colliding) twice if both are open.
-    private int createDesignOverlaysFrame = -1;
+    private int createOverlaysFrame = -1;
 
-    internal void DrawCreateDesignOverlaysOnce()
+    internal void DrawCreateOverlaysOnce()
     {
         var frame = ImGui.GetFrameCount();
-        if (createDesignOverlaysFrame == frame)
+        if (createOverlaysFrame == frame)
             return;
-        createDesignOverlaysFrame = frame;
+        createOverlaysFrame = frame;
 
         DrawCreateNewDesignMenu();
         DrawCreateNewDesignPopup();
         DrawImportDesignPopup();
+        DrawCreatePersonaPopupOverlay();
     }
 
     // Shared by the tree leaf's own menu and the toolbar's Import -> Create Design submenu.
@@ -144,7 +167,8 @@ public partial class MainWindow
         {
             EnsureLiveEquipmentPreviewLoaded();
             ImGui.Spacing();
-            DrawAdvancedImportSlotPicker();
+            DrawAdvancedImportSlotPicker("createNewDesign", createNewDesignLiveEquipment!,
+                createNewDesignLiveBonusItems!, createNewDesignExcludedSlots, createNewDesignExcludedBonusSlots);
         }
 
         ImGui.Spacing();
@@ -174,21 +198,20 @@ public partial class MainWindow
         createNewDesignLiveBonusItems = preview.Success ? preview.BonusItems.ToList() : new List<CachedBonusItem>();
     }
 
-    // Lets the user exclude specific equipment slots (and the one bonus/facewear slot) from the design
-    // CreateFreshDesign would otherwise capture unconditionally - unworn slots aren't shown, since
-    // there's nothing there to include or exclude either way.
-    private void DrawAdvancedImportSlotPicker()
+    // Lets the user exclude specific equipment slots (and the one bonus/facewear slot) from a capture
+    // that would otherwise happen unconditionally - unworn slots aren't shown, since there's nothing
+    // there to include or exclude either way. Shared by "Create new design" and "Import current gear"
+    // onto an existing one - idSuffix keeps their scrollable list/widget ids independent.
+    private void DrawAdvancedImportSlotPicker(string idSuffix, IReadOnlyList<CachedEquipmentSlot> liveEquipment,
+        IReadOnlyList<CachedBonusItem> liveBonusItems, HashSet<EquipmentSlot> excludedSlots, HashSet<string> excludedBonusSlots)
     {
-        if (createNewDesignLiveEquipment == null)
-            return;
-
-        var equipmentBySlot = createNewDesignLiveEquipment.ToDictionary(e => e.Slot);
+        var equipmentBySlot = liveEquipment.ToDictionary(e => e.Slot);
         var worn = DesignDetailView.SlotDisplay
             .Where(sd => equipmentBySlot.TryGetValue(sd.Slot, out var e)
                          && plugin.GameData.ResolveItemName(e.ItemId) != GameDataService.NothingItemName)
             .ToList();
 
-        var bonusBySlot = (createNewDesignLiveBonusItems ?? new List<CachedBonusItem>()).ToDictionary(b => b.Slot);
+        var bonusBySlot = liveBonusItems.ToDictionary(b => b.Slot);
         var wornBonus = DesignDetailView.BonusSlotDisplay
             .Where(bd => bonusBySlot.TryGetValue(bd.SlotKey, out var b)
                          && plugin.GameData.ResolveBonusItemName(bd.SlotKey, b.ItemId) != GameDataService.NothingItemName)
@@ -208,19 +231,19 @@ public partial class MainWindow
 
         var totalRows = worn.Count + wornBonus.Count;
         var listHeight = Math.Min(totalRows, MaxVisibleDesignRows) * ImGui.GetFrameHeightWithSpacing();
-        using var scroll = ImRaii.Child("##advancedImportSlots", new Vector2(-1, listHeight), true);
+        using var scroll = ImRaii.Child($"##advancedImportSlots{idSuffix}", new Vector2(-1, listHeight), true);
         foreach (var (slot, label) in worn)
         {
             var entry = equipmentBySlot[slot];
-            var excluded = createNewDesignExcludedSlots.Contains(slot);
+            var excluded = excludedSlots.Contains(slot);
 
             using (ImRaii.PushId((int)slot))
             {
                 if (HeaderIconButton("advToggle", excluded ? FontAwesomeIcon.Times : FontAwesomeIcon.Check,
                         excluded ? UiTheme.ErrorText : UiTheme.StateOn, new Vector2(toggleW, frameH)))
                 {
-                    if (!createNewDesignExcludedSlots.Remove(slot))
-                        createNewDesignExcludedSlots.Add(slot);
+                    if (!excludedSlots.Remove(slot))
+                        excludedSlots.Add(slot);
                 }
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(excluded ? "Excluded - click to include" : "Included - click to exclude");
@@ -235,15 +258,15 @@ public partial class MainWindow
         foreach (var (slotKey, label) in wornBonus)
         {
             var entry = bonusBySlot[slotKey];
-            var excluded = createNewDesignExcludedBonusSlots.Contains(slotKey);
+            var excluded = excludedBonusSlots.Contains(slotKey);
 
             using (ImRaii.PushId(slotKey))
             {
                 if (HeaderIconButton("advToggle", excluded ? FontAwesomeIcon.Times : FontAwesomeIcon.Check,
                         excluded ? UiTheme.ErrorText : UiTheme.StateOn, new Vector2(toggleW, frameH)))
                 {
-                    if (!createNewDesignExcludedBonusSlots.Remove(slotKey))
-                        createNewDesignExcludedBonusSlots.Add(slotKey);
+                    if (!excludedBonusSlots.Remove(slotKey))
+                        excludedBonusSlots.Add(slotKey);
                 }
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(excluded ? "Excluded - click to include" : "Included - click to exclude");

@@ -250,6 +250,11 @@ public partial class MainWindow
                     if (HeaderIconButton("importGear", FontAwesomeIcon.Tshirt, null, new Vector2(importGearW, frameH)))
                     {
                         importGearCreateNew = false;
+                        importGearAdvancedImport = false;
+                        importGearExcludedSlots.Clear();
+                        importGearExcludedBonusSlots.Clear();
+                        importGearLiveEquipment = null;
+                        importGearLiveBonusItems = null;
                         ImGui.OpenPopup(ImportGearPopupId);
                     }
                     if (ImGui.IsItemHovered())

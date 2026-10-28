@@ -24,6 +24,8 @@ public sealed class AutomationService : IDisposable
 
     private DateTime? snoozeUntilUtc;
     private ulong snoozedContentId;
+    private bool snoozeUntilZoneChange;
+    private uint? snoozeFromJobId;
 
     public Guid? CurrentRuleId { get; private set; }
     public string? CurrentRuleName { get; private set; }
@@ -60,31 +62,97 @@ public sealed class AutomationService : IDisposable
         }
     }
 
-    public bool IsSnoozed => SnoozeRemaining != null;
+    // True for a timer snooze still counting down, or either event snooze - those end on their own
+    // event rather than a deadline, so there's no remaining time to check.
+    public bool IsSnoozed
+    {
+        get
+        {
+            if (!Plugin.PlayerState.IsLoaded || snoozedContentId != Plugin.PlayerState.ContentId)
+                return false;
+            return snoozeUntilZoneChange || snoozeFromJobId != null || SnoozeRemaining != null;
+        }
+    }
+
+    // Null unless an event snooze (not a timer one) is active - what IsSnoozed is waiting on, for UI
+    // that can't show a countdown for it.
+    public string? SnoozeEventDescription
+    {
+        get
+        {
+            if (!IsSnoozed)
+                return null;
+            if (snoozeUntilZoneChange)
+                return "next zone change";
+            if (snoozeFromJobId != null)
+                return "next job change";
+            return null;
+        }
+    }
 
     public void StartSnooze(TimeSpan duration)
     {
         if (!Plugin.PlayerState.IsLoaded)
             return;
+        ResetSnoozeState();
         snoozedContentId = Plugin.PlayerState.ContentId;
         snoozeUntilUtc = DateTime.UtcNow + duration;
     }
 
-    public void CancelSnooze() => snoozeUntilUtc = null;
+    public void StartSnoozeUntilZoneChange()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+        ResetSnoozeState();
+        snoozedContentId = Plugin.PlayerState.ContentId;
+        snoozeUntilZoneChange = true;
+    }
+
+    public void StartSnoozeUntilJobChange()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+        ResetSnoozeState();
+        snoozedContentId = Plugin.PlayerState.ContentId;
+        snoozeFromJobId = Plugin.PlayerState.ClassJob.RowId;
+    }
+
+    public void CancelSnooze() => ResetSnoozeState();
+
+    private void ResetSnoozeState()
+    {
+        snoozeUntilUtc = null;
+        snoozeUntilZoneChange = false;
+        snoozeFromJobId = null;
+    }
 
     public AutomationService(Plugin plugin)
     {
         this.plugin = plugin;
         plugin.Glamourer.OnAnyStateFinalized += OnGlamourerActivity;
+        Plugin.ClientState.TerritoryChanged += OnTerritoryChangedForSnooze;
     }
 
-    public void Dispose() => plugin.Glamourer.OnAnyStateFinalized -= OnGlamourerActivity;
+    public void Dispose()
+    {
+        plugin.Glamourer.OnAnyStateFinalized -= OnGlamourerActivity;
+        Plugin.ClientState.TerritoryChanged -= OnTerritoryChangedForSnooze;
+    }
 
     private void OnGlamourerActivity(nint actor, Glamourer.Api.Enums.StateFinalizationType type)
         => lastGlamourerActivityUtc = DateTime.UtcNow;
 
+    private void OnTerritoryChangedForSnooze(uint territoryId)
+    {
+        if (snoozeUntilZoneChange)
+            CancelSnooze();
+    }
+
     public void OnFrameworkTick(IFramework framework)
     {
+        if (snoozeFromJobId is { } startJobId && Plugin.PlayerState.IsLoaded && Plugin.PlayerState.ClassJob.RowId != startJobId)
+            CancelSnooze();
+
         if (DateTime.UtcNow < nextPollUtc)
             return;
         nextPollUtc = DateTime.UtcNow + TimeSpan.FromSeconds(1);

@@ -33,7 +33,7 @@ public sealed class QuickCreateWindow : Window, IDisposable
     {
         // Needs an active window to attach the popups to - this window counts just as well as
         // MainWindow's own, and the frame guard keeps it from double-drawing if both are open.
-        plugin.MainWindow.DrawCreateDesignOverlaysOnce();
+        plugin.MainWindow.DrawCreateOverlaysOnce();
 
         if (ImGuiComponents.IconButton("qcRevert", FontAwesomeIcon.Undo))
             plugin.DesignApply.RevertAppearance();
@@ -42,7 +42,7 @@ public sealed class QuickCreateWindow : Window, IDisposable
 
         ImGui.SameLine();
         if (ImGuiComponents.IconButton("qcCreate", FontAwesomeIcon.Plus))
-            plugin.MainWindow.OpenCreateNewDesignMenu();
+            plugin.MainWindow.OpenCreateNewDesignMenu(showExtras: false);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Create Design");
 

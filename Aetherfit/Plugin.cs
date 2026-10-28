@@ -370,7 +370,7 @@ public sealed class Plugin : IDalamudPlugin
       + "/aetherfit wear \"design name\" — apply the design with this exact name (quotes required).\n"
       + "/aetherfit persona \"persona name\" [\"design name\"|random] — activate a persona (its Default Design, or keep the current design if none is set), optionally wearing a specific design instead, or \"random\" to pick one of its Assigned Designs at random.\n"
       + "/aetherfit automations toggle|on|off — turn Automations on, off, or flip its current state.\n"
-      + "/aetherfit automations snooze [minutes] — pause Automations for a while (default 15 minutes).\n"
+      + "/aetherfit automations snooze [minutes|zone|job] — pause Automations for a while (default 15 minutes), or until the next zone/job change.\n"
       + "/aetherfit last — reapply the last known design.\n"
       + "/aetherfit revert — revert appearance to the game state.\n"
       + "/aetherfit qc|quickcreate — toggle the Quick Create window.\n"
@@ -534,17 +534,31 @@ public sealed class Plugin : IDalamudPlugin
                             break;
                         }
 
-                        var minutes = 15;
-                        if (parts.Length > 1 && int.TryParse(parts[1].Trim(), out var parsed))
-                            minutes = Math.Clamp(parsed, 1, 1440);
+                        var arg = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : string.Empty;
+                        if (arg == "zone")
+                        {
+                            Automation.StartSnoozeUntilZoneChange();
+                            ChatGui.Print($"{ChatPrefix}Automations snoozed until the next zone change.");
+                        }
+                        else if (arg == "job")
+                        {
+                            Automation.StartSnoozeUntilJobChange();
+                            ChatGui.Print($"{ChatPrefix}Automations snoozed until the next job change.");
+                        }
+                        else
+                        {
+                            var minutes = 15;
+                            if (arg.Length > 0 && int.TryParse(arg, out var parsed))
+                                minutes = Math.Clamp(parsed, 1, 1440);
 
-                        Automation.StartSnooze(TimeSpan.FromMinutes(minutes));
-                        ChatGui.Print($"{ChatPrefix}Automations snoozed for {minutes} minute{(minutes == 1 ? "" : "s")}.");
+                            Automation.StartSnooze(TimeSpan.FromMinutes(minutes));
+                            ChatGui.Print($"{ChatPrefix}Automations snoozed for {minutes} minute{(minutes == 1 ? "" : "s")}.");
+                        }
                         break;
                     }
 
                     default:
-                        ChatGui.PrintError($"{ChatPrefix}Usage: /aetherfit automations toggle|on|off|snooze [minutes]");
+                        ChatGui.PrintError($"{ChatPrefix}Usage: /aetherfit automations toggle|on|off|snooze [minutes|zone|job]");
                         break;
                 }
                 break;
@@ -644,6 +658,14 @@ public sealed class Plugin : IDalamudPlugin
     public void ToggleBatchScreenshotUi() => BatchScreenshotWindow.Toggle();
     public void ToggleAutomationsUi() => AutomationsWindow.Toggle();
     public void ToggleQuickCreateUi() => QuickCreateWindow.Toggle();
+
+    // Ensures it's open rather than toggling, for callers (the Create Design dropdown) that always mean
+    // "open this", not "flip its visibility".
+    public void OpenQuickCreateUi()
+    {
+        QuickCreateWindow.IsOpen = true;
+        QuickCreateWindow.BringToFront();
+    }
 
     // Not a plain Toggle() - opening needs to reset the search text and recompute the popup's
     // on-screen position each time, not just flip visibility.

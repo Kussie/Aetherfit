@@ -584,8 +584,8 @@ public class ConfigWindow : Window, IDisposable
             + "Optionally wear a specific design instead, or \"random\" to pick one of its Assigned Designs at random.");
         DrawCommand("/aetherfit automations toggle|on|off",
             "Turn Automations on or off, or flip its current state.");
-        DrawCommand("/aetherfit automations snooze [minutes]",
-            "Pause Automations for a while without turning it off (default 15 minutes).");
+        DrawCommand("/aetherfit automations snooze [minutes|zone|job]",
+            "Pause Automations for a while without turning it off (default 15 minutes), or until the next zone or job change.");
         DrawCommand("/aetherfit last", "Reapply the last design you had worn.");
         DrawCommand("/aetherfit revert", "Revert your character's appearance back to the game's state.");
         DrawCommand("/aetherfit qc|quickcreate", "Toggle the Quick Create window.");

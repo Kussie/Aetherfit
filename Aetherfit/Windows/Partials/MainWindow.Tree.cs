@@ -95,7 +95,6 @@ public partial class MainWindow
                     else
                         DrawTree(root, hasFilter);
 
-                    DrawCreateNewDesignLeaf();
                     ImGui.TreePop();
                 }
             }
@@ -358,6 +357,19 @@ public partial class MainWindow
                         selectedDesign = result.DesignId;
                     }
                 }
+                if (ImGui.MenuItem("Duplicate as Variant"))
+                {
+                    var result = plugin.DesignApply.DuplicateDesign(design.Id);
+                    if (result.Error != null)
+                        Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
+                    else
+                    {
+                        plugin.Configuration.SetVariantParent(result.DesignId!.Value, design.Id);
+                        plugin.Configuration.Save();
+                        RefreshDesigns();
+                        selectedDesign = result.DesignId;
+                    }
+                }
             }
         }
 
@@ -379,23 +391,6 @@ public partial class MainWindow
         var x = min.X + (lineH * 0.45f) - (hasVariants ? ImGui.GetStyle().FramePadding.X : 0f);
         var center = new Vector2(x, (min.Y + max.Y) * 0.5f);
         ImGui.GetWindowDrawList().AddCircleFilled(center, lineH * LeafDotRadius, color, 16);
-    }
-
-    // Draws a hand-drawn + (not the icon font, so it's sized to match the leaf dot's own footprint
-    // rather than a full icon glyph reading far too large next to it) over the previously-drawn item -
-    // call this immediately after the Selectable it belongs to. Shared by every "Create new X" leaf row.
-    private static void DrawCreateLeafPlusIcon()
-    {
-        var min = ImGui.GetItemRectMin();
-        var max = ImGui.GetItemRectMax();
-        var lineH = ImGui.GetTextLineHeight();
-        var center = new Vector2(min.X + (lineH * 0.45f), (min.Y + max.Y) * 0.5f);
-        var half = lineH * LeafDotRadius;
-        var thickness = 1.5f * ImGuiHelpers.GlobalScale;
-        var color = ImGui.GetColorU32(ImGuiCol.Text);
-        var drawList = ImGui.GetWindowDrawList();
-        drawList.AddLine(center - new Vector2(half, 0f), center + new Vector2(half, 0f), color, thickness);
-        drawList.AddLine(center - new Vector2(0f, half), center + new Vector2(0f, half), color, thickness);
     }
 
     private void DrawDesignLeafTooltip(DesignLeaf design)

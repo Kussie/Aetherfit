@@ -65,19 +65,6 @@ public partial class MainWindow
             foreach (var persona in settings.Personas.ToList())
                 DrawPersonaNode(persona, settings.ActivePersonaId == persona.Id);
 
-            if (ImGui.Selectable("   Create new persona##createNewPersonaLeaf"))
-            {
-                createPersonaName = string.Empty;
-                createPersonaReclaimFocus = true;
-                ImGui.OpenPopup(CreatePersonaPopupId);
-            }
-            DrawCreateLeafPlusIcon();
-
-            // Must be called at the same ID-stack depth as the OpenPopup call above - Dear ImGui
-            // resolves a popup's id relative to the current ID stack, so calling this after TreePop()
-            // (a shallower scope) meant OpenPopup and PopupModal never matched and the popup never opened.
-            DrawCreatePersonaPopup(settings);
-
             ImGui.TreePop();
         }
     }
@@ -215,6 +202,36 @@ public partial class MainWindow
         DesignDetailView.DrawFontAwesome(FontAwesomeIcon.Check, UiTheme.StateOn);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Currently active");
+    }
+
+    private bool createPersonaRequested;
+
+    // Opened from the toolbar's Create dropdown (MainWindow.CreateDesign.cs) - only sets a flag, same
+    // reasoning as OpenCreateNewDesignMenu: OpenPopup has to happen at DrawCreatePersonaPopupOverlay's
+    // own ID-stack depth, not the dropdown's.
+    internal void OpenCreatePersonaPopup()
+    {
+        createPersonaName = string.Empty;
+        createPersonaReclaimFocus = true;
+        createPersonaRequested = true;
+    }
+
+    // Drawn unconditionally every frame (DrawCreateOverlaysOnce) rather than from inside the Personas
+    // tree node - the popup needs to work even when that section is collapsed or the player isn't loaded
+    // yet at the moment this is called, so the loaded check and settings lookup live here, not the caller.
+    private void DrawCreatePersonaPopupOverlay()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+
+        if (createPersonaRequested)
+        {
+            createPersonaRequested = false;
+            ImGui.OpenPopup(CreatePersonaPopupId);
+        }
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        DrawCreatePersonaPopup(settings);
     }
 
     private void DrawCreatePersonaPopup(CharacterLoginSettings settings)
