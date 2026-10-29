@@ -250,9 +250,21 @@ public partial class MainWindow
             }
 
             ImGui.SameLine();
+            var rowTextStart = ImGui.GetCursorScreenPos();
             var itemName = plugin.GameData.ResolveItemName(entry.ItemId);
             DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
                 entry.Stain, entry.Stain2, entry.ApplyStain, applied: !excluded, EmptyAffectedMap);
+
+            // Overlaid after the fact, sized to just the label+item name (not the stain swatches further
+            // right) - clicking the text is the same as clicking the toggle button beside it.
+            var afterRowCursor = ImGui.GetCursorPos();
+            ImGui.SetCursorScreenPos(rowTextStart);
+            if (ImGui.InvisibleButton($"##rowToggle{(int)slot}", new Vector2(labelWidth + ImGui.CalcTextSize(itemName).X, frameH))
+                && !excludedSlots.Remove(slot))
+                excludedSlots.Add(slot);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(excluded ? "Excluded - click to include" : "Included - click to exclude");
+            ImGui.SetCursorPos(afterRowCursor);
         }
 
         foreach (var (slotKey, label) in wornBonus)
@@ -273,9 +285,19 @@ public partial class MainWindow
             }
 
             ImGui.SameLine();
+            var rowTextStart = ImGui.GetCursorScreenPos();
             var itemName = plugin.GameData.ResolveBonusItemName(slotKey, entry.ItemId);
             DesignDetailView.DrawSlotRow(plugin.GameData, label, labelWidth, itemName,
                 0, 0, false, applied: !excluded, EmptyAffectedMap);
+
+            var afterRowCursor = ImGui.GetCursorPos();
+            ImGui.SetCursorScreenPos(rowTextStart);
+            if (ImGui.InvisibleButton($"##rowToggle{slotKey}", new Vector2(labelWidth + ImGui.CalcTextSize(itemName).X, frameH))
+                && !excludedBonusSlots.Remove(slotKey))
+                excludedBonusSlots.Add(slotKey);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(excluded ? "Excluded - click to include" : "Included - click to exclude");
+            ImGui.SetCursorPos(afterRowCursor);
         }
     }
 

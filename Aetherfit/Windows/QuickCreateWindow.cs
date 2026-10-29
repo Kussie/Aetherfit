@@ -1,9 +1,11 @@
 using System;
 using System.Numerics;
 using Aetherfit.Services.Screenshots;
+using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
@@ -23,6 +25,11 @@ public sealed class QuickCreateWindow : Window, IDisposable
     {
         this.plugin = plugin;
         plugin.MainWindow.DesignCreated += OnDesignCreated;
+        SizeConstraints = new WindowSizeConstraints
+        {
+            MinimumSize = new Vector2(220, 0) * ImGuiHelpers.GlobalScale,
+            MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
+        };
     }
 
     public void Dispose() => plugin.MainWindow.DesignCreated -= OnDesignCreated;
@@ -68,5 +75,24 @@ public sealed class QuickCreateWindow : Window, IDisposable
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Open Aetherfit");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        if (lastCreatedDesignId is { } id)
+        {
+            var hasCover = plugin.ImageStorage.GetCoverPath(id) != null;
+            using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+                ImGui.TextColored(hasCover ? UiTheme.StateOn : UiTheme.ErrorText, FontAwesomeIcon.Camera.ToIconString());
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(hasCover ? "Has a cover screenshot" : "No cover screenshot yet");
+
+            ImGui.SameLine();
+            ImGui.TextColored(UiTheme.GoldAccent, plugin.Configuration.ResolveDesignName(id));
+        }
+        else
+        {
+            ImGui.TextDisabled("No design saved yet");
+        }
     }
 }
