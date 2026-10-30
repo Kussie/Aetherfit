@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Aetherfit.Services.Designs;
 using Aetherfit.Services.Game;
 using Aetherfit.Ui;
 using Aetherfit.Utils;
@@ -486,17 +487,53 @@ public partial class MainWindow
 
     private HashSet<Guid> FlaggedDesignIds()
     {
-        if (cachedFlaggedGeneration != designListGeneration || cachedFlaggedIgnoreVersion != plugin.Configuration.HealthCheckIgnoreVersion)
-        {
-            cachedFlaggedDesignIds = plugin.HealthReport.FindMissingModAssociations().Select(f => f.Id)
-                .Concat(plugin.HealthReport.FindBrokenItems().Select(f => f.Id))
-                .Concat(plugin.HealthReport.FindIncompatibleDesigns().Select(f => f.Id))
-                .Concat(plugin.HealthReport.FindDuplicates().SelectMany(g => g.Designs.Select(d => d.Id)))
-                .ToHashSet();
-            cachedFlaggedGeneration = designListGeneration;
-            cachedFlaggedIgnoreVersion = plugin.Configuration.HealthCheckIgnoreVersion;
-        }
+        EnsureFlaggedDesignsCache();
         return cachedFlaggedDesignIds;
+    }
+
+    // Per-design health issue messages for the detail pane's own warning banner (MainWindow.EditMode.cs) -
+    // built alongside FlaggedDesignIds from the same Find* calls so they only run once per cache generation.
+    private Dictionary<Guid, List<(string CheckType, string Message)>> cachedHealthIssueMessages = new();
+    private static readonly List<(string CheckType, string Message)> NoHealthIssues = new();
+
+    private List<(string CheckType, string Message)> GetHealthIssues(Guid id)
+    {
+        EnsureFlaggedDesignsCache();
+        return cachedHealthIssueMessages.TryGetValue(id, out var issues) ? issues : NoHealthIssues;
+    }
+
+    private void EnsureFlaggedDesignsCache()
+    {
+        if (cachedFlaggedGeneration == designListGeneration && cachedFlaggedIgnoreVersion == plugin.Configuration.HealthCheckIgnoreVersion)
+            return;
+
+        var messages = new Dictionary<Guid, List<(string, string)>>();
+        void AddIssue(Guid designId, string checkType, string message)
+        {
+            if (!messages.TryGetValue(designId, out var list))
+            {
+                list = new List<(string, string)>();
+                messages[designId] = list;
+            }
+            list.Add((checkType, message));
+        }
+
+        foreach (var finding in plugin.HealthReport.FindMissingModAssociations())
+            AddIssue(finding.Id, HealthReportService.MissingModCheck,
+                $"Missing mod association(s): {string.Join(", ", finding.MissingMods.Select(DesignAttributionService.ModDisplayName))}");
+        foreach (var finding in plugin.HealthReport.FindBrokenItems())
+            AddIssue(finding.Id, HealthReportService.BrokenItemCheck, $"Broken item(s): {string.Join(", ", finding.BrokenSlots)}");
+        foreach (var finding in plugin.HealthReport.FindIncompatibleDesigns())
+            AddIssue(finding.Id, HealthReportService.IncompatibleCheck, $"Incompatible item(s): {string.Join(", ", finding.IncompatibleSlots)}");
+        foreach (var group in plugin.HealthReport.FindDuplicates())
+            foreach (var (designId, _) in group.Designs)
+                AddIssue(designId, HealthReportService.DuplicateCheck,
+                    $"Duplicate of: {string.Join(", ", group.Designs.Where(d => d.Id != designId).Select(d => d.Name))}");
+
+        cachedHealthIssueMessages = messages;
+        cachedFlaggedDesignIds = messages.Keys.ToHashSet();
+        cachedFlaggedGeneration = designListGeneration;
+        cachedFlaggedIgnoreVersion = plugin.Configuration.HealthCheckIgnoreVersion;
     }
 
     // ignoreHiddenOnly: the tree's own variant-nesting loop uses this - a variant should always render

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
@@ -59,6 +60,67 @@ public partial class MainWindow
         ImGui.SetCursorPosY(startY);
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (avail.X - textSize.X) * 0.5f));
         ImGui.TextDisabled(message);
+    }
+
+    // Same per-check dismiss as the Health Report window (IgnoreHealthCheck), so dismissing here also
+    // clears it there. Filled box like DrawGearImportPendingBanner, sized for however many issues there are.
+    private void DrawHealthIssuesBanner(Guid id)
+    {
+        var issues = GetHealthIssues(id);
+        if (issues.Count == 0)
+            return;
+
+        ImGui.Spacing();
+
+        var style = ImGui.GetStyle();
+        var scale = ImGuiHelpers.GlobalScale;
+        var pad = 8f * scale;
+        var availW = ImGui.GetContentRegionAvail().X;
+        var dismissW = ImGui.GetFrameHeight();
+        var indent = 16f * scale;
+        var headerH = ImGui.GetTextLineHeight();
+        var rowH = ImGui.GetFrameHeight();
+        var boxH = pad + headerH + style.ItemSpacing.Y + (issues.Count * rowH) + pad;
+
+        var start = ImGui.GetCursorScreenPos();
+        var bgColor = new Vector4(UiTheme.ErrorText.X, UiTheme.ErrorText.Y, UiTheme.ErrorText.Z, 0.16f);
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.AddRectFilled(start, start + new Vector2(availW, boxH), ImGui.ColorConvertFloat4ToU32(bgColor), 4f);
+        drawList.AddRect(start, start + new Vector2(availW, boxH), ImGui.ColorConvertFloat4ToU32(UiTheme.ErrorText), 4f, ImDrawFlags.None, 1.5f * scale);
+
+        ImGui.SetCursorScreenPos(start + new Vector2(pad, pad));
+        using (ImRaii.PushColor(ImGuiCol.Text, UiTheme.ErrorText))
+        {
+            DesignDetailView.DrawFontAwesome(FontAwesomeIcon.ExclamationTriangle, UiTheme.ErrorText);
+            ImGui.SameLine();
+            ImGui.TextUnformatted(issues.Count == 1
+                ? "Health issue with this design:"
+                : $"{issues.Count} health issues with this design:");
+        }
+
+        var rowY = start.Y + pad + headerH + style.ItemSpacing.Y;
+        foreach (var (checkType, message) in issues)
+        {
+            using var rowId = ImRaii.PushId(checkType);
+
+            ImGui.SetCursorScreenPos(new Vector2(start.X + pad + indent, rowY + (rowH - ImGui.GetTextLineHeight()) * 0.5f));
+            ImGui.TextColored(UiTheme.StateUnset, $"- {message}");
+
+            ImGui.SetCursorScreenPos(new Vector2(start.X + availW - dismissW - pad, rowY));
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.EyeSlash))
+            {
+                plugin.Configuration.IgnoreHealthCheck(id, checkType);
+                plugin.Configuration.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Ignore - won't show here or in the Health Report again");
+
+            rowY += rowH;
+        }
+
+        ImGui.SetCursorScreenPos(new Vector2(start.X, start.Y + boxH));
+        ImGui.Spacing();
+        ImGui.Spacing();
     }
 
     private void DrawSelectedOutfitDetails()
@@ -350,6 +412,8 @@ public partial class MainWindow
                 }
 
                 DrawBulkLayerAssignPopup();
+
+                DrawHealthIssuesBanner(id);
 
                 if (hasGearOverride)
                     DrawGearImportPendingBanner(id, details);
