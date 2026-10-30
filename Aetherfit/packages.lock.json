@@ -16,9 +16,9 @@
       },
       "Microsoft.ML.OnnxRuntime.Managed": {
         "type": "Direct",
-        "requested": "[1.31.1, )",
-        "resolved": "1.31.1",
-        "contentHash": "158JCbNXN9/90LtjF4vHFiJYCF0bqF7CxLjm031jq7dJLEn/CtlHpMJm3UItQSIhQenlx+9Zuqi3zulwnsRVtA==",
+        "requested": "[1.22.1, )",
+        "resolved": "1.22.1",
+        "contentHash": "hYGYf0BaHiTfb623kD36pYpFN0rh2Znk3QS+ZWWxnTV6iDzl1KUJYaxf7/stz28r1w6HOqUqgWcT1nOYXuf8ew==",
         "dependencies": {
           "System.Numerics.Tensors": "9.0.0"
         }
