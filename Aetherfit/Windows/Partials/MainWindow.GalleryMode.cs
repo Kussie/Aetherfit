@@ -605,7 +605,7 @@ public partial class MainWindow
         var result = new List<DesignLeaf>();
         foreach (var (variantId, _) in plugin.Configuration.GetVariantsOf(parentId))
         {
-            if (plugin.Configuration.HiddenDesigns.Contains(variantId))
+            if (!filterHiddenOnly && plugin.Configuration.HiddenDesigns.Contains(variantId))
                 continue;
             if (!designLeafById.TryGetValue(variantId, out var leaf))
                 continue;
@@ -669,6 +669,7 @@ public partial class MainWindow
 
         var imageHovered = ImGui.IsItemHovered();
         var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
+        var isHidden = plugin.Configuration.HiddenDesigns.Contains(design.Id);
         var hasMissingMod = plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var outfitForModBadge)
             && plugin.Attribution.HasMissingModAssociation(outfitForModBadge);
 
@@ -794,9 +795,10 @@ public partial class MainWindow
                     }
                     else if (overEye)
                     {
-                        // Visible cells are never hidden, so a click here always hides the design (it then drops
-                        // out of the gallery). Unhiding happens from the detail header.
-                        plugin.Configuration.HiddenDesigns.Add(design.Id);
+                        if (isHidden)
+                            plugin.Configuration.HiddenDesigns.Remove(design.Id);
+                        else
+                            plugin.Configuration.HiddenDesigns.Add(design.Id);
                         plugin.Configuration.Save();
                         hiddenVersion++;
                     }
@@ -816,7 +818,7 @@ public partial class MainWindow
                 if (overStar)
                     ImGui.SetTooltip(isFavourite ? "Click to remove from favourites" : "Click to add to favourites");
                 else if (overEye)
-                    ImGui.SetTooltip("Click to hide from the gallery and exports");
+                    ImGui.SetTooltip(isHidden ? "Click to unhide" : "Click to hide from the gallery and exports");
                 else if (!overLeft && !overRight)
                     DrawCoverCellTooltip(design);
             }
@@ -868,16 +870,17 @@ public partial class MainWindow
             }
         }
 
-        // The hide-eye only appears on hover: a visible cell is never hidden, so there is no persistent state to show.
-        if (imageHovered)
+        // Persistent like the favourite star once a design is actually hidden (only reachable via the
+        // "Hidden" filter, since the gallery otherwise excludes hidden designs entirely).
+        if (isHidden || imageHovered)
         {
             var dl = ImGui.GetWindowDrawList();
             dl.AddRectFilled(eyeMin, eyeMax,
                 ImGui.ColorConvertFloat4ToU32(overEye ? UiTheme.IconOverlayBgHovered : UiTheme.IconOverlayBg), 3f);
-            var eyeColor = ImGui.ColorConvertFloat4ToU32(UiTheme.HiddenEyeOff);
+            var eyeColor = ImGui.ColorConvertFloat4ToU32(isHidden ? UiTheme.HiddenEyeOn : UiTheme.HiddenEyeOff);
             using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
             {
-                var eyeChar = FontAwesomeIcon.Eye.ToIconString();
+                var eyeChar = (isHidden ? FontAwesomeIcon.EyeSlash : FontAwesomeIcon.Eye).ToIconString();
                 var eyeTextSize = ImGui.CalcTextSize(eyeChar);
                 var eyeCenter = (eyeMin + eyeMax) * 0.5f;
                 dl.AddText(new Vector2(eyeCenter.X - eyeTextSize.X * 0.5f, eyeCenter.Y - eyeTextSize.Y * 0.5f),
@@ -920,72 +923,7 @@ public partial class MainWindow
         if (!popup.Success)
             return;
 
-        if (ImGui.MenuItem("Apply"))
-        {
-            selectedDesign = design.Id;
-            ApplyDesignById(design.Id);
-        }
-
-        DrawApplySingleSlotSubmenu(design);
-        DrawAssignToPersonaSubmenu(design.Id);
-        DrawSetAsDefaultDesignSubmenu(design.Id);
-
-        var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
-        if (ImGui.MenuItem(isFavourite ? "Remove from Favourites" : "Add to Favourites"))
-        {
-            if (isFavourite)
-                plugin.Configuration.FavouriteDesigns.Remove(design.Id);
-            else
-                plugin.Configuration.FavouriteDesigns.Add(design.Id);
-            plugin.Configuration.Save();
-            favouriteVersion++;
-        }
-
-        // Visible cells are never hidden (see the eye-icon overlay above), so this is always an add.
-        if (ImGui.MenuItem("Hide"))
-        {
-            plugin.Configuration.HiddenDesigns.Add(design.Id);
-            plugin.Configuration.Save();
-            hiddenVersion++;
-        }
-
-        if (ImGui.MenuItem("Duplicate"))
-        {
-            var result = plugin.DesignApply.DuplicateDesign(design.Id);
-            if (result.Error != null)
-                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
-            else
-            {
-                RefreshDesigns();
-                selectedDesign = result.DesignId;
-            }
-        }
-        if (ImGui.MenuItem("Duplicate as Variant"))
-        {
-            var result = plugin.DesignApply.DuplicateDesign(design.Id);
-            if (result.Error != null)
-                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
-            else
-            {
-                plugin.Configuration.SetVariantParent(result.DesignId!.Value, design.Id);
-                plugin.Configuration.Save();
-                RefreshDesigns();
-                selectedDesign = result.DesignId;
-            }
-        }
-
-        ImGui.Separator();
-
-        if (ImGui.MenuItem("Open in Edit Mode"))
-        {
-            selectedDesign = design.Id;
-            RevealDesignInTree(design.Id);
-        }
-
-        if (plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var outfit)
-            && outfit.Source == DesignSource.Glamourer
-            && ImGui.MenuItem("Open in Glamourer"))
-            plugin.Glamourer.OpenInGlamourer(design.Id, design.DisplayName);
+        DrawDesignContextMenu(design, fromGallery: true);
     }
 
     // Same "Apply Just This" mechanism the design detail pane's equipment rows already use, just

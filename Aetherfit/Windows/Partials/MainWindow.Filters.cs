@@ -34,6 +34,7 @@ public partial class MainWindow
     private bool filterNeverWorn;
     private bool filterHealthReportIssues;
     private bool filterActivePersonaOnly;
+    private bool filterHiddenOnly;
     private HashSet<Guid> cachedFlaggedDesignIds = new();
     private int cachedFlaggedGeneration = -1;
     private int cachedFlaggedIgnoreVersion = -1;
@@ -55,6 +56,7 @@ public partial class MainWindow
                               || filterNeverWorn
                               || filterHealthReportIssues
                               || filterActivePersonaOnly
+                              || filterHiddenOnly
                               || filterEquipmentSlots.Count > 0;
 
     private int ActiveFilterCount => (filterName.Length > 0 ? 1 : 0)
@@ -68,6 +70,7 @@ public partial class MainWindow
                                    + (filterNeverWorn ? 1 : 0)
                                    + (filterHealthReportIssues ? 1 : 0)
                                    + (filterActivePersonaOnly ? 1 : 0)
+                                   + (filterHiddenOnly ? 1 : 0)
                                    + filterEquipmentSlots.Count;
 
 
@@ -82,12 +85,13 @@ public partial class MainWindow
         bool ModdedOnly,
         bool NeverWorn,
         bool HealthReportIssues,
-        bool ActivePersonaOnly);
+        bool ActivePersonaOnly,
+        bool HiddenOnly);
 
     private FilterSnapshot CaptureFilterSnapshot() => new(
         filterName, searchDesignName, searchModName, searchEquipmentName,
         filterImage, filterFavourites, filterVanillaOnly, filterModdedOnly,
-        filterNeverWorn, filterHealthReportIssues, filterActivePersonaOnly);
+        filterNeverWorn, filterHealthReportIssues, filterActivePersonaOnly, filterHiddenOnly);
 
     // extraControls renders view-specific rows (e.g. the "Group by..." checkboxes) inside the same
     // collapsible Filters panel, after the shared controls - each view owns its own grouping state,
@@ -97,6 +101,16 @@ public partial class MainWindow
         // AllowOverlap lets the count badge and Clear button sit on the header row itself.
         var flags = (defaultOpen ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None)
                   | ImGuiTreeNodeFlags.AllowItemOverlap;
+
+        // Collapsed headers hide the name box inside, so stand one in above it - same filterName field,
+        // just always reachable without opening the panel. Hidden once the panel's own box is visible.
+        if (!IsFiltersHeaderOpen(defaultOpen))
+        {
+            ImGui.SetNextItemWidth(-1f);
+            ImGui.InputTextWithHint("##quickNameFilter", "Quick filter by name...", ref filterName, 64);
+            ImGui.Spacing();
+        }
+
         using var header = ImRaii.Header("Filters", flags);
         DrawFilterHeaderOverlay();
         if (!header.Success)
@@ -145,6 +159,14 @@ public partial class MainWindow
             ClearAllFilters();
     }
 
+    // Peeks the Filters header's persisted open/closed state without drawing it - same ID ImGui
+    // itself derives from the "Filters" label, so this stays in sync with the real header.
+    private static bool IsFiltersHeaderOpen(bool defaultOpen)
+    {
+        var id = ImGui.GetID("Filters");
+        return ImGui.GetStateStorage().GetInt(id, defaultOpen ? 1 : 0) != 0;
+    }
+
     private void ClearAllFilters()
     {
         filterName = string.Empty;
@@ -161,6 +183,7 @@ public partial class MainWindow
         filterNeverWorn = false;
         filterHealthReportIssues = false;
         filterActivePersonaOnly = false;
+        filterHiddenOnly = false;
         filterEquipmentSlots.Clear();
     }
 
@@ -221,6 +244,7 @@ public partial class MainWindow
     private const string NeverWornToggleLabel = "Never Worn";
     private const string HealthReportToggleLabel = "⚠ Health Issues";
     private const string ActivePersonaToggleLabel = "Active Persona";
+    private const string HiddenOnlyToggleLabel = "Hidden";
 
     // Favourites / Vanilla / Modded / Never Worn / Health Issues as pill toggles, matching the D/M/E
     // scope style. In the narrow pane they wrap instead of overflowing.
@@ -249,6 +273,8 @@ public partial class MainWindow
             DrawHealthReportIssuesToggle();
             Pills.PlaceItem(PillWidth(ActivePersonaToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
             DrawActivePersonaOnlyToggle();
+            Pills.PlaceItem(PillWidth(HiddenOnlyToggleLabel), ref first, ref lineRight, cursorStart, spacing, availRight);
+            DrawHiddenOnlyToggle();
             return;
         }
 
@@ -263,6 +289,8 @@ public partial class MainWindow
         DrawHealthReportIssuesToggle();
         ImGui.SameLine();
         DrawActivePersonaOnlyToggle();
+        ImGui.SameLine();
+        DrawHiddenOnlyToggle();
     }
 
     private void DrawFavouritesToggle()
@@ -305,6 +333,16 @@ public partial class MainWindow
                 ? $"Show only designs attached to \"{activePersona.Name}\""
                 : "Show only designs attached to the active persona (no persona is currently active, so this has no effect right now)");
         }
+    }
+
+    // Gallery hides hidden designs by default and the tree doesn't - this toggle narrows either view
+    // down to only hidden designs, which is the one case the tree's "show everything" default misses.
+    private void DrawHiddenOnlyToggle()
+    {
+        if (Pills.DrawToggle(HiddenOnlyToggleLabel, "hiddenOnlyFilter", filterHiddenOnly))
+            filterHiddenOnly = !filterHiddenOnly;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show only hidden designs");
     }
 
     // Compact letter toggle (D/M/E) standing in for a long checkbox label; the full meaning lives in the tooltip.
@@ -461,7 +499,9 @@ public partial class MainWindow
         return cachedFlaggedDesignIds;
     }
 
-    private bool DesignMatchesFilters(DesignLeaf design, CachedOutfit? cached)
+    // ignoreHiddenOnly: the tree's own variant-nesting loop uses this - a variant should always render
+    // alongside a parent that already passed the filters, regardless of the "Hidden" toggle's state.
+    private bool DesignMatchesFilters(DesignLeaf design, CachedOutfit? cached, bool ignoreHiddenOnly = false)
     {
         if (cached != null && !plugin.Configuration.IsProviderEnabled(cached.Source))
             return false;
@@ -492,6 +532,9 @@ public partial class MainWindow
         }
 
         if (filterFavourites && !plugin.Configuration.FavouriteDesigns.Contains(design.Id))
+            return false;
+
+        if (filterHiddenOnly && !ignoreHiddenOnly && !plugin.Configuration.HiddenDesigns.Contains(design.Id))
             return false;
 
         if (filterVanillaOnly || filterModdedOnly)
@@ -528,6 +571,23 @@ public partial class MainWindow
         return true;
     }
 
+    // Lets a non-hidden parent still show under the "Hidden" filter if it has a hidden variant to reveal.
+    private bool DesignOrHiddenVariantMatches(DesignLeaf design, CachedOutfit? cached)
+        => DesignMatchesFilters(design, cached) || (filterHiddenOnly && HasMatchingHiddenVariant(design.Id));
+
+    private bool HasMatchingHiddenVariant(Guid parentId)
+    {
+        foreach (var (variantId, _) in plugin.Configuration.GetVariantsOf(parentId))
+        {
+            if (!plugin.Configuration.HiddenDesigns.Contains(variantId)) continue;
+            if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;
+            plugin.Configuration.CachedOutfits.TryGetValue(variantId, out var variantCached);
+            if (DesignMatchesFilters(variantLeaf, variantCached, ignoreHiddenOnly: true))
+                return true;
+        }
+        return false;
+    }
+
     // Memoized per frame (cleared in DrawLeftPane) so a folder's subtree is scanned once regardless
     // of how many ancestor folders ask "does this have a match" on the way down.
     private readonly Dictionary<FolderNode, bool> folderMatchCache = new();
@@ -540,8 +600,10 @@ public partial class MainWindow
         var match = false;
         foreach (var d in node.Designs)
         {
+            // A variant renders nested under its parent, not here - don't let it justify an expand arrow that opens to nothing.
+            if (plugin.Configuration.GetVariantInfo(d.Id) != null) continue;
             plugin.Configuration.CachedOutfits.TryGetValue(d.Id, out var c);
-            if (DesignMatchesFilters(d, c)) { match = true; break; }
+            if (DesignOrHiddenVariantMatches(d, c)) { match = true; break; }
         }
         if (!match)
             foreach (var f in node.Folders.Values)
@@ -558,8 +620,9 @@ public partial class MainWindow
     {
         foreach (var design in node.Designs)
         {
-            // Hidden designs are kept out of the gallery and exports entirely (the design tree still shows them).
-            if (plugin.Configuration.HiddenDesigns.Contains(design.Id))
+            // Hidden designs are kept out of the gallery and exports by default (the design tree still
+            // shows them) - unless the "Hidden" filter is on, which flips the gallery to show only them.
+            if (!filterHiddenOnly && plugin.Configuration.HiddenDesigns.Contains(design.Id))
                 continue;
             if (excludeVariants && plugin.Configuration.GetVariantInfo(design.Id) != null)
                 continue;

@@ -189,7 +189,7 @@ public partial class MainWindow
         foreach (var design in node.Designs)
         {
             plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var cached);
-            if (!DesignMatchesFilters(design, cached)) continue;
+            if (!DesignOrHiddenVariantMatches(design, cached)) continue;
             if (plugin.Configuration.GetVariantInfo(design.Id) != null) continue; // drawn nested under its parent below
 
             var variantIds = plugin.Configuration.GetVariantsOf(design.Id).Select(kv => kv.Key).ToList();
@@ -222,7 +222,7 @@ public partial class MainWindow
                 {
                     if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;
                     plugin.Configuration.CachedOutfits.TryGetValue(variantId, out var variantCached);
-                    if (!DesignMatchesFilters(variantLeaf, variantCached)) continue;
+                    if (!DesignMatchesFilters(variantLeaf, variantCached, ignoreHiddenOnly: true)) continue;
 
                     var childRowX = ImGui.GetCursorScreenPos().X;
                     DrawDesignLeaf(variantLeaf, false);
@@ -342,35 +342,7 @@ public partial class MainWindow
         using (var contextMenu = ImRaii.Popup($"##treeDesignContextMenu_{design.Id}"))
         {
             if (contextMenu.Success)
-            {
-                DrawAssignToPersonaSubmenu(design.Id);
-                DrawSetAsDefaultDesignSubmenu(design.Id);
-                ImGui.Separator();
-                if (ImGui.MenuItem("Duplicate"))
-                {
-                    var result = plugin.DesignApply.DuplicateDesign(design.Id);
-                    if (result.Error != null)
-                        Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
-                    else
-                    {
-                        RefreshDesigns();
-                        selectedDesign = result.DesignId;
-                    }
-                }
-                if (ImGui.MenuItem("Duplicate as Variant"))
-                {
-                    var result = plugin.DesignApply.DuplicateDesign(design.Id);
-                    if (result.Error != null)
-                        Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
-                    else
-                    {
-                        plugin.Configuration.SetVariantParent(result.DesignId!.Value, design.Id);
-                        plugin.Configuration.Save();
-                        RefreshDesigns();
-                        selectedDesign = result.DesignId;
-                    }
-                }
-            }
+                DrawDesignContextMenu(design, fromGallery: false);
         }
 
         if (ImGui.IsItemHovered())

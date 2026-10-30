@@ -313,9 +313,7 @@ public partial class MainWindow
             return;
         }
 
-        if (baseDesignId is { } baseId)
-            plugin.DesignApply.DuplicateDesignMetadata(baseId, result.NewId);
-
+        // baseDesignId only seeds appearance - it shouldn't also carry the base's tags/hidden/favourite/etc.
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Created \"{name}\" from currently worn equipment.");
         selectedDesign = result.NewId;
         RefreshDesigns();

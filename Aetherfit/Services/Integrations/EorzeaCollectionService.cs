@@ -215,9 +215,7 @@ public sealed class EorzeaCollectionService
 
         await Plugin.Framework.RunOnFrameworkThread(() =>
         {
-            if (baseDesignId is { } sourceId)
-                plugin.DesignApply.DuplicateDesignMetadata(sourceId, newId);
-
+            // baseDesignId only seeds appearance - it shouldn't also carry the base's tags/hidden/favourite/etc.
             Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Imported \"{name}\" from Eorzea Collection.");
             foreach (var warning in warnings)
                 Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{warning}");

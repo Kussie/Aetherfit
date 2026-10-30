@@ -221,9 +221,8 @@ public partial class MainWindow
             return;
         }
 
-        if (baseDesignId is { } sourceId)
-            plugin.DesignApply.DuplicateDesignMetadata(sourceId, newId);
-
+        // baseDesignId only seeds appearance (see the overlay above) - it shouldn't also carry the
+        // base's tags/hidden/favourite/etc. onto every design imported with it as a base.
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Imported \"{name}\" from a design code.");
         selectedDesign = newId;
         RefreshDesigns();
