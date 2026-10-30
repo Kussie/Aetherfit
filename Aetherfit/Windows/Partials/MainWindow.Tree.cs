@@ -81,8 +81,13 @@ public partial class MainWindow
         hoveredDesignForTooltip = null;
         using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(spacing.X, spacing.Y + 3)))
         {
-            if (plugin.Configuration.ShowFavouritesFolderInTree)
+            if (plugin.Configuration.ShowVirtualFoldersInTree)
+            {
                 DrawFavouritesFolderSection();
+                DrawRecentlyAddedFolderSection();
+                DrawHealthIssuesFolderSection();
+                DrawHiddenFolderSection();
+            }
 
             if (plugin.Configuration.ShowDesignsSection)
             {
@@ -153,10 +158,10 @@ public partial class MainWindow
             plugin.Configuration.ShowPersonasSection = showPersonas;
             plugin.Configuration.Save();
         }
-        var showFavouritesFolder = plugin.Configuration.ShowFavouritesFolderInTree;
-        if (ImGui.Checkbox("Show Favourites folder", ref showFavouritesFolder))
+        var showVirtualFolders = plugin.Configuration.ShowVirtualFoldersInTree;
+        if (ImGui.Checkbox("Show Virtual Folders", ref showVirtualFolders))
         {
-            plugin.Configuration.ShowFavouritesFolderInTree = showFavouritesFolder;
+            plugin.Configuration.ShowVirtualFoldersInTree = showVirtualFolders;
             plugin.Configuration.Save();
         }
     }
@@ -292,10 +297,100 @@ public partial class MainWindow
         }
         favourites.Sort((a, b) => NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName));
 
-        foreach (var design in favourites)
-            DrawDesignLeafWithVariants(design, 0, consumeReveal: false);
-
+        DrawVirtualFolderDesigns(favourites);
         ImGui.TreePop();
+    }
+
+    // Everything currently hidden, plus a non-hidden parent that needs showing to host a hidden variant.
+    private void DrawHiddenFolderSection()
+    {
+        var sectionOpen = ImGui.TreeNodeEx($"Hidden ({plugin.Configuration.HiddenDesigns.Count})##hiddenFolderRoot",
+            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        if (!sectionOpen)
+            return;
+
+        var candidateIds = new HashSet<Guid>(plugin.Configuration.HiddenDesigns);
+        foreach (var hiddenId in plugin.Configuration.HiddenDesigns)
+            if (plugin.Configuration.GetVariantInfo(hiddenId) is { } info)
+                candidateIds.Add(info.ParentId);
+
+        var hidden = new List<DesignLeaf>();
+        foreach (var id in candidateIds)
+        {
+            if (plugin.Configuration.GetVariantInfo(id) != null) continue;
+            if (!designLeafById.TryGetValue(id, out var leaf)) continue;
+            plugin.Configuration.CachedOutfits.TryGetValue(id, out var cached);
+            if (!BelongsInHiddenFolder(leaf, cached)) continue;
+            hidden.Add(leaf);
+        }
+        hidden.Sort((a, b) => NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName));
+
+        DrawVirtualFolderDesigns(hidden);
+        ImGui.TreePop();
+    }
+
+    // Designs created within the last RecentlyAddedDays (GalleryMode.cs) - a preview, not a move, same
+    // idea as Gallery Mode's own section. Variants are excluded, matching Gallery's own exclusion there.
+    private void DrawRecentlyAddedFolderSection()
+    {
+        var cutoff = DateTimeOffset.Now - TimeSpan.FromDays(RecentlyAddedDays);
+        var recent = new List<DesignLeaf>();
+        foreach (var (id, leaf) in designLeafById)
+        {
+            if (plugin.Configuration.GetVariantInfo(id) != null) continue;
+            if (GetCreatedAt(id) is not { } created || created < cutoff) continue;
+            plugin.Configuration.CachedOutfits.TryGetValue(id, out var cached);
+            if (!DesignMatchesFilters(leaf, cached)) continue;
+            recent.Add(leaf);
+        }
+        recent.Sort((a, b) => Nullable.Compare(GetCreatedAt(b.Id), GetCreatedAt(a.Id))); // newest first
+
+        var sectionOpen = ImGui.TreeNodeEx($"Recently Added ({recent.Count})##recentlyAddedFolderRoot",
+            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        if (!sectionOpen)
+            return;
+
+        DrawVirtualFolderDesigns(recent);
+        ImGui.TreePop();
+    }
+
+    // Everything flagged by the Health Report, plus a non-flagged parent that needs showing to host a
+    // flagged variant.
+    private void DrawHealthIssuesFolderSection()
+    {
+        var flagged = FlaggedDesignIds();
+
+        var sectionOpen = ImGui.TreeNodeEx($"Health Issues ({flagged.Count})##healthIssuesFolderRoot",
+            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        if (!sectionOpen)
+            return;
+
+        var candidateIds = new HashSet<Guid>(flagged);
+        foreach (var flaggedId in flagged)
+            if (plugin.Configuration.GetVariantInfo(flaggedId) is { } info)
+                candidateIds.Add(info.ParentId);
+
+        var issues = new List<DesignLeaf>();
+        foreach (var id in candidateIds)
+        {
+            if (plugin.Configuration.GetVariantInfo(id) != null) continue;
+            if (!designLeafById.TryGetValue(id, out var leaf)) continue;
+            plugin.Configuration.CachedOutfits.TryGetValue(id, out var cached);
+            if (!BelongsInHealthIssuesFolder(leaf, cached)) continue;
+            issues.Add(leaf);
+        }
+        issues.Sort((a, b) => NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName));
+
+        DrawVirtualFolderDesigns(issues);
+        ImGui.TreePop();
+    }
+
+    // Shared by every virtual folder section above - already-resolved, sorted designs, each still
+    // supporting nested variants like a normal top-level tree row.
+    private void DrawVirtualFolderDesigns(List<DesignLeaf> designs)
+    {
+        foreach (var design in designs)
+            DrawDesignLeafWithVariants(design, 0, consumeReveal: false);
     }
 
     private static float TreeArrowCenterOffset()

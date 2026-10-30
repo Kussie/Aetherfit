@@ -610,6 +610,37 @@ public partial class MainWindow
         return false;
     }
 
+    // Used by the Hidden virtual folder - a direct member is already hidden by definition, so only the
+    // other filters (name/tags/etc.) need to apply, same reasoning as HasMatchingHiddenVariant's own check.
+    private bool BelongsInHiddenFolder(DesignLeaf design, CachedOutfit? cached)
+    {
+        if (plugin.Configuration.HiddenDesigns.Contains(design.Id) && DesignMatchesFilters(design, cached, ignoreHiddenOnly: true))
+            return true;
+        return HasMatchingHiddenVariant(design.Id);
+    }
+
+    // Used by the Health Issues virtual folder - same shape as BelongsInFavouritesFolder/BelongsInHiddenFolder.
+    private bool BelongsInHealthIssuesFolder(DesignLeaf design, CachedOutfit? cached)
+    {
+        if (FlaggedDesignIds().Contains(design.Id) && DesignMatchesFilters(design, cached))
+            return true;
+        return HasMatchingFlaggedVariant(design.Id);
+    }
+
+    private bool HasMatchingFlaggedVariant(Guid parentId)
+    {
+        var flagged = FlaggedDesignIds();
+        foreach (var (variantId, _) in plugin.Configuration.GetVariantsOf(parentId))
+        {
+            if (!flagged.Contains(variantId)) continue;
+            if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;
+            plugin.Configuration.CachedOutfits.TryGetValue(variantId, out var variantCached);
+            if (DesignMatchesFilters(variantLeaf, variantCached))
+                return true;
+        }
+        return false;
+    }
+
     // Memoized per frame (cleared in DrawLeftPane) so a folder's subtree is scanned once regardless
     // of how many ancestor folders ask "does this have a match" on the way down.
     private readonly Dictionary<FolderNode, bool> folderMatchCache = new();

@@ -192,7 +192,7 @@ public class Configuration : IPluginConfiguration
     // Independent visibility toggles for the tree/gallery's Designs and Personas sections.
     public bool ShowDesignsSection { get; set; } = true;
     public bool ShowPersonasSection { get; set; } = true;
-    public bool ShowFavouritesFolderInTree { get; set; } = true;
+    public bool ShowVirtualFoldersInTree { get; set; } = true;
 
     // Global default for the Base Design Layer, applied before every design (and before its own Applied
     // Before layers) unless overridden per-design via DesignBaseLayerOverrides. Null = no base layer.
