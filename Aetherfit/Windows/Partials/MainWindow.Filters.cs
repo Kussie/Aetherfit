@@ -588,6 +588,28 @@ public partial class MainWindow
         return false;
     }
 
+    // Used by the Favourites pseudo-folder (MainWindow.Tree.cs) - same shape as DesignOrHiddenVariantMatches,
+    // but a parent included only to host a favourited variant doesn't need to pass filters itself.
+    private bool BelongsInFavouritesFolder(DesignLeaf design, CachedOutfit? cached)
+    {
+        if (plugin.Configuration.FavouriteDesigns.Contains(design.Id) && DesignOrHiddenVariantMatches(design, cached))
+            return true;
+        return HasMatchingFavouriteVariant(design.Id);
+    }
+
+    private bool HasMatchingFavouriteVariant(Guid parentId)
+    {
+        foreach (var (variantId, _) in plugin.Configuration.GetVariantsOf(parentId))
+        {
+            if (!plugin.Configuration.FavouriteDesigns.Contains(variantId)) continue;
+            if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;
+            plugin.Configuration.CachedOutfits.TryGetValue(variantId, out var variantCached);
+            if (DesignMatchesFilters(variantLeaf, variantCached, ignoreHiddenOnly: true))
+                return true;
+        }
+        return false;
+    }
+
     // Memoized per frame (cleared in DrawLeftPane) so a folder's subtree is scanned once regardless
     // of how many ancestor folders ask "does this have a match" on the way down.
     private readonly Dictionary<FolderNode, bool> folderMatchCache = new();

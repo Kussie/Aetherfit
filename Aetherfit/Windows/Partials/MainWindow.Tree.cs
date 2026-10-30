@@ -7,6 +7,7 @@ using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Aetherfit.Services.Integrations;
 using Aetherfit.Ui;
+using Aetherfit.Utils;
 
 namespace Aetherfit.Windows;
 
@@ -80,6 +81,9 @@ public partial class MainWindow
         hoveredDesignForTooltip = null;
         using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(spacing.X, spacing.Y + 3)))
         {
+            if (plugin.Configuration.ShowFavouritesFolderInTree)
+                DrawFavouritesFolderSection();
+
             if (plugin.Configuration.ShowDesignsSection)
             {
                 var designsOpen = ImGui.TreeNodeEx($"Designs ({designsCount})##designsRoot",
@@ -149,6 +153,12 @@ public partial class MainWindow
             plugin.Configuration.ShowPersonasSection = showPersonas;
             plugin.Configuration.Save();
         }
+        var showFavouritesFolder = plugin.Configuration.ShowFavouritesFolderInTree;
+        if (ImGui.Checkbox("Show Favourites folder", ref showFavouritesFolder))
+        {
+            plugin.Configuration.ShowFavouritesFolderInTree = showFavouritesFolder;
+            plugin.Configuration.Save();
+        }
     }
 
     private void DrawTree(FolderNode node, bool hasFilter, int depth = 0)
@@ -192,61 +202,100 @@ public partial class MainWindow
             if (!DesignOrHiddenVariantMatches(design, cached)) continue;
             if (plugin.Configuration.GetVariantInfo(design.Id) != null) continue; // drawn nested under its parent below
 
-            var variantIds = plugin.Configuration.GetVariantsOf(design.Id).Select(kv => kv.Key).ToList();
-            var hasVariants = variantIds.Count > 0;
-
-            if (hasVariants && revealDesignVariantParent == design.Id)
-                ImGui.SetNextItemOpen(true, ImGuiCond.Always);
-
-            var rowX = ImGui.GetCursorScreenPos().X;
-            var open = DrawDesignLeaf(design, hasVariants);
-            DrawTreeItemTick(depth, rowX);
-
-            if (revealDesignInTree == design.Id)
-            {
-                ImGui.SetScrollHereY(0.3f);
-                revealDesignInTree = null;
-                revealDesignFolderPath = null;
-                revealDesignVariantParent = null;
-            }
-
-            if (!hasVariants) continue;
-
-            if (open)
-            {
-                var drawList = ImGui.GetWindowDrawList();
-                var guideX = rowX + TreeArrowCenterOffset();
-                var guideTop = ImGui.GetCursorScreenPos().Y;
-
-                foreach (var variantId in variantIds)
-                {
-                    if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;
-                    plugin.Configuration.CachedOutfits.TryGetValue(variantId, out var variantCached);
-                    if (!DesignMatchesFilters(variantLeaf, variantCached, ignoreHiddenOnly: true)) continue;
-
-                    var childRowX = ImGui.GetCursorScreenPos().X;
-                    DrawDesignLeaf(variantLeaf, false);
-                    DrawTreeItemTick(depth + 1, childRowX);
-
-                    if (revealDesignInTree == variantId)
-                    {
-                        ImGui.SetScrollHereY(0.3f);
-                        revealDesignInTree = null;
-                        revealDesignFolderPath = null;
-                        revealDesignVariantParent = null;
-                    }
-                }
-
-                var guideBottom = ImGui.GetCursorScreenPos().Y
-                                  - ImGui.GetStyle().ItemSpacing.Y
-                                  - (ImGui.GetTextLineHeight() * 0.5f);
-                if (guideBottom > guideTop)
-                    drawList.AddLine(new Vector2(guideX, guideTop), new Vector2(guideX, guideBottom),
-                        ImGui.ColorConvertFloat4ToU32(TreeGuideColor), ImGuiHelpers.GlobalScale);
-
-                ImGui.TreePop();
-            }
+            DrawDesignLeafWithVariants(design, depth);
         }
+    }
+
+    // consumeReveal is false for the Favourites pseudo-folder's copy - RevealDesignInTree only resolves
+    // a design's real folder path, so only the real-tree copy should scroll to itself.
+    private void DrawDesignLeafWithVariants(DesignLeaf design, int depth, bool consumeReveal = true)
+    {
+        var variantIds = plugin.Configuration.GetVariantsOf(design.Id).Select(kv => kv.Key).ToList();
+        var hasVariants = variantIds.Count > 0;
+
+        if (consumeReveal && hasVariants && revealDesignVariantParent == design.Id)
+            ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+
+        var rowX = ImGui.GetCursorScreenPos().X;
+        var open = DrawDesignLeaf(design, hasVariants);
+        DrawTreeItemTick(depth, rowX);
+
+        if (consumeReveal && revealDesignInTree == design.Id)
+        {
+            ImGui.SetScrollHereY(0.3f);
+            revealDesignInTree = null;
+            revealDesignFolderPath = null;
+            revealDesignVariantParent = null;
+        }
+
+        if (!hasVariants) return;
+
+        if (open)
+        {
+            var drawList = ImGui.GetWindowDrawList();
+            var guideX = rowX + TreeArrowCenterOffset();
+            var guideTop = ImGui.GetCursorScreenPos().Y;
+
+            foreach (var variantId in variantIds)
+            {
+                if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;
+                plugin.Configuration.CachedOutfits.TryGetValue(variantId, out var variantCached);
+                if (!DesignMatchesFilters(variantLeaf, variantCached, ignoreHiddenOnly: true)) continue;
+
+                var childRowX = ImGui.GetCursorScreenPos().X;
+                DrawDesignLeaf(variantLeaf, false);
+                DrawTreeItemTick(depth + 1, childRowX);
+
+                if (consumeReveal && revealDesignInTree == variantId)
+                {
+                    ImGui.SetScrollHereY(0.3f);
+                    revealDesignInTree = null;
+                    revealDesignFolderPath = null;
+                    revealDesignVariantParent = null;
+                }
+            }
+
+            var guideBottom = ImGui.GetCursorScreenPos().Y
+                              - ImGui.GetStyle().ItemSpacing.Y
+                              - (ImGui.GetTextLineHeight() * 0.5f);
+            if (guideBottom > guideTop)
+                drawList.AddLine(new Vector2(guideX, guideTop), new Vector2(guideX, guideBottom),
+                    ImGui.ColorConvertFloat4ToU32(TreeGuideColor), ImGuiHelpers.GlobalScale);
+
+            ImGui.TreePop();
+        }
+    }
+
+    // A true duplicate of each favourite's real tree row, not a partition like Gallery's own section.
+    // A non-favourited parent shows too if one of its variants is favourited (mirrors the Hidden filter).
+    private void DrawFavouritesFolderSection()
+    {
+        ImGui.Spacing();
+        var sectionOpen = ImGui.TreeNodeEx($"Favourites ({plugin.Configuration.FavouriteDesigns.Count})##favouritesRoot",
+            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        if (!sectionOpen)
+            return;
+
+        var candidateIds = new HashSet<Guid>(plugin.Configuration.FavouriteDesigns);
+        foreach (var favouriteId in plugin.Configuration.FavouriteDesigns)
+            if (plugin.Configuration.GetVariantInfo(favouriteId) is { } info)
+                candidateIds.Add(info.ParentId);
+
+        var favourites = new List<DesignLeaf>();
+        foreach (var id in candidateIds)
+        {
+            if (plugin.Configuration.GetVariantInfo(id) != null) continue; // never flat, same convention as the real tree
+            if (!designLeafById.TryGetValue(id, out var leaf)) continue; // stale favourite (e.g. deleted design)
+            plugin.Configuration.CachedOutfits.TryGetValue(id, out var cached);
+            if (!BelongsInFavouritesFolder(leaf, cached)) continue;
+            favourites.Add(leaf);
+        }
+        favourites.Sort((a, b) => NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName));
+
+        foreach (var design in favourites)
+            DrawDesignLeafWithVariants(design, 0, consumeReveal: false);
+
+        ImGui.TreePop();
     }
 
     private static float TreeArrowCenterOffset()
