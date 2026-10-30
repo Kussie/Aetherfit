@@ -49,7 +49,7 @@ internal static class GalleryDraw
     // Right-aligned "Size: [slider] [count text]" row tail, shared by Cover Mode's and the shared gallery's
     // sort-controls rows. onCommitted fires once when the slider drag ends (mirrors
     // ImGui.IsItemDeactivatedAfterEdit) so callers can persist without saving every intermediate frame.
-    public static void DrawThumbSizeAndCount(string sliderId, ref float thumbTargetWidth, string countText, Action onCommitted)
+    public static void DrawThumbSizeAndCount(string sliderId, ref float thumbTargetWidth, string countText, Action onCommitted, string? countTooltip = null)
     {
         var style = ImGui.GetStyle();
         var scale = ImGuiHelpers.GlobalScale;
@@ -72,6 +72,8 @@ internal static class GalleryDraw
         ImGui.SameLine();
         ImGui.AlignTextToFramePadding();
         ImGui.TextDisabled(countText);
+        if (countTooltip != null && ImGui.IsItemHovered())
+            ImGui.SetTooltip(countTooltip);
     }
 
     // Advances the cursor X position so a label of this width, drawn next, reads centered under a

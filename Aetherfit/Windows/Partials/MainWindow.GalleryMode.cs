@@ -221,7 +221,7 @@ public partial class MainWindow
             ? $"{cachedVisible.Count} of {designsCount} designs"
             : cachedVisible.Count == 1 ? "1 design" : $"{cachedVisible.Count} designs";
         var thumbSize = plugin.Configuration.GalleryThumbTargetWidth;
-        GalleryDraw.DrawThumbSizeAndCount("##galleryThumbSize", ref thumbSize, countText, () => plugin.Configuration.Save());
+        GalleryDraw.DrawThumbSizeAndCount("##galleryThumbSize", ref thumbSize, countText, () => plugin.Configuration.Save(), HiddenDesignsTooltipText());
         plugin.Configuration.GalleryThumbTargetWidth = thumbSize;
     }
 

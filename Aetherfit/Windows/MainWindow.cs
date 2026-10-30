@@ -617,6 +617,8 @@ public partial class MainWindow : Window, IDisposable
         ImGui.SameLine(ImGui.GetContentRegionMax().X - gearW - style.ItemSpacing.X - countW);
         ImGui.AlignTextToFramePadding();
         ImGui.TextDisabled(countText);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(HiddenDesignsTooltipText());
         ImGui.SameLine();
         if (ImGuiComponents.IconButton(FontAwesomeIcon.Cog))
             plugin.ToggleConfigUi();
@@ -624,6 +626,18 @@ public partial class MainWindow : Window, IDisposable
             ImGui.SetTooltip("Settings");
 
         DrawAutomationsActiveRuleLine();
+    }
+
+    // Shared by the toolbar's own design count and Gallery Mode's (MainWindow.GalleryMode.cs).
+    private string HiddenDesignsTooltipText()
+    {
+        var hiddenCount = plugin.Configuration.HiddenDesigns.Count;
+        return hiddenCount switch
+        {
+            0 => "No designs are hidden.",
+            1 => "1 design is hidden - toggle \"Hidden\" in Filters to see it.",
+            _ => $"{hiddenCount} designs are hidden - toggle \"Hidden\" in Filters to see them.",
+        };
     }
 
     // ON/OFF baked right into the toolbar button itself - the at-a-glance indicator. Snooze overrides
