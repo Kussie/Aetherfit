@@ -5,6 +5,9 @@ using System.Linq;
 using Aetherfit.Utils;
 using Penumbra.Api.Enums;
 using Penumbra.Api.IpcSubscribers;
+// Aetherfit's own GroupType (Configuration.cs, party-size conditions) lives in the enclosing namespace
+// and would otherwise shadow Penumbra's - alias it explicitly wherever mod option groups are involved.
+using PenumbraGroupType = Penumbra.Api.Enums.GroupType;
 
 namespace Aetherfit.Services.Integrations;
 
@@ -22,6 +25,7 @@ public sealed class PenumbraService
     private readonly SetCollectionForObject setCollectionForObject;
     private readonly GetCurrentModSettingsWithTemp getCurrentModSettingsWithTemp;
     private readonly GetModPath getModPath;
+    private readonly GetAvailableModSettings getAvailableModSettings;
 
     // A mod changes the same items no matter which design pulls it in, so we look them up once per mod
     // directory and reuse that across every design.
@@ -31,6 +35,10 @@ public sealed class PenumbraService
     // association referencing a mod that's no longer installed. Refetched once per refresh (see
     // ClearChangedItemsCache, which this shares invalidation with).
     private IReadOnlySet<string>? installedModDirectories;
+
+    // A mod's option groups don't change mid-session short of editing it in Penumbra, so this is cached
+    // the same way changedItemsCache is - also shares ClearChangedItemsCache's invalidation.
+    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, (string[] Options, PenumbraGroupType Type)>?> availableModSettingsCache = new();
 
     private static readonly IReadOnlySet<string> EmptySet = new HashSet<string>();
 
@@ -48,6 +56,7 @@ public sealed class PenumbraService
         setCollectionForObject = new SetCollectionForObject(Plugin.PluginInterface);
         getCurrentModSettingsWithTemp = new GetCurrentModSettingsWithTemp(Plugin.PluginInterface);
         getModPath = new GetModPath(Plugin.PluginInterface);
+        getAvailableModSettings = new GetAvailableModSettings(Plugin.PluginInterface);
     }
 
     // Penumbra's own reported ApiVersion (BreakingVersion/FeatureVersion in its PenumbraApi.cs) - confirmed
@@ -114,6 +123,7 @@ public sealed class PenumbraService
     {
         changedItemsCache.Clear();
         installedModDirectories = null;
+        availableModSettingsCache.Clear();
     }
 
     // Every currently-installed mod's directory - used to tell "mod association points at an
@@ -215,6 +225,32 @@ public sealed class PenumbraService
             return null;
         }
     }
+
+    // A mod's option-group definitions (groups/options/type) - not collection-scoped, so this is the
+    // same regardless of which collection is asking. Null if Penumbra can't find the mod, or it has none.
+    public IReadOnlyDictionary<string, (string[] Options, PenumbraGroupType Type)>? GetAvailableModSettings(string directory, string name)
+    {
+        if (string.IsNullOrEmpty(directory))
+            return null;
+
+        return availableModSettingsCache.GetOrAdd(directory, _ =>
+        {
+            try
+            {
+                return getAvailableModSettings.Invoke(directory, name ?? string.Empty);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Warning(ex, "Failed to query available mod settings for {Dir}", directory);
+                return null;
+            }
+        });
+    }
+
+    // Whether a mod has at least one editable option group - used to decide whether the edit-settings
+    // button in the Mod Associations panel should even show.
+    public bool HasAvailableModSettings(string directory, string name)
+        => GetAvailableModSettings(directory, name) is { Count: > 0 };
 
     // Directory -> display name - GetAllModSettings above only gives directories.
     public IReadOnlyDictionary<string, string> GetModDisplayNames()

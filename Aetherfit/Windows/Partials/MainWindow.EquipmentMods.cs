@@ -642,11 +642,14 @@ public partial class MainWindow
             return;
         }
 
+        // Editing writes to the design's own Glamourer file, so it only makes sense for a Glamourer-
+        // sourced design's own associations - not SimpleGlamourSwitcher (different storage) or anything inherited.
+        var canEdit = details.Source == DesignSource.Glamourer;
         foreach (var mod in details.Mods)
-            DrawModRow(mod);
+            DrawModRow(id, mod, canEdit: canEdit);
 
         foreach (var (mod, sourceDesignId) in inherited)
-            DrawModRow(mod, sourceDesignId);
+            DrawModRow(id, mod, sourceDesignId, canEdit: false);
 
         ImGui.Unindent();
         ImGui.Spacing();
@@ -704,7 +707,7 @@ public partial class MainWindow
         return result;
     }
 
-    private void DrawModRow(CachedMod mod, Guid? inheritedFromLayerId = null)
+    private void DrawModRow(Guid designId, CachedMod mod, Guid? inheritedFromLayerId = null, bool canEdit = false)
     {
         DesignDetailView.DrawModStateIcon(mod.State);
         ImGui.SameLine();
@@ -733,6 +736,20 @@ public partial class MainWindow
         }
         if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             plugin.Penumbra.OpenMod(mod.Directory, mod.Name);
+
+        // The tooltip's Settings list is a stored snapshot and can be stale/empty on Penumbra's live
+        // side, so check live availability of the mod's option groups, not the snapshot, before showing.
+        if (canEdit && plugin.Penumbra.HasAvailableModSettings(mod.Directory, mod.Name))
+        {
+            ImGui.SameLine();
+            float editW;
+            using (Plugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push())
+                editW = ImGui.CalcTextSize(FontAwesomeIcon.SlidersH.ToIconString()).X + (ImGui.GetStyle().FramePadding.X * 2);
+            if (HeaderIconButton($"editModSettings{mod.Directory}", FontAwesomeIcon.SlidersH, null, new Vector2(editW, ImGui.GetFrameHeight())))
+                RequestEditModSettings(designId, mod);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Edit this mod's option groups");
+        }
 
         if (inheritedFromLayerId is { } layerId)
             DrawInheritedLink(layerId);
