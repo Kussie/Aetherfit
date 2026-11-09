@@ -59,6 +59,7 @@ public class ConfigWindow : Window, IDisposable
             if (tabBar.Success)
             {
                 DrawTab("General", DrawGeneralTab);
+                DrawTab("Virtual Folders", DrawVirtualFoldersTab);
                 DrawTab("Design Layers", DrawLayerOptionsTab);
                 DrawTab("Login & Zoning", DrawLoginSection);
                 DrawTab("Tag Suggestions", DrawTagSuggestionsSection);
@@ -163,6 +164,21 @@ public class ConfigWindow : Window, IDisposable
         ImGui.SameLine();
         DrawDefaultBaseDesignTemplatePicker();
 
+        if (plugin.Configuration.DefaultBaseDesignTemplate is { } templateId)
+        {
+            var deleted = !plugin.Configuration.CachedOutfits.ContainsKey(templateId);
+            var hidden = !deleted && plugin.Configuration.HiddenDesigns.Contains(templateId);
+            if (deleted || hidden)
+            {
+                ImGui.SameLine();
+                DesignDetailView.DrawFontAwesome(FontAwesomeIcon.ExclamationTriangle, UiTheme.ErrorText);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(deleted
+                        ? "This design no longer exists - new designs will fall back to \"current appearance\" until you pick a different template."
+                        : "This design is hidden - it still works as a template, but you may not have meant to leave a hidden design selected here.");
+            }
+        }
+
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -221,6 +237,73 @@ public class ConfigWindow : Window, IDisposable
 
         ImGui.Spacing();
         ImGui.TextDisabled($"Aetherfit v{Plugin.Version}");
+    }
+
+    private static string VirtualFolderDisplayName(VirtualFolderKind kind) => kind switch
+    {
+        VirtualFolderKind.CurrentlyWorn => "Currently Worn",
+        VirtualFolderKind.Favourites => "Favourites",
+        VirtualFolderKind.RecentlyAdded => "Recently Added",
+        VirtualFolderKind.RecentlyWorn => "Recently Worn",
+        VirtualFolderKind.MostWorn => "Most Worn",
+        VirtualFolderKind.HealthIssues => "Health Issues",
+        VirtualFolderKind.Hidden => "Hidden",
+        _ => kind.ToString(),
+    };
+
+    private void DrawVirtualFoldersTab()
+    {
+        var cfg = plugin.Configuration;
+        ImGui.TextWrapped("Choose which virtual folders show in the design tree and Gallery Mode, and in "
+            + "what order. Both views share this list - Gallery only ever shows Currently Worn, Recently "
+            + "Worn and Most Worn itself, but still follows this same relative order among those three.");
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        // Ensures every kind is present (covers a config saved before a kind existed).
+        var order = cfg.GetOrderedVirtualFolderKinds().ToList();
+        if (!order.SequenceEqual(cfg.VirtualFolderOrder))
+        {
+            cfg.VirtualFolderOrder = order;
+            cfg.Save();
+        }
+
+        var arrowW = ImGui.GetFrameHeight();
+        for (var i = 0; i < order.Count; i++)
+        {
+            var kind = order[i];
+            using var id = ImRaii.PushId((int)kind);
+
+            var enabled = !cfg.DisabledVirtualFolders.Contains(kind);
+            if (ImGui.Checkbox(VirtualFolderDisplayName(kind), ref enabled))
+            {
+                if (enabled)
+                    cfg.DisabledVirtualFolders.Remove(kind);
+                else
+                    cfg.DisabledVirtualFolders.Add(kind);
+                cfg.Save();
+            }
+
+            ImGui.SameLine(220 * ImGuiHelpers.GlobalScale);
+            using (ImRaii.Disabled(i == 0))
+            {
+                if (ImGuiComponents.IconButton(FontAwesomeIcon.ArrowUp, new Vector2(arrowW, arrowW)))
+                {
+                    (cfg.VirtualFolderOrder[i - 1], cfg.VirtualFolderOrder[i]) = (cfg.VirtualFolderOrder[i], cfg.VirtualFolderOrder[i - 1]);
+                    cfg.Save();
+                }
+            }
+            ImGui.SameLine();
+            using (ImRaii.Disabled(i == order.Count - 1))
+            {
+                if (ImGuiComponents.IconButton(FontAwesomeIcon.ArrowDown, new Vector2(arrowW, arrowW)))
+                {
+                    (cfg.VirtualFolderOrder[i + 1], cfg.VirtualFolderOrder[i]) = (cfg.VirtualFolderOrder[i], cfg.VirtualFolderOrder[i + 1]);
+                    cfg.Save();
+                }
+            }
+        }
     }
 
     private void DrawLayerOptionsTab()

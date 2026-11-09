@@ -608,9 +608,18 @@ public partial class MainWindow
         return true;
     }
 
-    // Lets a non-hidden parent still show under the "Hidden" filter if it has a hidden variant to reveal.
+    // Lets a parent that doesn't itself match a "show only X" quick toggle (Hidden, Favourites) still
+    // show if one of its variants does - otherwise that variant has nowhere to be revealed under.
     private bool DesignOrHiddenVariantMatches(DesignLeaf design, CachedOutfit? cached)
-        => DesignMatchesFilters(design, cached) || (filterHiddenOnly && HasMatchingHiddenVariant(design.Id));
+    {
+        if (DesignMatchesFilters(design, cached))
+            return true;
+        if (filterHiddenOnly && HasMatchingHiddenVariant(design.Id))
+            return true;
+        if (filterFavourites && HasMatchingFavouriteVariant(design.Id))
+            return true;
+        return false;
+    }
 
     private bool HasMatchingHiddenVariant(Guid parentId)
     {
@@ -717,7 +726,10 @@ public partial class MainWindow
             if (excludeVariants && plugin.Configuration.GetVariantInfo(design.Id) != null)
                 continue;
             plugin.Configuration.CachedOutfits.TryGetValue(design.Id, out var cached);
-            if (DesignMatchesFilters(design, cached))
+            // The grid (excludeVariants) lets a non-matching parent through as a container for a
+            // matching variant; an export should only ever include designs that themselves match.
+            var matches = excludeVariants ? DesignOrHiddenVariantMatches(design, cached) : DesignMatchesFilters(design, cached);
+            if (matches)
                 result.Add(design);
         }
         foreach (var folder in node.Folders.Values)

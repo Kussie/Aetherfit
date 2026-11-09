@@ -51,6 +51,13 @@ internal static class ChangelogData
         {
             "Added a new command /aetherfit quickcreate to open a new window that allows you to quickly create a design from your current gear, take a screenshot.  Useful if you added a lot of mods and want to create a bunch of outfits quickly without needing to have the full aetherfit window open.",
         }),
+        new(7, "Virtual Folders Galore", new[]
+        {
+            "Added Virtual Folders to both Edit Mode and Gallery Mode: quick pseudo-folders for Favourites, Recently Added, Hidden, Health Issues, Currently Worn, Recently Worn, and Most Worn, so you don't have to go digging through your real folder structure to find what you're after.",
+            "You can now choose which Virtual Folders show and reorder them from Settings > Virtual Folders.",
+            "Aetherfit now tracks how many times each design has actually been worn (layers riding along with another design no longer count) and surfaces it in the new Most Worn folder, with a one-click reset if you'd rather start the count fresh.",
+            "You can now edit a mod's option group settings for a design right from Aetherfit's Mod Associations panel, without needing to open Penumbra.",
+        }),
     };
 
     public static int LatestRevision => Entries.Length == 0 ? 0 : Entries.Max(e => e.Revision);

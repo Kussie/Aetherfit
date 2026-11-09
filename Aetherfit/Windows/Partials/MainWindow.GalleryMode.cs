@@ -122,6 +122,28 @@ public partial class MainWindow
             ImGui.SameLine();
             using (ImRaii.Disabled(bulkSelectedIds.Count == 0))
             {
+                if (ImGui.Button("Favourite Selected"))
+                {
+                    foreach (var id in bulkSelectedIds)
+                        plugin.Configuration.FavouriteDesigns.Add(id);
+                    plugin.Configuration.Save();
+                    favouriteVersion++;
+                }
+            }
+            ImGui.SameLine();
+            using (ImRaii.Disabled(bulkSelectedIds.Count == 0))
+            {
+                if (ImGui.Button("Unhide Selected"))
+                {
+                    foreach (var id in bulkSelectedIds)
+                        plugin.Configuration.HiddenDesigns.Remove(id);
+                    plugin.Configuration.Save();
+                    hiddenVersion++;
+                }
+            }
+            ImGui.SameLine();
+            using (ImRaii.Disabled(bulkSelectedIds.Count == 0))
+            {
                 if (ImGui.Button("Clear Selection"))
                     bulkSelectedIds.Clear();
             }
@@ -339,9 +361,17 @@ public partial class MainWindow
 
         if (plugin.Configuration.ShowVirtualFoldersInTree)
         {
-            DrawCurrentlyWornGallerySection();
-            DrawRecentlyWornGallerySection();
-            DrawMostWornGallerySection();
+            foreach (var kind in plugin.Configuration.GetOrderedVirtualFolderKinds())
+            {
+                if (plugin.Configuration.DisabledVirtualFolders.Contains(kind))
+                    continue;
+                switch (kind)
+                {
+                    case VirtualFolderKind.CurrentlyWorn: DrawCurrentlyWornGallerySection(); break;
+                    case VirtualFolderKind.RecentlyWorn: DrawRecentlyWornGallerySection(); break;
+                    case VirtualFolderKind.MostWorn: DrawMostWornGallerySection(); break;
+                }
+            }
         }
 
         var visible = cachedVisible;
@@ -1109,6 +1139,9 @@ public partial class MainWindow
         ImGui.TextUnformatted(design.DisplayName);
         if (!string.IsNullOrEmpty(design.FullPath))
             ImGui.TextDisabled(design.FullPath);
+        var wornCount = GetWornCount(design.Id);
+        if (wornCount > 0)
+            ImGui.TextDisabled(wornCount == 1 ? "Worn 1 time" : $"Worn {wornCount} times");
         ImGui.TextDisabled("Double-click to apply");
         ImGui.TextDisabled("Shift+click to show in the tree");
         ImGui.TextDisabled("Right-click for more options");

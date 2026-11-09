@@ -68,6 +68,19 @@ public enum GroupType
     Alliance,
 }
 
+// Appended, not inserted - VirtualFolderOrder serializes by name, not ordinal, so this is purely for
+// GetOrderedVirtualFolderKinds' "any kind missing from a saved order" fallback.
+public enum VirtualFolderKind
+{
+    CurrentlyWorn,
+    Favourites,
+    RecentlyAdded,
+    RecentlyWorn,
+    MostWorn,
+    HealthIssues,
+    Hidden,
+}
+
 // The handful of OnlineStatus sheet rows relevant to a "what am I doing right now" automation
 // condition - not every status the game has (most are login-queue/GM/mentor states nobody would
 // gate an outfit on). Values are the sheet's own row ids, so they're stable across patches.
@@ -193,6 +206,31 @@ public class Configuration : IPluginConfiguration
     public bool ShowDesignsSection { get; set; } = true;
     public bool ShowPersonasSection { get; set; } = true;
     public bool ShowVirtualFoldersInTree { get; set; } = true;
+
+    // Which virtual folders show (when ShowVirtualFoldersInTree is on) and in what order - defaults to
+    // today's fixed order. Gallery Mode only draws CurrentlyWorn/RecentlyWorn/MostWorn from this list.
+    public List<VirtualFolderKind> VirtualFolderOrder { get; set; } = new()
+    {
+        VirtualFolderKind.CurrentlyWorn,
+        VirtualFolderKind.Favourites,
+        VirtualFolderKind.RecentlyAdded,
+        VirtualFolderKind.RecentlyWorn,
+        VirtualFolderKind.MostWorn,
+        VirtualFolderKind.HealthIssues,
+        VirtualFolderKind.Hidden,
+    };
+    public HashSet<VirtualFolderKind> DisabledVirtualFolders { get; set; } = new();
+
+    // VirtualFolderOrder plus any kind missing from it (e.g. a config saved before that kind existed),
+    // appended in declaration order - so a future addition never silently disappears for existing users.
+    public IEnumerable<VirtualFolderKind> GetOrderedVirtualFolderKinds()
+    {
+        foreach (var kind in VirtualFolderOrder)
+            yield return kind;
+        foreach (var kind in Enum.GetValues<VirtualFolderKind>())
+            if (!VirtualFolderOrder.Contains(kind))
+                yield return kind;
+    }
 
     // Global default for the Base Design Layer, applied before every design (and before its own Applied
     // Before layers) unless overridden per-design via DesignBaseLayerOverrides. Null = no base layer.

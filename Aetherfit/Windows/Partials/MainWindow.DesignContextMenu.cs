@@ -10,10 +10,11 @@ using Aetherfit.Utils;
 namespace Aetherfit.Windows;
 
 // Shared by the tree (MainWindow.Tree.cs) and the gallery grid (MainWindow.GalleryMode.cs).
-// fromGallery only gates "Open in Edit Mode" - you're already there in the tree.
+// fromGallery gates "Open in Edit Mode"; fromVirtualFolder gates "Reveal in Designs tree" - a
+// virtual-folder's duplicate row needs a way back to its real location, the real tree's row doesn't.
 public partial class MainWindow
 {
-    private void DrawDesignContextMenu(DesignLeaf design, bool fromGallery)
+    private void DrawDesignContextMenu(DesignLeaf design, bool fromGallery, bool fromVirtualFolder = false)
     {
         if (ImGui.MenuItem("Apply"))
         {
@@ -77,6 +78,11 @@ public partial class MainWindow
         ImGui.Separator();
 
         if (fromGallery && ImGui.MenuItem("Open in Edit Mode"))
+        {
+            selectedDesign = design.Id;
+            RevealDesignInTree(design.Id);
+        }
+        if (fromVirtualFolder && ImGui.MenuItem("Reveal in Designs tree"))
         {
             selectedDesign = design.Id;
             RevealDesignInTree(design.Id);

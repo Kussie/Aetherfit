@@ -126,6 +126,45 @@ public partial class MainWindow
         ImGui.SameLine();
         if (ImGui.Button("Cancel"))
             ImGui.CloseCurrentPopup();
+
+        using (ImRaii.Disabled(groups is not { Count: > 0 }))
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("Load from Penumbra"))
+                LoadModSettingsFromPenumbra();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Discard these edits and load whatever this mod's settings currently are in "
+                + "Penumbra instead - still requires Apply to save onto the design.");
+    }
+
+    // Overwrites the working selection (not Original, so Apply still diffs correctly) - lets you pull in
+    // settings you tweaked live in Penumbra without hunting through groups by hand.
+    private void LoadModSettingsFromPenumbra()
+    {
+        if (modSettingsGroups == null || modSettingsDirectory == null)
+            return;
+
+        if (plugin.Penumbra.GetLocalPlayerCollectionId() is not { } collectionId)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Penumbra's collection for your character couldn't be resolved.");
+            return;
+        }
+
+        var current = plugin.Penumbra.GetCurrentModSettingsWithTemp(collectionId, modSettingsDirectory, modSettingsModName ?? string.Empty);
+        if (current == null)
+        {
+            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Couldn't read this mod's current settings from Penumbra.");
+            return;
+        }
+
+        foreach (var group in modSettingsGroups)
+        {
+            group.Selected.Clear();
+            if (current.Value.Settings.TryGetValue(group.GroupName, out var selected))
+                foreach (var option in selected)
+                    group.Selected.Add(option);
+        }
     }
 
     private void DrawModSettingsBody(List<ModSettingGroupVm>? groups, bool useTwoColumns)

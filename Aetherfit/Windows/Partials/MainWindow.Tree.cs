@@ -82,15 +82,7 @@ public partial class MainWindow
         using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(spacing.X, spacing.Y + 3)))
         {
             if (plugin.Configuration.ShowVirtualFoldersInTree)
-            {
-                DrawCurrentlyWornFolderSection();
-                DrawFavouritesFolderSection();
-                DrawRecentlyAddedFolderSection();
-                DrawRecentlyWornFolderSection();
-                DrawMostWornFolderSection();
-                DrawHealthIssuesFolderSection();
-                DrawHiddenFolderSection();
-            }
+                DrawVirtualFolderSections();
 
             if (plugin.Configuration.ShowDesignsSection)
             {
@@ -225,7 +217,7 @@ public partial class MainWindow
             ImGui.SetNextItemOpen(true, ImGuiCond.Always);
 
         var rowX = ImGui.GetCursorScreenPos().X;
-        var open = DrawDesignLeaf(design, hasVariants);
+        var open = DrawDesignLeaf(design, hasVariants, fromVirtualFolder: !consumeReveal);
         DrawTreeItemTick(depth, rowX);
 
         if (consumeReveal && revealDesignInTree == design.Id)
@@ -251,7 +243,7 @@ public partial class MainWindow
                 if (!DesignMatchesFilters(variantLeaf, variantCached, ignoreHiddenOnly: true)) continue;
 
                 var childRowX = ImGui.GetCursorScreenPos().X;
-                DrawDesignLeaf(variantLeaf, false);
+                DrawDesignLeaf(variantLeaf, false, fromVirtualFolder: !consumeReveal);
                 DrawTreeItemTick(depth + 1, childRowX);
 
                 if (consumeReveal && revealDesignInTree == variantId)
@@ -271,6 +263,33 @@ public partial class MainWindow
                     ImGui.ColorConvertFloat4ToU32(TreeGuideColor), ImGuiHelpers.GlobalScale);
 
             ImGui.TreePop();
+        }
+    }
+
+    // Draws whichever sections are enabled, in the user's configured order (Configuration.VirtualFolderOrder).
+    private void DrawVirtualFolderSections()
+    {
+        var first = true;
+        foreach (var kind in plugin.Configuration.GetOrderedVirtualFolderKinds())
+        {
+            if (plugin.Configuration.DisabledVirtualFolders.Contains(kind))
+                continue;
+            if (first)
+            {
+                ImGui.Spacing();
+                first = false;
+            }
+
+            switch (kind)
+            {
+                case VirtualFolderKind.CurrentlyWorn: DrawCurrentlyWornFolderSection(); break;
+                case VirtualFolderKind.Favourites: DrawFavouritesFolderSection(); break;
+                case VirtualFolderKind.RecentlyAdded: DrawRecentlyAddedFolderSection(); break;
+                case VirtualFolderKind.RecentlyWorn: DrawRecentlyWornFolderSection(); break;
+                case VirtualFolderKind.MostWorn: DrawMostWornFolderSection(); break;
+                case VirtualFolderKind.HealthIssues: DrawHealthIssuesFolderSection(); break;
+                case VirtualFolderKind.Hidden: DrawHiddenFolderSection(); break;
+            }
         }
     }
 
@@ -338,7 +357,6 @@ public partial class MainWindow
     {
         var worn = GetCurrentlyWornDesign();
 
-        ImGui.Spacing();
         var sectionOpen = ImGui.TreeNodeEx($"Currently Worn ({(worn != null ? 1 : 0)})##currentlyWornFolderRoot",
             ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
         if (!sectionOpen)
@@ -550,7 +568,7 @@ public partial class MainWindow
 
     // Returns whether the row is expanded (only meaningful when hasVariants - a plain leaf always
     // returns false, since it has nothing to expand into).
-    private bool DrawDesignLeaf(DesignLeaf design, bool hasVariants)
+    private bool DrawDesignLeaf(DesignLeaf design, bool hasVariants, bool fromVirtualFolder = false)
     {
         var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
         var hasColor = design.Color != 0;
@@ -597,7 +615,7 @@ public partial class MainWindow
         using (var contextMenu = ImRaii.Popup($"##treeDesignContextMenu_{design.Id}"))
         {
             if (contextMenu.Success)
-                DrawDesignContextMenu(design, fromGallery: false);
+                DrawDesignContextMenu(design, fromGallery: false, fromVirtualFolder: fromVirtualFolder);
         }
 
         if (ImGui.IsItemHovered())
@@ -630,6 +648,9 @@ public partial class MainWindow
             ImGui.TextUnformatted(design.FullPath);
         if (imagePath != null)
             DrawImageScaled(imagePath, TooltipImageMax * ImGuiHelpers.GlobalScale);
+        var wornCount = GetWornCount(design.Id);
+        if (wornCount > 0)
+            ImGui.TextDisabled(wornCount == 1 ? "Worn 1 time" : $"Worn {wornCount} times");
         ImGui.TextDisabled("Double-click to apply");
         ImGui.TextDisabled("Shift + right-click to open in Glamourer");
         ImGui.EndTooltip();

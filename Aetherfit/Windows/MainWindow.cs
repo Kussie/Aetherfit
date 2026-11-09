@@ -491,6 +491,25 @@ public partial class MainWindow : Window, IDisposable
         plugin.Configuration.HiddenDesigns.RemoveWhere(id => !validIds.Contains(id));
         CleanupStaleLayers(validIds);
 
+        // Nothing else sweeps per-character references (last-worn bookkeeping, persona assignments).
+        foreach (var settings in plugin.Configuration.CharacterLoginSettings.Values)
+        {
+            if (settings.LastWornDesign is { } lastWorn && !validIds.Contains(lastWorn))
+                settings.LastWornDesign = null;
+            settings.LastWornLayers.RemoveAll(id => !validIds.Contains(id));
+            settings.LastWornBeforeLayers.RemoveAll(id => !validIds.Contains(id));
+            settings.RecentDesignHistory.RemoveAll(id => !validIds.Contains(id));
+
+            foreach (var persona in settings.Personas)
+            {
+                persona.AssignedDesignIds.RemoveAll(id => !validIds.Contains(id));
+                if (persona.DefaultDesignId is { } def && !validIds.Contains(def))
+                    persona.DefaultDesignId = null;
+                if (persona.PersonaBaseLayerId is { } baseLayer && !validIds.Contains(baseLayer))
+                    persona.PersonaBaseLayerId = null;
+            }
+        }
+
         var staleVariants = plugin.Configuration.DesignVariants
             .Where(kv => !validIds.Contains(kv.Key) || !validIds.Contains(kv.Value.ParentId))
             .Select(kv => kv.Key)
