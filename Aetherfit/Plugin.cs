@@ -136,6 +136,14 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.Save();
         }
 
+        // Same cleanup as above, for VirtualFolderOrder's own copy of the same bug.
+        var dedupedVirtualFolderOrder = Configuration.VirtualFolderOrder.Distinct().ToList();
+        if (dedupedVirtualFolderOrder.Count != Configuration.VirtualFolderOrder.Count)
+        {
+            Configuration.VirtualFolderOrder = dedupedVirtualFolderOrder;
+            Configuration.Save();
+        }
+
         if (Configuration.GalleryFitMode == GalleryFitMode.Crop && Configuration.GalleryFitWholeImage)
         {
             Configuration.GalleryFitMode = GalleryFitMode.Letterbox;

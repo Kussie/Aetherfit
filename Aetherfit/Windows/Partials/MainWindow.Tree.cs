@@ -297,6 +297,21 @@ public partial class MainWindow
     private Guid ResolveTopLevelDesignId(Guid id)
         => plugin.Configuration.GetVariantInfo(id) is { } info ? info.ParentId : id;
 
+    // Open/collapsed state persisted across sessions via CollapsedVirtualFolders - absence means open.
+    private bool DrawVirtualFolderHeader(string label, VirtualFolderKind kind)
+    {
+        var wasCollapsed = plugin.Configuration.CollapsedVirtualFolders.Contains(kind);
+        ImGui.SetNextItemOpen(!wasCollapsed, ImGuiCond.FirstUseEver);
+        var open = ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.SpanAvailWidth);
+        if (open == wasCollapsed)
+        {
+            if (open) plugin.Configuration.CollapsedVirtualFolders.Remove(kind);
+            else plugin.Configuration.CollapsedVirtualFolders.Add(kind);
+            plugin.Configuration.Save();
+        }
+        return open;
+    }
+
     // Whatever Aetherfit currently believes is applied - null after a Revert or an external change.
     // Shared by the tree's own section and Gallery Mode's (MainWindow.GalleryMode.cs).
     private DesignLeaf? GetCurrentlyWornDesign()
@@ -357,8 +372,8 @@ public partial class MainWindow
     {
         var worn = GetCurrentlyWornDesign();
 
-        var sectionOpen = ImGui.TreeNodeEx($"Currently Worn ({(worn != null ? 1 : 0)})##currentlyWornFolderRoot",
-            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        var sectionOpen = DrawVirtualFolderHeader($"Currently Worn ({(worn != null ? 1 : 0)})##currentlyWornFolderRoot",
+            VirtualFolderKind.CurrentlyWorn);
         if (!sectionOpen)
             return;
 
@@ -379,8 +394,8 @@ public partial class MainWindow
     {
         var recent = GetRecentlyWornDesigns();
 
-        var sectionOpen = ImGui.TreeNodeEx($"Recently Worn ({recent.Count})##recentlyWornFolderRoot",
-            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        var sectionOpen = DrawVirtualFolderHeader($"Recently Worn ({recent.Count})##recentlyWornFolderRoot",
+            VirtualFolderKind.RecentlyWorn);
         if (!sectionOpen)
             return;
 
@@ -392,8 +407,8 @@ public partial class MainWindow
     {
         var mostWorn = GetMostWornDesigns();
 
-        var sectionOpen = ImGui.TreeNodeEx($"Most Worn ({mostWorn.Count})##mostWornFolderRoot",
-            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        var sectionOpen = DrawVirtualFolderHeader($"Most Worn ({mostWorn.Count})##mostWornFolderRoot",
+            VirtualFolderKind.MostWorn);
         if (!sectionOpen)
             return;
 
@@ -405,8 +420,8 @@ public partial class MainWindow
     // A non-favourited parent shows too if one of its variants is favourited (mirrors the Hidden filter).
     private void DrawFavouritesFolderSection()
     {
-        var sectionOpen = ImGui.TreeNodeEx($"Favourites ({plugin.Configuration.FavouriteDesigns.Count})##favouritesRoot",
-            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        var sectionOpen = DrawVirtualFolderHeader($"Favourites ({plugin.Configuration.FavouriteDesigns.Count})##favouritesRoot",
+            VirtualFolderKind.Favourites);
         if (!sectionOpen)
             return;
 
@@ -433,8 +448,8 @@ public partial class MainWindow
     // Everything currently hidden, plus a non-hidden parent that needs showing to host a hidden variant.
     private void DrawHiddenFolderSection()
     {
-        var sectionOpen = ImGui.TreeNodeEx($"Hidden ({plugin.Configuration.HiddenDesigns.Count})##hiddenFolderRoot",
-            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        var sectionOpen = DrawVirtualFolderHeader($"Hidden ({plugin.Configuration.HiddenDesigns.Count})##hiddenFolderRoot",
+            VirtualFolderKind.Hidden);
         if (!sectionOpen)
             return;
 
@@ -474,8 +489,8 @@ public partial class MainWindow
         }
         recent.Sort((a, b) => Nullable.Compare(GetCreatedAt(b.Id), GetCreatedAt(a.Id))); // newest first
 
-        var sectionOpen = ImGui.TreeNodeEx($"Recently Added ({recent.Count})##recentlyAddedFolderRoot",
-            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        var sectionOpen = DrawVirtualFolderHeader($"Recently Added ({recent.Count})##recentlyAddedFolderRoot",
+            VirtualFolderKind.RecentlyAdded);
         if (!sectionOpen)
             return;
 
@@ -489,8 +504,8 @@ public partial class MainWindow
     {
         var flagged = FlaggedDesignIds();
 
-        var sectionOpen = ImGui.TreeNodeEx($"Health Issues ({flagged.Count})##healthIssuesFolderRoot",
-            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        var sectionOpen = DrawVirtualFolderHeader($"Health Issues ({flagged.Count})##healthIssuesFolderRoot",
+            VirtualFolderKind.HealthIssues);
         if (!sectionOpen)
             return;
 

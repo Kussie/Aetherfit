@@ -207,19 +207,15 @@ public class Configuration : IPluginConfiguration
     public bool ShowPersonasSection { get; set; } = true;
     public bool ShowVirtualFoldersInTree { get; set; } = true;
 
-    // Which virtual folders show (when ShowVirtualFoldersInTree is on) and in what order - defaults to
-    // today's fixed order. Gallery Mode only draws CurrentlyWorn/RecentlyWorn/MostWorn from this list.
-    public List<VirtualFolderKind> VirtualFolderOrder { get; set; } = new()
-    {
-        VirtualFolderKind.CurrentlyWorn,
-        VirtualFolderKind.Favourites,
-        VirtualFolderKind.RecentlyAdded,
-        VirtualFolderKind.RecentlyWorn,
-        VirtualFolderKind.MostWorn,
-        VirtualFolderKind.HealthIssues,
-        VirtualFolderKind.Hidden,
-    };
+    // Which virtual folders show and in what order. Deliberately empty here, not seeded - same
+    // reuse-and-append duplication bug as TagSuggestionBlacklist (see Plugin.cs). An empty list already
+    // behaves like the old seeded default via GetOrderedVirtualFolderKinds's fallback below.
+    public List<VirtualFolderKind> VirtualFolderOrder { get; set; } = new();
     public HashSet<VirtualFolderKind> DisabledVirtualFolders { get; set; } = new();
+
+    // Collapsed/open state of each virtual folder section, persisted across game sessions. Absence means
+    // expanded (the section's own DefaultOpen), so this only ever needs to record collapsed ones.
+    public HashSet<VirtualFolderKind> CollapsedVirtualFolders { get; set; } = new();
 
     // VirtualFolderOrder plus any kind missing from it (e.g. a config saved before that kind existed),
     // appended in declaration order - so a future addition never silently disappears for existing users.
