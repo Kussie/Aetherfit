@@ -58,7 +58,7 @@ public sealed class DesignApplyService
     // Applies a single design purely as a layer on top of whatever's currently worn, without a full base
     // apply of its own - used by persona/Default activation. Not "actively chosen," so it doesn't count
     // toward last-worn bookkeeping (mirrors how a restored/preview apply elsewhere in this file opts out too).
-    public void ApplyLayerOnly(Guid designId) => ApplyLayers(new List<Guid> { designId }, recordLastApplied: false);
+    public void ApplyLayerOnly(Guid designId) => ApplyLayers(new List<Guid> { designId });
 
     // Applies just one equipment slot from a design onto the character's current outfit, leaving
     // everything else worn untouched. Bypasses ApplyDesignCore on purpose - none of its "before base
@@ -229,7 +229,7 @@ public sealed class DesignApplyService
         }
 
         // Applied before the base so anything it doesn't explicitly manage survives underneath it.
-        ApplyLayers(beforeLayerIds, recordLastApplied);
+        ApplyLayers(beforeLayerIds);
 
         if (plugin.Configuration.GetVariantInfo(id) is { InheritGear: true } variant
             && plugin.Configuration.CachedOutfits.TryGetValue(variant.ParentId, out var parentOutfit)
@@ -249,7 +249,7 @@ public sealed class DesignApplyService
         if (!quiet && plugin.GameData.DesignHasAnyIncompatibleItems(outfit))
             Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}\"{name}\" can only be partially applied on your current character.");
 
-        ApplyLayers(afterLayerIds, recordLastApplied);
+        ApplyLayers(afterLayerIds);
 
         // Only an active pick counts as "worn" - ReapplyLastWorn (restore) and Batch Screenshot (preview)
         // opt out via this flag, gating both last-worn and last-applied bookkeeping together.
@@ -261,10 +261,9 @@ public sealed class DesignApplyService
     }
 
     // Applies each layer id (in order) via its provider's ApplyLayer IPC. Used for both the before- and
-    // after-base layer passes - only the order relative to the base's own Apply call differs.
-    // recordLastApplied mirrors the base design's own flag: a layer worn alongside a restored (not
-    // actively chosen) base is itself just being restored, not freshly worn.
-    private void ApplyLayers(List<Guid> layerIds, bool recordLastApplied)
+    // after-base layer passes - only the order relative to the base's own Apply call differs. Never bumps
+    // a layer's own WornCount/last-applied - only the base design actually chosen counts as worn.
+    private void ApplyLayers(List<Guid> layerIds)
     {
         if (layerIds.Count == 0)
             return;
@@ -276,11 +275,7 @@ public sealed class DesignApplyService
             {
                 if (plugin.Configuration.CachedOutfits.TryGetValue(layerId, out var layerOutfit)
                     && plugin.DesignProviders.FirstOrDefault(p => p.Source == layerOutfit.Source) is { } layerProvider)
-                {
                     layerProvider.ApplyLayer(layerOutfit.ProviderDesignId);
-                    if (recordLastApplied)
-                        plugin.Configuration.RecordLastApplied(layerId, layerOutfit);
-                }
             }
         }
         finally { applyingLayer = false; }

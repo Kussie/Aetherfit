@@ -23,6 +23,7 @@ public class ConfigWindow : Window, IDisposable
     private readonly Plugin plugin;
     private const string LoginTagsPopupId = "LoginTagsPopup";
     private const string DeleteAllImagesPopupId = "Delete All Images?##deleteAllImagesConfirm";
+    private const string ResetWornStatisticsPopupId = "Reset Worn Statistics?##resetWornStatisticsConfirm";
     private const string ImportBackupConfirmPopupId = "Import Settings Backup?##importBackupConfirm";
     private string loginTagSearchText = string.Empty;
     private List<string> availableLoginTags = [];
@@ -178,6 +179,19 @@ public class ConfigWindow : Window, IDisposable
                 "Hold to Delete All Images", holdToConfirm: true))
         {
             plugin.ImageStorage.ClearAllImages();
+        }
+
+        if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Undo, "Reset Worn Statistics", Vector2.Zero))
+            ConfirmDialog.Open(ResetWornStatisticsPopupId);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Clears every design's worn count and every character's Recently Worn history.");
+
+        if (ConfirmDialog.Draw(ResetWornStatisticsPopupId,
+                "This will clear every design's worn count (used by the Most Worn virtual folder) and every "
+                + "character's Recently Worn history. What's currently applied is untouched. This can't be undone.",
+                "Hold to Reset Worn Statistics", holdToConfirm: true))
+        {
+            plugin.Configuration.ResetWornStatistics();
         }
 
         ImGui.Spacing();

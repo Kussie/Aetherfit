@@ -520,6 +520,21 @@ public class Configuration : IPluginConfiguration
         Save();
     }
 
+    // Leaves LastApplied/LastAppliedAt and LastWornDesign alone - those are when/what, not how often.
+    public void ResetWornStatistics()
+    {
+        foreach (var meta in DesignMeta.Values)
+            meta.WornCount = 0;
+        foreach (var outfit in CachedOutfits.Values)
+            outfit.WornCount = 0;
+
+        foreach (var settings in CharacterLoginSettings.Values)
+            settings.RecentDesignHistory.Clear();
+
+        LastAppliedVersion++;
+        Save();
+    }
+
     // Bumped whenever the ignore set changes, so the toolbar badge's cached "any issues?" check
     // knows to recompute without re-scanning the whole library every frame.
     [JsonIgnore]

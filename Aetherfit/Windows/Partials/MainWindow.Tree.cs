@@ -83,8 +83,11 @@ public partial class MainWindow
         {
             if (plugin.Configuration.ShowVirtualFoldersInTree)
             {
+                DrawCurrentlyWornFolderSection();
                 DrawFavouritesFolderSection();
                 DrawRecentlyAddedFolderSection();
+                DrawRecentlyWornFolderSection();
+                DrawMostWornFolderSection();
                 DrawHealthIssuesFolderSection();
                 DrawHiddenFolderSection();
             }
@@ -271,11 +274,119 @@ public partial class MainWindow
         }
     }
 
+    // A variant never renders flat - substitute its parent, same convention every other virtual folder uses.
+    private Guid ResolveTopLevelDesignId(Guid id)
+        => plugin.Configuration.GetVariantInfo(id) is { } info ? info.ParentId : id;
+
+    // Whatever Aetherfit currently believes is applied - null after a Revert or an external change.
+    // Shared by the tree's own section and Gallery Mode's (MainWindow.GalleryMode.cs).
+    private DesignLeaf? GetCurrentlyWornDesign()
+    {
+        if (!Plugin.PlayerState.IsLoaded
+            || !plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+            || settings.LastWornDesign is not { } id)
+            return null;
+        designLeafById.TryGetValue(ResolveTopLevelDesignId(id), out var worn);
+        return worn;
+    }
+
+    // The last 10 worn designs - CharacterLoginSettings.RecentDesignHistory, already newest-first,
+    // deduplicated and persisted by DesignApplyService.RecordLastWorn on every real apply.
+    private List<DesignLeaf> GetRecentlyWornDesigns()
+    {
+        var history = Plugin.PlayerState.IsLoaded
+            && plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+            ? settings.RecentDesignHistory
+            : new List<Guid>();
+
+        var seen = new HashSet<Guid>();
+        var recent = new List<DesignLeaf>();
+        foreach (var id in history)
+        {
+            var topId = ResolveTopLevelDesignId(id);
+            if (!seen.Add(topId)) continue; // a variant and its own parent can both be in history
+            if (!designLeafById.TryGetValue(topId, out var leaf)) continue; // stale/deleted
+            recent.Add(leaf);
+        }
+        return recent;
+    }
+
+    // Top 10 by WornCount. A variant's count is folded into its parent's, same substitution convention
+    // as Recently Worn - "most worn" means the look, not which exact variant happened to be applied.
+    private List<DesignLeaf> GetMostWornDesigns()
+    {
+        var wornCountByTopId = new Dictionary<Guid, int>();
+        foreach (var id in designLeafById.Keys)
+        {
+            var count = GetWornCount(id);
+            if (count <= 0) continue;
+            var topId = ResolveTopLevelDesignId(id);
+            wornCountByTopId[topId] = wornCountByTopId.GetValueOrDefault(topId) + count;
+        }
+
+        return wornCountByTopId
+            .Where(kv => designLeafById.ContainsKey(kv.Key))
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => designLeafById[kv.Key].DisplayName, NaturalStringComparer.OrdinalIgnoreCase)
+            .Take(10)
+            .Select(kv => designLeafById[kv.Key])
+            .ToList();
+    }
+
+    // Deliberately not filtered by the Filters panel: one ground truth, not a browsable list.
+    private void DrawCurrentlyWornFolderSection()
+    {
+        var worn = GetCurrentlyWornDesign();
+
+        ImGui.Spacing();
+        var sectionOpen = ImGui.TreeNodeEx($"Currently Worn ({(worn != null ? 1 : 0)})##currentlyWornFolderRoot",
+            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        if (!sectionOpen)
+            return;
+
+        if (worn != null)
+            DrawDesignLeafWithVariants(worn, 0, consumeReveal: false);
+        else
+        {
+            ImGui.TextDisabled("Unknown");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Aetherfit doesn't know what's currently applied - this happens after "
+                    + "Revert Appearance, or if something outside Aetherfit changed your appearance.");
+        }
+
+        ImGui.TreePop();
+    }
+
+    private void DrawRecentlyWornFolderSection()
+    {
+        var recent = GetRecentlyWornDesigns();
+
+        var sectionOpen = ImGui.TreeNodeEx($"Recently Worn ({recent.Count})##recentlyWornFolderRoot",
+            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        if (!sectionOpen)
+            return;
+
+        DrawVirtualFolderDesigns(recent);
+        ImGui.TreePop();
+    }
+
+    private void DrawMostWornFolderSection()
+    {
+        var mostWorn = GetMostWornDesigns();
+
+        var sectionOpen = ImGui.TreeNodeEx($"Most Worn ({mostWorn.Count})##mostWornFolderRoot",
+            ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
+        if (!sectionOpen)
+            return;
+
+        DrawVirtualFolderDesigns(mostWorn);
+        ImGui.TreePop();
+    }
+
     // A true duplicate of each favourite's real tree row, not a partition like Gallery's own section.
     // A non-favourited parent shows too if one of its variants is favourited (mirrors the Hidden filter).
     private void DrawFavouritesFolderSection()
     {
-        ImGui.Spacing();
         var sectionOpen = ImGui.TreeNodeEx($"Favourites ({plugin.Configuration.FavouriteDesigns.Count})##favouritesRoot",
             ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
         if (!sectionOpen)

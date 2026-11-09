@@ -65,6 +65,9 @@ public partial class MainWindow
     private bool otherDesignsSectionOpen = true;
     private bool personasSectionOpen = true;
     private bool recentlyAddedSectionOpen = true;
+    private bool currentlyWornSectionOpen = true;
+    private bool recentlyWornSectionOpen = true;
+    private bool mostWornSectionOpen = true;
     private const int RecentlyAddedDays = 7;
 
     private void DrawCoverModePane()
@@ -319,12 +322,27 @@ public partial class MainWindow
         ImGui.Checkbox("Show variants separately", ref coverUnstackVariants);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Off: variants are stacked behind their parent's cell.\nOn: every variant gets its own cell, like a normal design.");
+
+        // Shared with the tree's own toggle (MainWindow.Tree.cs) - one setting, exposed in both filter panels.
+        var showVirtualFolders = plugin.Configuration.ShowVirtualFoldersInTree;
+        if (ImGui.Checkbox("Show Virtual Folders", ref showVirtualFolders))
+        {
+            plugin.Configuration.ShowVirtualFoldersInTree = showVirtualFolders;
+            plugin.Configuration.Save();
+        }
     }
 
     private void DrawCoverGrid()
     {
         if (IsGalleryCacheStale())
             RebuildGalleryCache();
+
+        if (plugin.Configuration.ShowVirtualFoldersInTree)
+        {
+            DrawCurrentlyWornGallerySection();
+            DrawRecentlyWornGallerySection();
+            DrawMostWornGallerySection();
+        }
 
         var visible = cachedVisible;
 
@@ -415,6 +433,52 @@ public partial class MainWindow
         ImGui.Spacing();
         var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
         DrawCoverGridRange(recent, 0, recent.Count, columns, thumbWidth, thumbHeight);
+    }
+
+    // Same data as the tree's own virtual folders - hidden entirely when empty, since Gallery has no
+    // natural "Unknown" placeholder cell.
+    private void DrawCurrentlyWornGallerySection()
+    {
+        if (GetCurrentlyWornDesign() is not { } worn)
+            return;
+
+        ImGui.Separator();
+        if (!Pills.DrawCollapsibleSubheader("Currently Worn", ref currentlyWornSectionOpen))
+            return;
+
+        ImGui.Spacing();
+        var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
+        DrawCoverGridRange(new List<DesignLeaf> { worn }, 0, 1, columns, thumbWidth, thumbHeight);
+    }
+
+    private void DrawRecentlyWornGallerySection()
+    {
+        var recent = GetRecentlyWornDesigns();
+        if (recent.Count == 0)
+            return;
+
+        ImGui.Separator();
+        if (!Pills.DrawCollapsibleSubheader($"Recently Worn ({recent.Count})", ref recentlyWornSectionOpen))
+            return;
+
+        ImGui.Spacing();
+        var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
+        DrawCoverGridRange(recent, 0, recent.Count, columns, thumbWidth, thumbHeight);
+    }
+
+    private void DrawMostWornGallerySection()
+    {
+        var mostWorn = GetMostWornDesigns();
+        if (mostWorn.Count == 0)
+            return;
+
+        ImGui.Separator();
+        if (!Pills.DrawCollapsibleSubheader($"Most Worn ({mostWorn.Count})", ref mostWornSectionOpen))
+            return;
+
+        ImGui.Spacing();
+        var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
+        DrawCoverGridRange(mostWorn, 0, mostWorn.Count, columns, thumbWidth, thumbHeight);
     }
 
     // A lightweight card row, not the full editor - clicking a persona jumps to its rich detail view
