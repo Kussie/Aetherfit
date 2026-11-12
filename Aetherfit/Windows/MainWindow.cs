@@ -541,7 +541,10 @@ public partial class MainWindow : Window, IDisposable
         designListGeneration++;
     }
 
-    private static FolderNode BuildFolderTree(IEnumerable<DesignLeaf> leaves)
+    // sortAlphabetically: false for Gallery Mode's folder grouping, which walks its designs already in
+    // the gallery's own sort order (and favourites-pin ordering) and wants to keep it, same reasoning as
+    // GalleryTagGroups/GalleryJobGroups walking cachedVisible directly instead of re-sorting.
+    private static FolderNode BuildFolderTree(IEnumerable<DesignLeaf> leaves, bool sortAlphabetically = true)
     {
         var newRoot = new FolderNode();
         foreach (var leaf in leaves)
@@ -559,7 +562,8 @@ public partial class MainWindow : Window, IDisposable
             node.Designs.Add(leaf);
         }
 
-        SortNodeDesigns(newRoot);
+        if (sortAlphabetically)
+            SortNodeDesigns(newRoot);
         return newRoot;
     }
 

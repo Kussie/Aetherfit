@@ -43,10 +43,16 @@ public partial class MainWindow
             {
                 var leaves = bySource[p.Source];
                 var direct = leaves.Where(l => l.SourceSubGroup == null).ToList();
+                direct.Sort(CompareGalleryDesigns);
                 var subGroups = leaves.Where(l => l.SourceSubGroup != null)
                     .GroupBy(l => l.SourceSubGroup!)
                     .OrderBy(g => g.Key, NaturalStringComparer.OrdinalIgnoreCase)
-                    .Select(g => new CoverSourceSubGroup(g.Key, g.ToList()))
+                    .Select(g =>
+                    {
+                        var designs = g.ToList();
+                        designs.Sort(CompareGalleryDesigns);
+                        return new CoverSourceSubGroup(g.Key, designs);
+                    })
                     .ToList();
                 return new CoverSourceGroup(p.DisplayName, direct, subGroups);
             })

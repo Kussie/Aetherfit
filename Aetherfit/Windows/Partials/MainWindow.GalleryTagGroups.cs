@@ -60,8 +60,18 @@ public partial class MainWindow
             }
         }
 
+        SortCoverTagNode(tagRoot);
+        untagged.Sort(CompareGalleryDesigns);
+
         cachedCoverTagRoot = tagRoot;
         cachedCoverUntagged = untagged;
+    }
+
+    private void SortCoverTagNode(TagNode node)
+    {
+        node.Designs.Sort(CompareGalleryDesigns);
+        foreach (var child in node.Children.Values)
+            SortCoverTagNode(child);
     }
 
     private void DrawCoverGroupedByTags()

@@ -23,7 +23,8 @@ public partial class MainWindow
 
         if (cachedCoverFolderTreeVersion != galleryCacheVersion)
         {
-            cachedCoverFolderRoot = BuildFolderTree(cachedVisible);
+            cachedCoverFolderRoot = BuildFolderTree(cachedVisible, sortAlphabetically: false);
+            SortCoverFolderNode(cachedCoverFolderRoot);
             cachedCoverFolderTreeVersion = galleryCacheVersion;
         }
 
@@ -64,6 +65,13 @@ public partial class MainWindow
         }
 
         ImGui.Unindent();
+    }
+
+    private void SortCoverFolderNode(FolderNode node)
+    {
+        node.Designs.Sort(CompareGalleryDesigns);
+        foreach (var child in node.Folders.Values)
+            SortCoverFolderNode(child);
     }
 
     private static int CountFolderDesigns(FolderNode node)

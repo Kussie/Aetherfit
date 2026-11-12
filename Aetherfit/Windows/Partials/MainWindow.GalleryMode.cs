@@ -498,7 +498,7 @@ public partial class MainWindow
 
     private void DrawMostWornGallerySection()
     {
-        var mostWorn = GetMostWornDesigns();
+        var mostWorn = GetMostWornDesigns().Select(m => m.Design).ToList();
         if (mostWorn.Count == 0)
             return;
 
@@ -633,35 +633,36 @@ public partial class MainWindow
         clipper.End();
     }
 
-    private void SortGalleryDesigns(List<DesignLeaf> designs)
-    {
-        var favourites = plugin.Configuration.FavouriteDesigns;
-        var pinFavs = plugin.Configuration.GalleryPinFavouritesFirst;
-        var asc = gallerySortAscending;
-        designs.Sort((a, b) =>
-        {
-            if (pinFavs)
-            {
-                var fa = favourites.Contains(a.Id);
-                var fb = favourites.Contains(b.Id);
-                if (fa != fb) return fa ? -1 : 1;
-            }
+    private void SortGalleryDesigns(List<DesignLeaf> designs) => designs.Sort(CompareGalleryDesigns);
 
-            switch (gallerySortField)
-            {
-                case GallerySortField.LastModified:
-                    return CompareDates(GetLastEdit(a.Id), GetLastEdit(b.Id), asc);
-                case GallerySortField.Created:
-                    return CompareDates(GetCreatedAt(a.Id), GetCreatedAt(b.Id), asc);
-                case GallerySortField.LastWorn:
-                    return CompareDates(GetLastAppliedAt(a.Id), GetLastAppliedAt(b.Id), asc);
-                case GallerySortField.WornCount:
-                    return CompareCounts(GetWornCount(a.Id), GetWornCount(b.Id), asc);
-                default:
-                    var cmp = NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName);
-                    return asc ? cmp : -cmp;
-            }
-        });
+    // Shared by every grouped view (folder/job/tag/source) too, not just the flat list - each group
+    // sorts its own sublist with this instead of trusting it inherited cachedVisible's order, since
+    // bucketing by group doesn't reliably preserve relative order (e.g. GroupBy over a Dictionary).
+    private int CompareGalleryDesigns(DesignLeaf a, DesignLeaf b)
+    {
+        if (plugin.Configuration.GalleryPinFavouritesFirst)
+        {
+            var favourites = plugin.Configuration.FavouriteDesigns;
+            var fa = favourites.Contains(a.Id);
+            var fb = favourites.Contains(b.Id);
+            if (fa != fb) return fa ? -1 : 1;
+        }
+
+        var asc = gallerySortAscending;
+        switch (gallerySortField)
+        {
+            case GallerySortField.LastModified:
+                return CompareDates(GetLastEdit(a.Id), GetLastEdit(b.Id), asc);
+            case GallerySortField.Created:
+                return CompareDates(GetCreatedAt(a.Id), GetCreatedAt(b.Id), asc);
+            case GallerySortField.LastWorn:
+                return CompareDates(GetLastAppliedAt(a.Id), GetLastAppliedAt(b.Id), asc);
+            case GallerySortField.WornCount:
+                return CompareCounts(GetWornCount(a.Id), GetWornCount(b.Id), asc);
+            default:
+                var cmp = NaturalStringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName);
+                return asc ? cmp : -cmp;
+        }
     }
 
     private DateTimeOffset? GetLastEdit(Guid id) =>

@@ -208,7 +208,8 @@ public partial class MainWindow
 
     // consumeReveal is false for the Favourites pseudo-folder's copy - RevealDesignInTree only resolves
     // a design's real folder path, so only the real-tree copy should scroll to itself.
-    private void DrawDesignLeafWithVariants(DesignLeaf design, int depth, bool consumeReveal = true)
+    // suffix is drawn after the row's own label (e.g. Most Worn's "— N×") - never on nested variants.
+    private void DrawDesignLeafWithVariants(DesignLeaf design, int depth, bool consumeReveal = true, string? suffix = null)
     {
         var variantIds = plugin.Configuration.GetVariantsOf(design.Id).Select(kv => kv.Key).ToList();
         var hasVariants = variantIds.Count > 0;
@@ -217,7 +218,7 @@ public partial class MainWindow
             ImGui.SetNextItemOpen(true, ImGuiCond.Always);
 
         var rowX = ImGui.GetCursorScreenPos().X;
-        var open = DrawDesignLeaf(design, hasVariants, fromVirtualFolder: !consumeReveal);
+        var open = DrawDesignLeaf(design, hasVariants, fromVirtualFolder: !consumeReveal, suffix: suffix);
         DrawTreeItemTick(depth, rowX);
 
         if (consumeReveal && revealDesignInTree == design.Id)
@@ -347,7 +348,7 @@ public partial class MainWindow
 
     // Top 10 by WornCount. A variant's count is folded into its parent's, same substitution convention
     // as Recently Worn - "most worn" means the look, not which exact variant happened to be applied.
-    private List<DesignLeaf> GetMostWornDesigns()
+    private List<(DesignLeaf Design, int WornCount)> GetMostWornDesigns()
     {
         var wornCountByTopId = new Dictionary<Guid, int>();
         foreach (var id in designLeafById.Keys)
@@ -363,7 +364,7 @@ public partial class MainWindow
             .OrderByDescending(kv => kv.Value)
             .ThenBy(kv => designLeafById[kv.Key].DisplayName, NaturalStringComparer.OrdinalIgnoreCase)
             .Take(10)
-            .Select(kv => designLeafById[kv.Key])
+            .Select(kv => (designLeafById[kv.Key], kv.Value))
             .ToList();
     }
 
@@ -412,7 +413,8 @@ public partial class MainWindow
         if (!sectionOpen)
             return;
 
-        DrawVirtualFolderDesigns(mostWorn);
+        foreach (var (design, wornCount) in mostWorn)
+            DrawDesignLeafWithVariants(design, 0, consumeReveal: false, suffix: $"— {wornCount}×");
         ImGui.TreePop();
     }
 
@@ -583,7 +585,7 @@ public partial class MainWindow
 
     // Returns whether the row is expanded (only meaningful when hasVariants - a plain leaf always
     // returns false, since it has nothing to expand into).
-    private bool DrawDesignLeaf(DesignLeaf design, bool hasVariants, bool fromVirtualFolder = false)
+    private bool DrawDesignLeaf(DesignLeaf design, bool hasVariants, bool fromVirtualFolder = false, string? suffix = null)
     {
         var isFavourite = plugin.Configuration.FavouriteDesigns.Contains(design.Id);
         var hasColor = design.Color != 0;
@@ -635,6 +637,12 @@ public partial class MainWindow
 
         if (ImGui.IsItemHovered())
             hoveredDesignForTooltip = design;
+
+        if (suffix != null)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled(suffix);
+        }
 
         return open;
     }

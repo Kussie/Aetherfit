@@ -45,6 +45,10 @@ public partial class MainWindow
             }
         }
 
+        foreach (var list in byJob.Values)
+            list.Sort(CompareGalleryDesigns);
+        unassigned.Sort(CompareGalleryDesigns);
+
         cachedCoverJobGroups = plugin.GameData.GetSelectableJobs()
             .GroupBy(j => j.Role)
             .Select(roleGroup => new CoverJobGroup(roleGroup.Key,
