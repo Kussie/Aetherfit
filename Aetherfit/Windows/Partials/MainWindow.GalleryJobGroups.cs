@@ -1,8 +1,6 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Aetherfit.Services.Game;
-using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 
 namespace Aetherfit.Windows;
@@ -18,7 +16,6 @@ public partial class MainWindow
     private List<DesignLeaf> cachedCoverUnassignedJob = new();
     private int cachedCoverJobGroupVersion = -1;
     private int cachedCoverJobAssociationVersion = -1;
-    private readonly Dictionary<string, bool> coverJobSectionOpen = new(StringComparer.OrdinalIgnoreCase);
 
     private void RebuildCoverJobGroupCache()
     {
@@ -73,7 +70,7 @@ public partial class MainWindow
         {
             ImGui.Separator();
             var roleKey = $"role{(int)group.Role}";
-            if (!Pills.DrawKeyedSubheader(coverJobSectionOpen, GameDataService.RoleLabel(group.Role), roleKey))
+            if (!DrawPersistedSubheader(GameDataService.RoleLabel(group.Role), $"job:{roleKey}"))
                 continue;
 
             ImGui.Indent();
@@ -86,7 +83,7 @@ public partial class MainWindow
         if (cachedCoverUnassignedJob.Count > 0)
         {
             ImGui.Separator();
-            if (Pills.DrawKeyedSubheader(coverJobSectionOpen, $"Unassigned ({cachedCoverUnassignedJob.Count})", "unassignedJobs"))
+            if (DrawPersistedSubheader($"Unassigned ({cachedCoverUnassignedJob.Count})", "job:unassignedJobs"))
             {
                 ImGui.Spacing();
                 var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
@@ -98,7 +95,7 @@ public partial class MainWindow
 
     private void DrawCoverJobNode(JobInfo job, List<DesignLeaf> designs)
     {
-        if (!Pills.DrawKeyedSubheader(coverJobSectionOpen, $"{job.Name} ({designs.Count})", $"job{job.RowId}"))
+        if (!DrawPersistedSubheader($"{job.Name} ({designs.Count})", $"job:job{job.RowId}"))
             return;
 
         ImGui.Spacing();

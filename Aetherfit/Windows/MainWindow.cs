@@ -63,11 +63,8 @@ public partial class MainWindow : Window, IDisposable
     private bool groupByTags;
     private bool groupBySource;
 
-    // Cover Mode's own grouping toggles - independent of Edit Mode's groupBy* above.
-    private bool coverGroupByJob;
-    private bool coverGroupByTags;
-    private bool coverGroupBySource;
-    private bool coverGroupByFolder;
+    // Cover Mode's own grouping - independent of Edit Mode's groupBy* above, and persisted via
+    // Configuration.GalleryGroupBy (see MainWindow.GalleryMode.cs) instead of a session-only field.
     // When on, variants show as their own flat cells instead of stacked behind their parent's.
     private bool coverUnstackVariants;
 
@@ -133,9 +130,6 @@ public partial class MainWindow : Window, IDisposable
             groupByJob = false;
             groupByTags = false;
             groupBySource = false;
-            coverGroupByJob = false;
-            coverGroupByTags = false;
-            coverGroupBySource = false;
             coverUnstackVariants = false;
         }
 

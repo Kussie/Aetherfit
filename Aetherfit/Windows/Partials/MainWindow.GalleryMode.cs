@@ -19,8 +19,6 @@ namespace Aetherfit.Windows;
 
 public partial class MainWindow
 {
-    private enum GallerySortField { Name, LastModified, Created, LastWorn, WornCount }
-
     private const string BulkAddTagPopupId = "BulkAddDesignTagPopup";
 
     private bool coverMode;
@@ -34,8 +32,6 @@ public partial class MainWindow
     private readonly Dictionary<Guid, int> galleryVariantIndex = new();
     // Ellipsized cell labels, cached because truncation re-measures per character.
     private readonly Dictionary<Guid, (string Source, float Width, string Fitted)> cellLabelCache = new();
-    private GallerySortField gallerySortField = GallerySortField.Name;
-    private bool gallerySortAscending = true;
 
     // Cached filtered+sorted design list — rebuilt only when filter/sort state or designs change.
     private List<DesignLeaf> cachedVisible = [];
@@ -61,13 +57,6 @@ public partial class MainWindow
     private int hiddenVersion;
     private int cachedHiddenVersion = -1;
     private int jobAssociationVersion;
-    private bool favouritesSectionOpen = true;
-    private bool otherDesignsSectionOpen = true;
-    private bool personasSectionOpen = true;
-    private bool recentlyAddedSectionOpen = true;
-    private bool currentlyWornSectionOpen = true;
-    private bool recentlyWornSectionOpen = true;
-    private bool mostWornSectionOpen = true;
     private const int RecentlyAddedDays = 7;
 
     private void DrawCoverModePane()
@@ -214,23 +203,51 @@ public partial class MainWindow
         return string.IsNullOrWhiteSpace(name) ? "gallery" : name;
     }
 
+    // Config-backed subheader: open/closed persists via Configuration.CollapsedGallerySections instead
+    // of resetting every session. Grouped views prefix key by grouping type to avoid cross-collisions.
+    private bool DrawPersistedSubheader(string label, string key)
+    {
+        using var id = ImRaii.PushId(key);
+        var cfg = plugin.Configuration;
+        var open = !cfg.CollapsedGallerySections.Contains(key);
+        var result = Pills.DrawCollapsibleSubheader(label, ref open);
+        var collapsed = !open;
+        if (collapsed != cfg.CollapsedGallerySections.Contains(key))
+        {
+            if (collapsed) cfg.CollapsedGallerySections.Add(key);
+            else cfg.CollapsedGallerySections.Remove(key);
+            cfg.Save();
+        }
+        return result;
+    }
+
     private void DrawGallerySortControls()
     {
         var style = ImGui.GetStyle();
         var scale = ImGuiHelpers.GlobalScale;
+        var cfg = plugin.Configuration;
 
         ImGui.AlignTextToFramePadding();
         ImGui.TextDisabled("Sort by:");
         ImGui.SameLine();
 
         ImGui.SetNextItemWidth(190f * scale);
-        var fieldIdx = (int)gallerySortField;
+        var fieldIdx = (int)cfg.GallerySortField;
         var fieldOptions = new[] { "Name (alphabetical)", "Last modified", "Created", "Last worn", "Times worn" };
         if (ImGui.Combo("##gallerySortField", ref fieldIdx, fieldOptions, fieldOptions.Length))
-            gallerySortField = (GallerySortField)fieldIdx;
+        {
+            cfg.GallerySortField = (GallerySortField)fieldIdx;
+            cfg.Save();
+        }
 
         ImGui.SameLine(0, style.ItemInnerSpacing.X);
-        GalleryDraw.DrawSortDirectionToggle(ref gallerySortAscending);
+        var ascending = cfg.GallerySortAscending;
+        GalleryDraw.DrawSortDirectionToggle(ref ascending);
+        if (ascending != cfg.GallerySortAscending)
+        {
+            cfg.GallerySortAscending = ascending;
+            cfg.Save();
+        }
 
         ImGui.SameLine();
         var pinFavs = plugin.Configuration.GalleryPinFavouritesFirst;
@@ -261,8 +278,8 @@ public partial class MainWindow
 
     private bool IsGalleryCacheStale() =>
         cachedGeneration != designListGeneration ||
-        cachedSortField != gallerySortField ||
-        cachedSortAscending != gallerySortAscending ||
+        cachedSortField != plugin.Configuration.GallerySortField ||
+        cachedSortAscending != plugin.Configuration.GallerySortAscending ||
         cachedFilterSnapshot != CaptureFilterSnapshot() ||
         !FiltersEqual(cachedFilterTags, filterTags) ||
         !FiltersEqual(cachedFilterJobs, filterJobs) ||
@@ -291,8 +308,8 @@ public partial class MainWindow
         SortGalleryDesigns(cachedVisible);
 
         cachedGeneration = designListGeneration;
-        cachedSortField = gallerySortField;
-        cachedSortAscending = gallerySortAscending;
+        cachedSortField = plugin.Configuration.GallerySortField;
+        cachedSortAscending = plugin.Configuration.GallerySortAscending;
         cachedFilterSnapshot = CaptureFilterSnapshot();
         cachedFilterTags = new Dictionary<string, bool>(filterTags, StringComparer.OrdinalIgnoreCase);
         cachedFilterJobs = new Dictionary<uint, bool>(filterJobs);
@@ -309,37 +326,17 @@ public partial class MainWindow
         cachedUnstackVariants = coverUnstackVariants;
     }
 
-    // The groupings are mutually exclusive - ticking one unticks the others (all three can be off).
-    // Independent state from Edit Mode's own DrawEditModeGroupByControls.
+    // The groupings are mutually exclusive, backed by one persisted GalleryGroupBy value instead of
+    // four separate bools. Independent state from Edit Mode's own DrawEditModeGroupByControls.
     private void DrawCoverGroupByControls()
     {
-        if (ImGui.Checkbox("Group by job association", ref coverGroupByJob) && coverGroupByJob)
-        {
-            coverGroupByTags = false;
-            coverGroupBySource = false;
-            coverGroupByFolder = false;
-        }
+        DrawGroupByCheckbox("Group by job association", GalleryGroupBy.Job);
         ImGui.SameLine();
-        if (ImGui.Checkbox("Group by tags", ref coverGroupByTags) && coverGroupByTags)
-        {
-            coverGroupByJob = false;
-            coverGroupBySource = false;
-            coverGroupByFolder = false;
-        }
+        DrawGroupByCheckbox("Group by tags", GalleryGroupBy.Tags);
         ImGui.SameLine();
-        if (ImGui.Checkbox("Group by source", ref coverGroupBySource) && coverGroupBySource)
-        {
-            coverGroupByJob = false;
-            coverGroupByTags = false;
-            coverGroupByFolder = false;
-        }
+        DrawGroupByCheckbox("Group by source", GalleryGroupBy.Source);
         ImGui.SameLine();
-        if (ImGui.Checkbox("Group by Folder", ref coverGroupByFolder) && coverGroupByFolder)
-        {
-            coverGroupByJob = false;
-            coverGroupByTags = false;
-            coverGroupBySource = false;
-        }
+        DrawGroupByCheckbox("Group by Folder", GalleryGroupBy.Folder);
         ImGui.SameLine();
         ImGui.Checkbox("Show variants separately", ref coverUnstackVariants);
         if (ImGui.IsItemHovered())
@@ -351,6 +348,17 @@ public partial class MainWindow
         {
             plugin.Configuration.ShowVirtualFoldersInTree = showVirtualFolders;
             plugin.Configuration.Save();
+        }
+    }
+
+    private void DrawGroupByCheckbox(string label, GalleryGroupBy value)
+    {
+        var cfg = plugin.Configuration;
+        var active = cfg.GalleryGroupBy == value;
+        if (ImGui.Checkbox(label, ref active))
+        {
+            cfg.GalleryGroupBy = active ? value : GalleryGroupBy.None;
+            cfg.Save();
         }
     }
 
@@ -382,25 +390,12 @@ public partial class MainWindow
             return;
         }
 
-        if (coverGroupByJob)
+        switch (plugin.Configuration.GalleryGroupBy)
         {
-            DrawCoverGroupedByJob();
-            return;
-        }
-        if (coverGroupByTags)
-        {
-            DrawCoverGroupedByTags();
-            return;
-        }
-        if (coverGroupBySource)
-        {
-            DrawCoverGroupedBySource();
-            return;
-        }
-        if (coverGroupByFolder)
-        {
-            DrawCoverGroupedByFolder();
-            return;
+            case GalleryGroupBy.Job: DrawCoverGroupedByJob(); return;
+            case GalleryGroupBy.Tags: DrawCoverGroupedByTags(); return;
+            case GalleryGroupBy.Source: DrawCoverGroupedBySource(); return;
+            case GalleryGroupBy.Folder: DrawCoverGroupedByFolder(); return;
         }
 
         var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
@@ -416,7 +411,7 @@ public partial class MainWindow
             if (splitIdx > 0)
             {
                 ImGui.Separator();
-                if (Pills.DrawCollapsibleSubheader($"Favourites ({splitIdx})", ref favouritesSectionOpen))
+                if (DrawPersistedSubheader($"Favourites ({splitIdx})", "favourites"))
                 {
                     ImGui.Spacing();
                     DrawCoverGridRange(visible, 0, splitIdx, columns, thumbWidth, thumbHeight);
@@ -429,7 +424,7 @@ public partial class MainWindow
                 if (splitIdx < visible.Count)
                 {
                     ImGui.Separator();
-                    if (Pills.DrawCollapsibleSubheader($"All Designs ({visible.Count - splitIdx})", ref otherDesignsSectionOpen))
+                    if (DrawPersistedSubheader($"All Designs ({visible.Count - splitIdx})", "otherDesigns"))
                     {
                         ImGui.Spacing();
                         DrawCoverGridRange(visible, splitIdx, visible.Count, columns, thumbWidth, thumbHeight);
@@ -457,7 +452,7 @@ public partial class MainWindow
             return;
 
         ImGui.Separator();
-        if (!Pills.DrawCollapsibleSubheader($"Recently Added ({recent.Count})", ref recentlyAddedSectionOpen))
+        if (!DrawPersistedSubheader($"Recently Added ({recent.Count})", "recentlyAdded"))
             return;
 
         ImGui.Spacing();
@@ -473,7 +468,7 @@ public partial class MainWindow
             return;
 
         ImGui.Separator();
-        if (!Pills.DrawCollapsibleSubheader("Currently Worn", ref currentlyWornSectionOpen))
+        if (!DrawPersistedSubheader("Currently Worn", "currentlyWorn"))
             return;
 
         ImGui.Spacing();
@@ -488,7 +483,7 @@ public partial class MainWindow
             return;
 
         ImGui.Separator();
-        if (!Pills.DrawCollapsibleSubheader($"Recently Worn ({recent.Count})", ref recentlyWornSectionOpen))
+        if (!DrawPersistedSubheader($"Recently Worn ({recent.Count})", "recentlyWorn"))
             return;
 
         ImGui.Spacing();
@@ -503,7 +498,7 @@ public partial class MainWindow
             return;
 
         ImGui.Separator();
-        if (!Pills.DrawCollapsibleSubheader($"Most Worn ({mostWorn.Count})", ref mostWornSectionOpen))
+        if (!DrawPersistedSubheader($"Most Worn ({mostWorn.Count})", "mostWorn"))
             return;
 
         ImGui.Spacing();
@@ -523,7 +518,7 @@ public partial class MainWindow
             return;
 
         ImGui.Separator();
-        if (!Pills.DrawCollapsibleSubheader($"Personas ({settings.Personas.Count})", ref personasSectionOpen))
+        if (!DrawPersistedSubheader($"Personas ({settings.Personas.Count})", "personas"))
             return;
 
         ImGui.Spacing();
@@ -648,8 +643,8 @@ public partial class MainWindow
             if (fa != fb) return fa ? -1 : 1;
         }
 
-        var asc = gallerySortAscending;
-        switch (gallerySortField)
+        var asc = plugin.Configuration.GallerySortAscending;
+        switch (plugin.Configuration.GallerySortField)
         {
             case GallerySortField.LastModified:
                 return CompareDates(GetLastEdit(a.Id), GetLastEdit(b.Id), asc);

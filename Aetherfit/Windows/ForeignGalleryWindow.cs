@@ -352,7 +352,8 @@ public sealed partial class ForeignGalleryWindow : Window, IDisposable
     }
 
     // Shared open/closed state for both the tag and job grouping headers - separate dictionaries so a
-    // tag path and a job/role key can never collide (mirrors MainWindow's coverTagSectionOpen/coverJobSectionOpen).
+    // tag path and a job/role key can never collide. Session-only, unlike MainWindow's own Gallery Mode
+    // grouping headers (Configuration.CollapsedGallerySections) - this is a one-off viewer window.
     private readonly Dictionary<string, bool> tagSectionOpen = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, bool> jobSectionOpen = new(StringComparer.OrdinalIgnoreCase);
 

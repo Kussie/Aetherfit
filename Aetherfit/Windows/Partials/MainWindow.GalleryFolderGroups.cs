@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using Aetherfit.Ui;
 using Dalamud.Bindings.ImGui;
 
 namespace Aetherfit.Windows;
@@ -11,10 +8,6 @@ public partial class MainWindow
 {
     private FolderNode cachedCoverFolderRoot = new();
     private int cachedCoverFolderTreeVersion = -1;
-
-    // Per-folder-path open state, keyed by full path so same-named folders under different parents
-    // don't share open/closed state (mirrors coverTagSectionOpen).
-    private readonly Dictionary<string, bool> coverFolderSectionOpen = new(StringComparer.OrdinalIgnoreCase);
 
     private void DrawCoverGroupedByFolder()
     {
@@ -34,7 +27,7 @@ public partial class MainWindow
         if (cachedCoverFolderRoot.Designs.Count > 0)
         {
             ImGui.Separator();
-            if (Pills.DrawKeyedSubheader(coverFolderSectionOpen, $"Uncategorized ({cachedCoverFolderRoot.Designs.Count})", "##rootFolder"))
+            if (DrawPersistedSubheader($"Uncategorized ({cachedCoverFolderRoot.Designs.Count})", "folder:##rootFolder"))
             {
                 ImGui.Spacing();
                 var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
@@ -48,7 +41,7 @@ public partial class MainWindow
     {
         ImGui.Separator();
         var label = $"{name} ({CountFolderDesigns(node)})";
-        if (!Pills.DrawKeyedSubheader(coverFolderSectionOpen, label, path))
+        if (!DrawPersistedSubheader(label, $"folder:{path}"))
             return;
 
         ImGui.Indent();

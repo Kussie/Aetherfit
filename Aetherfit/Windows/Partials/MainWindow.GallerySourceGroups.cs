@@ -1,8 +1,6 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Aetherfit.Services.Integrations;
-using Aetherfit.Ui;
 using Aetherfit.Utils;
 using Dalamud.Bindings.ImGui;
 
@@ -20,7 +18,6 @@ public partial class MainWindow
 
     private List<CoverSourceGroup> cachedCoverSourceGroups = new();
     private int cachedCoverSourceGroupVersion = -1;
-    private readonly Dictionary<string, bool> coverSourceSectionOpen = new(StringComparer.OrdinalIgnoreCase);
 
     private void RebuildCoverSourceGroupCache()
     {
@@ -73,7 +70,7 @@ public partial class MainWindow
         {
             var total = group.Designs.Count + group.SubGroups.Sum(s => s.Designs.Count);
             ImGui.Separator();
-            if (!Pills.DrawKeyedSubheader(coverSourceSectionOpen, $"{group.Label} ({total})", group.Label))
+            if (!DrawPersistedSubheader($"{group.Label} ({total})", $"source:{group.Label}"))
                 continue;
 
             ImGui.Spacing();
@@ -87,7 +84,7 @@ public partial class MainWindow
 
             foreach (var sub in group.SubGroups)
             {
-                if (!Pills.DrawKeyedSubheader(coverSourceSectionOpen, $"{sub.Label} ({sub.Designs.Count})", $"{group.Label}/{sub.Label}"))
+                if (!DrawPersistedSubheader($"{sub.Label} ({sub.Designs.Count})", $"source:{group.Label}/{sub.Label}"))
                     continue;
 
                 ImGui.Spacing();

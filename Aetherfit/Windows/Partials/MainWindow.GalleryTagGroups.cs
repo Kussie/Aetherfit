@@ -19,10 +19,6 @@ public partial class MainWindow
     private List<DesignLeaf> cachedCoverUntagged = new();
     private int cachedCoverTagTreeVersion = -1;
 
-    // Per-tag-path open state (DrawCollapsibleSubheader needs a persisted bool, unlike TreeNodeEx's
-    // built-in per-ID storage used by the Edit Mode tree). Missing entries default to open.
-    private readonly Dictionary<string, bool> coverTagSectionOpen = new(StringComparer.OrdinalIgnoreCase);
-
     private void RebuildCoverTagTreeCache()
     {
         var tagRoot = new TagNode();
@@ -91,7 +87,7 @@ public partial class MainWindow
         if (cachedCoverUntagged.Count > 0)
         {
             ImGui.Separator();
-            if (Pills.DrawKeyedSubheader(coverTagSectionOpen, $"Untagged ({cachedCoverUntagged.Count})", "##untagged"))
+            if (DrawPersistedSubheader($"Untagged ({cachedCoverUntagged.Count})", "tag:##untagged"))
             {
                 ImGui.Spacing();
                 var (columns, thumbWidth, thumbHeight) = ComputeGridLayout();
@@ -107,7 +103,7 @@ public partial class MainWindow
         var label = $"{name} ({CountNodeDesigns(node)})";
         // Keyed by the full path, not just name - same-named tags nested under different parents
         // (e.g. "casual" under both "summer" and "winter") would otherwise share open/closed state.
-        if (!Pills.DrawKeyedSubheader(coverTagSectionOpen, label, path))
+        if (!DrawPersistedSubheader(label, $"tag:{path}"))
             return;
 
         ImGui.Indent();

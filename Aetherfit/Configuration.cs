@@ -24,6 +24,24 @@ public enum GalleryFitMode
     Stretch,
 }
 
+public enum GalleryGroupBy
+{
+    None,
+    Job,
+    Tags,
+    Source,
+    Folder,
+}
+
+public enum GallerySortField
+{
+    Name,
+    LastModified,
+    Created,
+    LastWorn,
+    WornCount,
+}
+
 // Only meaningful for GalleryFitMode.Letterbox - what colour fills the bars around a fitted thumbnail.
 public enum GalleryLetterboxColorMode
 {
@@ -196,6 +214,15 @@ public class Configuration : IPluginConfiguration
     public Vector4 GalleryLetterboxCustomColor { get; set; } = new(0.22f, 0.22f, 0.25f, 1f);
 
     public bool GalleryPinFavouritesFirst { get; set; } = true;
+    public GalleryGroupBy GalleryGroupBy { get; set; } = GalleryGroupBy.None;
+    public GallerySortField GallerySortField { get; set; } = GallerySortField.Name;
+    public bool GallerySortAscending { get; set; } = true;
+
+    // Collapsed Gallery Mode sections, persisted across sessions. Fixed keys for the built-in sections
+    // (favourites/otherDesigns/personas/recentlyAdded/currentlyWorn/recentlyWorn/mostWorn), "prefix:key"
+    // for grouped views (folder/job/tag/source). Missing means expanded.
+    public HashSet<string> CollapsedGallerySections { get; set; } = new();
+
     public float GalleryThumbTargetWidth { get; set; } = 220f;
     public float ForeignGalleryThumbTargetWidth { get; set; } = 220f;
 
