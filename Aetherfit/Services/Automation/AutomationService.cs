@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Aetherfit.Services.Game;
+using Aetherfit.Services.Integrations;
 using Aetherfit.Utils;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
+using Glamourer.Api.Enums;
+using Newtonsoft.Json.Linq;
 
 namespace Aetherfit.Services.Automation;
 
@@ -22,13 +25,26 @@ public sealed class AutomationService : IDisposable
     // Bumped whenever a new quiet-wait starts so a stale RunOnTick chain from a since-superseded rule falls out silently.
     private int generation;
 
+    private Guid? lastDisabledRuleId;
+    // Independent of `generation` - a Disable rule's wait-for-quiet chain must never be cancelled by an
+    // unrelated AutoApply rule's chain starting, since both can legitimately be in flight at once.
+    private int disableGeneration;
+
     private DateTime? snoozeUntilUtc;
     private ulong snoozedContentId;
     private bool snoozeUntilZoneChange;
     private uint? snoozeFromJobId;
 
+    // Loop guard for Equipment conditions - a design applied BY automation changes gear, which could
+    // otherwise satisfy a different Equipment rule and chain forever. See DetectEquipmentChange.
+    private Dictionary<EquipmentSlot, ulong>? lastSeenEquipment;
+    private DateTime equipmentSuppressedUntilUtc = DateTime.MinValue;
+    private static readonly IReadOnlyDictionary<EquipmentSlot, ulong> EmptyEquipment = new Dictionary<EquipmentSlot, ulong>();
+
     public Guid? CurrentRuleId { get; private set; }
     public string? CurrentRuleName { get; private set; }
+    public Guid? CurrentDisableRuleId { get; private set; }
+    public string? CurrentDisableRuleName { get; private set; }
 
     public readonly record struct Suggestion(Guid RuleId, string RuleName, Guid DesignId);
 
@@ -161,6 +177,8 @@ public sealed class AutomationService : IDisposable
         {
             CurrentRuleId = null;
             CurrentRuleName = null;
+            CurrentDisableRuleId = null;
+            CurrentDisableRuleName = null;
             PendingSuggestion = null;
             return;
         }
@@ -170,21 +188,36 @@ public sealed class AutomationService : IDisposable
         {
             CurrentRuleId = null;
             CurrentRuleName = null;
+            CurrentDisableRuleId = null;
+            CurrentDisableRuleName = null;
             PendingSuggestion = null;
             lastAppliedRuleId = null;
+            lastDisabledRuleId = null;
             return;
         }
 
-        var ctx = BuildMatchContext();
+        var needsEquipment = settings.AutomationRules.Any(RuleUsesEquipment);
+        var ctx = BuildMatchContext(needsEquipment);
+        var equipmentChanged = needsEquipment && DetectEquipmentChange(ctx.CurrentEquipment);
 
         var (rule, pick) = EvaluateRules(settings, ctx, AutomationRuleMode.AutoApply);
         CurrentRuleId = rule?.Id;
         CurrentRuleName = rule?.Name;
 
-        if (rule != null && pick != null && rule.Id != lastAppliedRuleId && CanApplyNow(settings))
+        if (rule != null && pick != null && ShouldFireRule(rule, lastAppliedRuleId, equipmentChanged) && CanApplyNow(settings))
         {
             lastAppliedRuleId = rule.Id;
             BeginApply(pick.Value);
+        }
+
+        var (disableRule, disableIds) = EvaluateDisableRules(settings, ctx);
+        CurrentDisableRuleId = disableRule?.Id;
+        CurrentDisableRuleName = disableRule?.Name;
+
+        if (disableRule != null && disableIds != null && ShouldFireRule(disableRule, lastDisabledRuleId, equipmentChanged) && CanApplyNow(settings))
+        {
+            lastDisabledRuleId = disableRule.Id;
+            BeginDisable(disableIds);
         }
 
         EvaluateSuggestion(settings, ctx);
@@ -251,15 +284,65 @@ public sealed class AutomationService : IDisposable
                 return;
 
             plugin.DesignApply.ApplyDesignById(designId);
+            // Absorb whatever gear this apply itself changes as the new baseline - see DetectEquipmentChange.
+            equipmentSuppressedUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(3);
             Plugin.ToastGui.ShowNormal($"Automations: now wearing \"{plugin.Configuration.ResolveDesignName(designId)}\"");
+        }, TimeSpan.FromSeconds(1));
+    }
+
+    private void BeginDisable(List<Guid> designIds)
+    {
+        var gen = ++disableGeneration;
+        WaitForQuietDisable(gen, DateTime.UtcNow + TimeSpan.FromSeconds(10), designIds);
+    }
+
+    private void WaitForQuietDisable(int gen, DateTime deadlineUtc, List<Guid> designIds)
+    {
+        Plugin.Framework.RunOnTick(() =>
+        {
+            if (gen != disableGeneration || !Plugin.ClientState.IsLoggedIn)
+                return;
+
+            var quiet = DateTime.UtcNow - lastGlamourerActivityUtc >= TimeSpan.FromSeconds(2);
+            if (!quiet && DateTime.UtcNow < deadlineUtc)
+            {
+                WaitForQuietDisable(gen, deadlineUtc, designIds);
+                return;
+            }
+
+            if (!Plugin.PlayerState.IsLoaded
+                || !plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+                || !settings.AutomationsEnabled || !CanApplyNow(settings))
+                return;
+
+            // Caught per-design, not around the whole loop - one design's failure shouldn't also skip
+            // the rest of the list or the toast below.
+            foreach (var id in designIds)
+            {
+                try
+                {
+                    plugin.DesignApply.DisableDesign(id, quiet: true);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.Error(ex, "Automations: failed to disable \"{Name}\"", plugin.Configuration.ResolveDesignName(id));
+                }
+            }
+
+            // Absorb whatever gear this itself clears as the new baseline - see DetectEquipmentChange.
+            equipmentSuppressedUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+            Plugin.ToastGui.ShowNormal($"Automations: disabled \"{string.Join(", ", designIds.Select(plugin.Configuration.ResolveDesignName))}\"");
         }, TimeSpan.FromSeconds(1));
     }
 
     private readonly record struct MatchContext(uint JobId, uint TerritoryId, bool Mounted, ushort MountId,
         byte WeatherId, int EorzeaHour, int ServerHour, int LocalHour, bool Swimming, bool Diving,
-        GameDataService.HousingState Housing, GroupType GroupType, uint OnlineStatusId, Guid ActivePersonaId);
+        GameDataService.HousingState Housing, GroupType GroupType, uint OnlineStatusId, Guid ActivePersonaId,
+        IReadOnlyDictionary<EquipmentSlot, ulong> CurrentEquipment);
 
-    private MatchContext BuildMatchContext()
+    // needsEquipment defaults to true for PreviewRule's one-off manual call - OnFrameworkTick passes its
+    // own computed value so the extra Glamourer read only happens for characters that actually use it.
+    private MatchContext BuildMatchContext(bool needsEquipment = true)
     {
         var mounted = Plugin.Condition[ConditionFlag.Mounted];
         return new MatchContext(
@@ -276,7 +359,46 @@ public sealed class AutomationService : IDisposable
             Housing: plugin.GameData.GetCurrentHousingState(),
             GroupType: ResolveGroupType(),
             OnlineStatusId: Plugin.ObjectTable.LocalPlayer?.OnlineStatus.RowId ?? 0,
-            ActivePersonaId: plugin.Configuration.GetActivePersonaForCurrentCharacter()?.Id ?? Guid.Empty);
+            ActivePersonaId: plugin.Configuration.GetActivePersonaForCurrentCharacter()?.Id ?? Guid.Empty,
+            CurrentEquipment: needsEquipment ? GetCurrentEquipment() : EmptyEquipment);
+    }
+
+    private IReadOnlyDictionary<EquipmentSlot, ulong> GetCurrentEquipment()
+    {
+        var (result, state) = plugin.Glamourer.GetState();
+        if (result != GlamourerApiEc.Success || state == null)
+            return EmptyEquipment;
+        return GlamourerService.ParseEquipment(state["Equipment"] as JObject).ToDictionary(s => s.Slot, s => s.ItemId);
+    }
+
+    private static bool RuleUsesEquipment(AutomationRule rule)
+        => rule.Conditions.Any(c => c.Type == AutomationConditionType.Equipment);
+
+    // For an Equipment-conditioned rule, "already fired, don't refire" has to mean "already fired for
+    // this exact gear transition" (equipmentChanged - a single-poll pulse, see DetectEquipmentChange),
+    // not "the winning rule id is unchanged since last time" - otherwise the same rule could only ever
+    // fire once, since putting the same shirt on a second time still resolves to the same one rule.
+    private static bool ShouldFireRule(AutomationRule rule, Guid? lastFiredRuleId, bool equipmentChanged)
+        => RuleUsesEquipment(rule) ? equipmentChanged : rule.Id != lastFiredRuleId;
+
+    // See lastSeenEquipment/equipmentSuppressedUntilUtc - only called from the real poll (never from
+    // PreviewRule), since a preview click must never mutate this loop-guard bookkeeping.
+    private bool DetectEquipmentChange(IReadOnlyDictionary<EquipmentSlot, ulong> current)
+    {
+        var suppressed = DateTime.UtcNow < equipmentSuppressedUntilUtc;
+        var changed = !suppressed && lastSeenEquipment != null && !EquipmentEquals(lastSeenEquipment, current);
+        lastSeenEquipment = new Dictionary<EquipmentSlot, ulong>(current);
+        return changed;
+    }
+
+    private static bool EquipmentEquals(Dictionary<EquipmentSlot, ulong> a, IReadOnlyDictionary<EquipmentSlot, ulong> b)
+    {
+        if (a.Count != b.Count)
+            return false;
+        foreach (var (slot, itemId) in a)
+            if (!b.TryGetValue(slot, out var otherId) || otherId != itemId)
+                return false;
+        return true;
     }
 
     // Party/Raid boundary matches what "raid comp" colloquially means (a full 8-man party) rather than
@@ -330,6 +452,10 @@ public sealed class AutomationService : IDisposable
         AutomationConditionType.Group => c.GroupTypes.Contains(ctx.GroupType),
         AutomationConditionType.OnlineStatus => c.OnlineStatuses.Any(s => (uint)s == ctx.OnlineStatusId),
         AutomationConditionType.ActivePersona => c.PersonaIds.Contains(ctx.ActivePersonaId),
+        AutomationConditionType.Equipment => c.EquipmentMode == EquipmentConditionMode.Empty
+            ? !ctx.CurrentEquipment.TryGetValue(c.EquipmentSlot, out var emptyCheck) || GameDataService.IsEmptySlotItem(emptyCheck)
+            : ctx.CurrentEquipment.TryGetValue(c.EquipmentSlot, out var heldItem) && !GameDataService.IsEmptySlotItem(heldItem)
+                && (c.EquipmentItemIds.Count == 0 || c.EquipmentItemIds.Contains(heldItem)),
         _ => false,
     };
 
@@ -351,7 +477,7 @@ public sealed class AutomationService : IDisposable
     private Guid? PickDesign(AutomationRule rule, uint jobId)
     {
         var candidates = rule.DesignIds.Concat(rule.TagPools.SelectMany(ResolveTagPool)).Distinct();
-        var usable = candidates.Where(plugin.DesignApply.IsUsable).ToList();
+        var usable = candidates.Where(plugin.DesignApply.IsUsableForAutomation).ToList();
         if (usable.Count == 0)
             return null;
 
@@ -361,6 +487,33 @@ public sealed class AutomationService : IDisposable
         var pool = jobSpecific.Count > 0 ? jobSpecific : jobAgnostic;
         return pool.Count == 0 ? null : plugin.DesignApply.PickRandomDesign(pool);
     }
+
+    // Parallel to EvaluateRules, but Disable acts on every resolved design at once (see
+    // ResolveDisableTargets) rather than picking one, so it has its own evaluation loop.
+    private (AutomationRule? Rule, List<Guid>? DesignIds) EvaluateDisableRules(CharacterLoginSettings settings, MatchContext ctx)
+    {
+        foreach (var rule in settings.AutomationRules)
+        {
+            if (!rule.Enabled || rule.Mode != AutomationRuleMode.Disable || rule.Conditions.Count == 0)
+                continue;
+            if (!rule.Conditions.All(c => Matches(c, ctx)))
+                continue;
+
+            var targets = ResolveDisableTargets(rule);
+            if (targets.Count > 0)
+                return (rule, targets);
+        }
+
+        return (null, null);
+    }
+
+    // Unlike PickDesign, acts on every resolved design at once (not a random pick) with no job filtering -
+    // undoing an accessory shouldn't depend on what job you're currently on.
+    private List<Guid> ResolveDisableTargets(AutomationRule rule)
+        => rule.DesignIds.Concat(rule.TagPools.SelectMany(ResolveTagPool))
+            .Distinct()
+            .Where(plugin.DesignApply.IsUsableForAutomation)
+            .ToList();
 
     // Resolved fresh every poll rather than stored as fixed ids, so the pool follows tag edits automatically.
     private IEnumerable<Guid> ResolveTagPool(List<string> tags)
@@ -389,10 +542,13 @@ public sealed class AutomationService : IDisposable
         if (deletedDesigns > 0)
             issues.Add($"{deletedDesigns} assigned design(s) no longer exist.");
 
-        var hasUsableDesign = rule.DesignIds.Any(plugin.DesignApply.IsUsable);
-        var hasUsableTagPool = rule.TagPools.Any(p => ResolveTagPool(p).Any(plugin.DesignApply.IsUsable));
+        var hasUsableDesign = rule.DesignIds.Any(plugin.DesignApply.IsUsableForAutomation);
+        var hasUsableTagPool = rule.TagPools.Any(p => ResolveTagPool(p).Any(plugin.DesignApply.IsUsableForAutomation));
         if (!hasUsableDesign && !hasUsableTagPool)
-            issues.Add("No usable designs assigned - nothing to apply even if this rule matches.");
+        {
+            var action = rule.Mode == AutomationRuleMode.Disable ? "disable" : "apply";
+            issues.Add($"No usable designs assigned - nothing to {action} even if this rule matches.");
+        }
 
         foreach (var pool in rule.TagPools.Where(p => !ResolveTagPool(p).Any()))
             issues.Add($"Tag pool \"{string.Join(" + ", pool)}\" currently matches no designs.");
@@ -424,7 +580,10 @@ public sealed class AutomationService : IDisposable
     {
         var ctx = BuildMatchContext();
         var results = rule.Conditions.Select(c => (c, Matches(c, ctx))).ToList();
-        var wouldApply = results.Count > 0 && results.All(r => r.Item2) && PickDesign(rule, ctx.JobId) != null;
+        var hasTarget = rule.Mode == AutomationRuleMode.Disable
+            ? ResolveDisableTargets(rule).Count > 0
+            : PickDesign(rule, ctx.JobId) != null;
+        var wouldApply = results.Count > 0 && results.All(r => r.Item2) && hasTarget;
         return new RulePreview(wouldApply, results);
     }
 

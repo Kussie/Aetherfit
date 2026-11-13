@@ -693,6 +693,13 @@ public partial class MainWindow : Window, IDisposable
             ImGui.SameLine();
             ImGui.TextColored(UiTheme.GoldAccent, $"currently applying \"{activeName}\"");
         }
+
+        if (settings.AutomationsEnabled && plugin.Automation.CurrentDisableRuleName is { } activeDisableName)
+        {
+            ImGui.TextDisabled("Automations:");
+            ImGui.SameLine();
+            ImGui.TextColored(UiTheme.GoldAccent, $"currently disabling \"{activeDisableName}\"");
+        }
     }
 
     private bool HasAutomationsIssues()

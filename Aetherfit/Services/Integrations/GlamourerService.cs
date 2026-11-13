@@ -361,31 +361,37 @@ public sealed class GlamourerService : IDisposable
     // Un-wear counterpart to ApplySingleEquipmentSlot/ApplySingleBonusItem - uses SetItem/SetBonusItem
     // (itemId 0 = empty) rather than guessing at Glamourer's own empty-slot sentinels ourselves.
     // Flags 0 (not Once, not Locked) so it sticks the same way a normal apply does.
-    public bool RemoveSingleEquipmentSlot(EquipmentSlot slot, string label)
+    public bool RemoveSingleEquipmentSlot(EquipmentSlot slot, string label, bool quiet = false)
     {
         var apiSlot = Enum.Parse<ApiEquipSlot>(slot.ToString());
-        var result = InvokeOwnChange(() => setItem.Invoke(0, apiSlot, 0, Array.Empty<byte>(), 0, 0));
-        return ReportSingleSlotRemoval(result, label);
+        // A zero-length stains list crashes Glamourer's own StainIds handling - always pass both
+        // channels explicitly (0 = no dye) rather than relying on it defaulting a short/empty list.
+        var result = InvokeOwnChange(() => setItem.Invoke(0, apiSlot, 0, new byte[] { 0, 0 }, 0, 0));
+        return ReportSingleSlotRemoval(result, label, quiet);
     }
 
-    public bool RemoveSingleBonusItem(string bonusSlotKey, string label)
+    public bool RemoveSingleBonusItem(string bonusSlotKey, string label, bool quiet = false)
     {
         var apiSlot = Enum.Parse<ApiBonusSlot>(bonusSlotKey);
         var result = InvokeOwnChange(() => setBonusItem.Invoke(0, apiSlot, 0, 0, 0));
-        return ReportSingleSlotRemoval(result, label);
+        return ReportSingleSlotRemoval(result, label, quiet);
     }
 
-    private static bool ReportSingleSlotRemoval(GlamourerApiEc result, string label)
+    private static bool ReportSingleSlotRemoval(GlamourerApiEc result, string label, bool quiet = false)
     {
         if (result != GlamourerApiEc.Success)
         {
-            Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to remove \"{label}\": {result}");
+            if (!quiet)
+                Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}Failed to remove \"{label}\": {result}");
             Plugin.Log.Warning("Failed to remove single-slot {Label}: {Result}", label, result);
             return false;
         }
 
-        SoundService.PlayApply();
-        Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Removed \"{label}\"");
+        if (!quiet)
+        {
+            SoundService.PlayApply();
+            Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Removed \"{label}\"");
+        }
         Plugin.Log.Info("Removed single-slot {Label}", label);
         return true;
     }

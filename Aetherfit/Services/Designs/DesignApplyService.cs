@@ -135,6 +135,53 @@ public sealed class DesignApplyService
         plugin.Glamourer.RemoveSingleBonusItem(bonusSlotKey, slotLabel);
     }
 
+    // Own lock key for automation Disable, distinct from SingleSlotModKey below and every other range -
+    // additive across multiple designs/mods at once, never blanket-cleared mid-use.
+    private const int DisableModKey = -0x41454401;
+
+    // The "undo" counterpart to ApplyDesignById - clears this design's own equipment/mods, one-way (see
+    // AutomationRuleMode.Disable). No-ops if it's currently bundled as a layer of whatever's worn -
+    // LastWornLayers/LastWornBeforeLayers reflects what a random layer-slot pool actually picked, not
+    // just what's structurally possible.
+    public void DisableDesign(Guid id, bool quiet = false)
+    {
+        if (!plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit))
+            return;
+
+        if (Plugin.PlayerState.IsLoaded
+            && plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
+            && (settings.LastWornLayers.Contains(id) || settings.LastWornBeforeLayers.Contains(id)))
+        {
+            Plugin.Log.Info($"Automations: skipped disabling \"{plugin.Configuration.ResolveDesignName(id)}\" - bundled as a layer of what's currently worn.");
+            return;
+        }
+
+        var attribution = plugin.Attribution.Build(outfit);
+        var modsToDisable = new Dictionary<string, CachedMod>(StringComparer.Ordinal);
+        foreach (var e in outfit.Equipment.Where(e => e.Apply))
+            if (attribution.Items.TryGetValue(plugin.GameData.ResolveItemName(e.ItemId), out var mod))
+                modsToDisable[mod.Directory] = mod;
+        foreach (var b in outfit.BonusItems.Where(b => b.Apply))
+            if (attribution.Items.TryGetValue(plugin.GameData.ResolveBonusItemName(b.Slot, b.ItemId), out var mod))
+                modsToDisable[mod.Directory] = mod;
+
+        foreach (var mod in modsToDisable.Values)
+        {
+            var modSettings = mod.Settings.ToDictionary(kv => kv.Key,
+                kv => (IReadOnlyList<string>)kv.Value.Split(", ", StringSplitOptions.RemoveEmptyEntries));
+            var result = plugin.Penumbra.SetTemporaryModSettingsPlayer(mod.Directory, false, mod.Priority,
+                modSettings, "Aetherfit (automation disable)", DisableModKey);
+            if (result != PenumbraApiEc.Success)
+                Plugin.Log.Warning("Failed to force-disable {Mod} for automation disable: {Result}", mod.Directory, result);
+        }
+
+        var name = plugin.Configuration.ResolveDesignName(id);
+        foreach (var e in outfit.Equipment.Where(e => e.Apply))
+            plugin.Glamourer.RemoveSingleEquipmentSlot(e.Slot, $"{e.Slot} ({name})", quiet);
+        foreach (var b in outfit.BonusItems.Where(b => b.Apply))
+            plugin.Glamourer.RemoveSingleBonusItem(b.Slot, $"{b.Slot} ({name})", quiet);
+    }
+
     public void ApplySingleCustomization(Guid designId, string customizeKey, string slotLabel)
     {
         var name = plugin.Configuration.ResolveDesignName(designId);
@@ -219,6 +266,7 @@ public sealed class DesignApplyService
 
         // A leftover single-slot mod association should never bleed into an unrelated full apply.
         plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(SingleSlotModKey);
+        plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(DisableModKey);
 
         if (plugin.Configuration.ResetTemporarySettingsBeforeApply(outfit.Source))
         {
@@ -428,6 +476,12 @@ public sealed class DesignApplyService
            && plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
            && plugin.Configuration.IsProviderEnabled(outfit.Source);
 
+    // Automations assign specific designs deliberately - Hidden only matters for casual browsing/random
+    // pick surfaces (ApplyRandomDesign, ApplyRandomByTags, etc.), not something you explicitly wired up.
+    public bool IsUsableForAutomation(Guid id)
+        => plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit)
+           && plugin.Configuration.IsProviderEnabled(outfit.Source);
+
     public ApplyResult ApplyRandomDesign()
     {
         var ids = plugin.Configuration.CachedOutfits.Keys
@@ -591,6 +645,7 @@ public sealed class DesignApplyService
     public void RevertAppearance()
     {
         plugin.Glamourer.Revert();
+        plugin.Penumbra.RemoveAllTemporaryModSettingsPlayer(DisableModKey);
         if (plugin.Configuration.IsProviderEnabled(DesignSource.SimpleGlamourSwitcher))
         {
             plugin.SimpleGlamourSwitcher.ClearAllTemporaryModSettings();

@@ -70,6 +70,13 @@ public enum AutomationConditionType
     ServerTime,
     LocalTime,
     ActivePersona,
+    Equipment,
+}
+
+public enum EquipmentConditionMode
+{
+    Occupied,
+    Empty,
 }
 
 public enum SwimState
@@ -160,6 +167,11 @@ public class AutomationCondition
 
     // Guid.Empty means Default (no persona active) - same sentinel used elsewhere for it.
     public List<Guid> PersonaIds { get; set; } = new();
+
+    public EquipmentSlot EquipmentSlot { get; set; }
+    public EquipmentConditionMode EquipmentMode { get; set; }
+    // Occupied only - empty means "any item equipped", same "empty = any" convention as MountIds.
+    public List<ulong> EquipmentItemIds { get; set; } = new();
 }
 
 // AutoApply keeps today's silent behavior; Suggest surfaces a dismissible popup instead of applying
@@ -168,6 +180,9 @@ public enum AutomationRuleMode
 {
     AutoApply,
     Suggest,
+    // Appended, not inserted - this enum serializes by ordinal. One-way: nothing tracks that it fired
+    // in order to auto re-enable later - pair it with a second AutoApply rule for the reverse condition.
+    Disable,
 }
 
 [Serializable]

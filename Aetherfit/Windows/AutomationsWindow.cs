@@ -170,6 +170,9 @@ public sealed class AutomationsWindow : Window, IDisposable
         else
             ImGui.TextColored(UiTheme.GoldAccent, "On — no rule currently matches");
 
+        if (settings.AutomationsEnabled && plugin.Automation.CurrentDisableRuleName is { } activeDisableName)
+            ImGui.TextColored(UiTheme.StateOn, $"Also currently disabling \"{activeDisableName}\"");
+
         ImGui.Spacing();
         using (ImRaii.Disabled(settings.AutomationRules.Count == 0))
         {
@@ -333,16 +336,25 @@ public sealed class AutomationsWindow : Window, IDisposable
                 ImGui.SetTooltip("Enabled");
             ImGui.SameLine();
 
-            var isSuggest = rule.Mode == AutomationRuleMode.Suggest;
-            if (ImGuiComponents.IconButton(isSuggest ? FontAwesomeIcon.CommentDots : FontAwesomeIcon.Bolt))
-            {
-                rule.Mode = isSuggest ? AutomationRuleMode.AutoApply : AutomationRuleMode.Suggest;
-                plugin.Configuration.Save();
-            }
+            if (ImGuiComponents.IconButton(ModeIcon(rule.Mode)))
+                ImGui.OpenPopup("##ruleModePopup");
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(isSuggest
-                    ? "Suggest - shows a dismissible popup instead of applying automatically. Click to switch to Auto Apply."
-                    : "Auto Apply - applies silently when conditions match. Click to switch to Suggest.");
+                ImGui.SetTooltip($"{ModeLabel(rule.Mode)} - click to change.");
+            using (var modePopup = ImRaii.Popup("##ruleModePopup"))
+            {
+                if (modePopup.Success)
+                {
+                    foreach (var mode in Enum.GetValues<AutomationRuleMode>())
+                    {
+                        if (ImGui.Selectable(ModeLabel(mode), rule.Mode == mode))
+                        {
+                            rule.Mode = mode;
+                            plugin.Configuration.Save();
+                            ImGui.CloseCurrentPopup();
+                        }
+                    }
+                }
+            }
             ImGui.SameLine();
 
             var issues = plugin.Automation.GetRuleIssues(rule);
@@ -452,6 +464,22 @@ public sealed class AutomationsWindow : Window, IDisposable
         _ => type.ToString(),
     };
 
+    private static string ModeLabel(AutomationRuleMode mode) => mode switch
+    {
+        AutomationRuleMode.AutoApply => "Auto Apply",
+        AutomationRuleMode.Suggest => "Suggest",
+        AutomationRuleMode.Disable => "Disable",
+        _ => mode.ToString(),
+    };
+
+    private static FontAwesomeIcon ModeIcon(AutomationRuleMode mode) => mode switch
+    {
+        AutomationRuleMode.AutoApply => FontAwesomeIcon.Bolt,
+        AutomationRuleMode.Suggest => FontAwesomeIcon.CommentDots,
+        AutomationRuleMode.Disable => FontAwesomeIcon.Ban,
+        _ => FontAwesomeIcon.Bolt,
+    };
+
     private string? DesignThumbnailPath(Guid id)
         => plugin.Configuration.ShowThumbnailOnHover ? plugin.ImageStorage.GetCoverPath(id) : null;
 
@@ -475,7 +503,12 @@ public sealed class AutomationsWindow : Window, IDisposable
         ImGui.Spacing();
         ImGui.TextColored(UiTheme.SectionHeader, "Preview:");
         ImGui.SameLine();
-        var verb = rule.Mode == AutomationRuleMode.Suggest ? "suggest" : "apply";
+        var verb = rule.Mode switch
+        {
+            AutomationRuleMode.Suggest => "suggest",
+            AutomationRuleMode.Disable => "disable",
+            _ => "apply",
+        };
         if (preview.WouldApply)
             ImGui.TextColored(UiTheme.StateOn, $"Would {verb} right now");
         else
@@ -568,7 +601,9 @@ public sealed class AutomationsWindow : Window, IDisposable
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
-        ImGui.TextColored(UiTheme.SectionHeader, "Designs (one is picked at random when several match)");
+        ImGui.TextColored(UiTheme.SectionHeader, rule.Mode == AutomationRuleMode.Disable
+            ? "Designs to disable (every matching design is disabled, not just one)"
+            : "Designs (one is picked at random when several match)");
         ImGui.Spacing();
         if (rule.DesignIds.Count > 0)
         {
@@ -612,6 +647,7 @@ public sealed class AutomationsWindow : Window, IDisposable
             case AutomationConditionType.Group: DrawGroupConditionEditor(condition); break;
             case AutomationConditionType.OnlineStatus: DrawOnlineStatusConditionEditor(condition); break;
             case AutomationConditionType.ActivePersona: DrawActivePersonaConditionEditor(condition); break;
+            case AutomationConditionType.Equipment: DrawEquipmentConditionEditor(condition); break;
         }
     }
 
@@ -925,6 +961,60 @@ public sealed class AutomationsWindow : Window, IDisposable
             if (on) condition.PersonaIds.Add(personaId); else condition.PersonaIds.Remove(personaId);
             plugin.Configuration.Save();
         }
+    }
+
+    private void DrawEquipmentConditionEditor(AutomationCondition condition)
+    {
+        var slotLabel = DesignDetailView.SlotDisplay.First(s => s.Slot == condition.EquipmentSlot).Label;
+        using (var combo = ImRaii.Combo("##equipmentSlot", slotLabel))
+        {
+            if (combo.Success)
+            {
+                foreach (var (slot, label) in DesignDetailView.SlotDisplay)
+                {
+                    if (ImGui.Selectable(label, slot == condition.EquipmentSlot))
+                    {
+                        condition.EquipmentSlot = slot;
+                        plugin.Configuration.Save();
+                    }
+                }
+            }
+        }
+
+        if (ImGui.RadioButton("Occupied", condition.EquipmentMode == EquipmentConditionMode.Occupied))
+        {
+            condition.EquipmentMode = EquipmentConditionMode.Occupied;
+            plugin.Configuration.Save();
+        }
+        ImGui.SameLine();
+        if (ImGui.RadioButton("Empty", condition.EquipmentMode == EquipmentConditionMode.Empty))
+        {
+            condition.EquipmentMode = EquipmentConditionMode.Empty;
+            plugin.Configuration.Save();
+        }
+
+        if (condition.EquipmentMode != EquipmentConditionMode.Occupied)
+            return;
+
+        ImGui.TextDisabled("Leave empty to match any item.");
+        Pills.DrawRemovableRow(condition.EquipmentItemIds, plugin.GameData.ResolveItemName, id =>
+        {
+            condition.EquipmentItemIds.Remove(id);
+            plugin.Configuration.Save();
+        });
+
+        if (ImGui.Button("Add Current Item"))
+        {
+            var current = plugin.GearImport.GetLiveEquipmentForPreview().Equipment
+                .FirstOrDefault(s => s.Slot == condition.EquipmentSlot);
+            if (current != null && !GameDataService.IsEmptySlotItem(current.ItemId) && !condition.EquipmentItemIds.Contains(current.ItemId))
+            {
+                condition.EquipmentItemIds.Add(current.ItemId);
+                plugin.Configuration.Save();
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Adds whatever's currently equipped in the selected slot.");
     }
 
     private void DrawAddDesignButton(AutomationRule rule)
