@@ -434,7 +434,11 @@ public sealed class GallerySharingService
         {
             Plugin.Log.Warning(ex, "Failed to re-encode {Path} for bundle; storing the original.", path);
             try { result = (File.ReadAllBytes(path), Path.GetExtension(path)); }
-            catch { return null; }
+            catch (Exception rawEx)
+            {
+                Plugin.Log.Warning(rawEx, "Failed to read {Path} raw for bundle; skipping it.", path);
+                return null;
+            }
         }
 
         // Keep each bundled image within the same per-image limit we enforce on import.

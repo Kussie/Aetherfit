@@ -425,7 +425,7 @@ public partial class MainWindow
                 if (plugin.Configuration.GetVariantInfo(id) is { } variant)
                     DrawVariantSection(id, variant);
 
-                var childVariants = plugin.Configuration.GetVariantsOf(id).Select(kv => kv.Key).ToList();
+                var childVariants = plugin.Configuration.GetVariantsOf(id).ToList();
                 if (childVariants.Count > 0)
                     DrawVariantsOfSection(childVariants);
 

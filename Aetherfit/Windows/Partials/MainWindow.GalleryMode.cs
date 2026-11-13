@@ -51,7 +51,6 @@ public partial class MainWindow
     private bool cachedSimpleGlamourSwitcherEnabled = true;
     private int favouriteVersion;
     private int cachedFavouriteVersion = -1;
-    private int variantVersion;
     private int cachedVariantVersion = -1;
     private bool cachedUnstackVariants;
     private int hiddenVersion;
@@ -292,7 +291,7 @@ public partial class MainWindow
         cachedSimpleGlamourSwitcherEnabled != plugin.Configuration.SimpleGlamourSwitcherEnabled ||
         cachedFavouriteVersion != favouriteVersion ||
         cachedHiddenVersion != hiddenVersion ||
-        cachedVariantVersion != variantVersion ||
+        cachedVariantVersion != plugin.Configuration.DesignVariantsVersion ||
         cachedUnstackVariants != coverUnstackVariants;
 
     // Bumped every time RebuildGalleryCache actually runs, regardless of why (filter/sort/generation/...
@@ -322,7 +321,7 @@ public partial class MainWindow
         cachedSimpleGlamourSwitcherEnabled = plugin.Configuration.SimpleGlamourSwitcherEnabled;
         cachedFavouriteVersion = favouriteVersion;
         cachedHiddenVersion = hiddenVersion;
-        cachedVariantVersion = variantVersion;
+        cachedVariantVersion = plugin.Configuration.DesignVariantsVersion;
         cachedUnstackVariants = coverUnstackVariants;
     }
 
@@ -693,7 +692,7 @@ public partial class MainWindow
     private List<DesignLeaf> GetVisibleVariantsFor(Guid parentId)
     {
         var result = new List<DesignLeaf>();
-        foreach (var (variantId, _) in plugin.Configuration.GetVariantsOf(parentId))
+        foreach (var variantId in plugin.Configuration.GetVariantsOf(parentId))
         {
             if (!filterHiddenOnly && plugin.Configuration.HiddenDesigns.Contains(variantId))
                 continue;

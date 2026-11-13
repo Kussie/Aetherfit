@@ -887,8 +887,30 @@ public class Configuration : IPluginConfiguration
 
     public VariantInfo? GetVariantInfo(Guid id) => DesignVariants.TryGetValue(id, out var v) ? v : null;
 
-    public IEnumerable<KeyValuePair<Guid, VariantInfo>> GetVariantsOf(Guid parentId)
-        => DesignVariants.Where(kv => kv.Value.ParentId == parentId);
+    // Bumped on every DesignVariants mutation (below) - the single source of truth other caches (e.g.
+    // Gallery's variant-stacking cache) key their own invalidation off, instead of each mutation site
+    // having to remember to bump its own separate counter.
+    public int DesignVariantsVersion { get; private set; }
+
+    private Dictionary<Guid, List<Guid>>? variantsByParentCache;
+    private int cachedVariantsByParentVersion = -1;
+
+    public IReadOnlyList<Guid> GetVariantsOf(Guid parentId)
+    {
+        if (variantsByParentCache == null || cachedVariantsByParentVersion != DesignVariantsVersion)
+        {
+            var map = new Dictionary<Guid, List<Guid>>();
+            foreach (var (id, info) in DesignVariants)
+            {
+                if (!map.TryGetValue(info.ParentId, out var list))
+                    map[info.ParentId] = list = new List<Guid>();
+                list.Add(id);
+            }
+            variantsByParentCache = map;
+            cachedVariantsByParentVersion = DesignVariantsVersion;
+        }
+        return variantsByParentCache.TryGetValue(parentId, out var variants) ? variants : Array.Empty<Guid>();
+    }
 
     public void SetVariantParent(Guid id, Guid parentId, bool inheritTagsAndDescription = true, bool inheritGear = false)
     {
@@ -898,12 +920,14 @@ public class Configuration : IPluginConfiguration
             InheritTagsAndDescription = inheritTagsAndDescription,
             InheritGear = inheritGear,
         };
+        DesignVariantsVersion++;
         ApplyVariantTagDescriptionFallback(id);
     }
 
     public void RemoveVariant(Guid id)
     {
         DesignVariants.Remove(id);
+        DesignVariantsVersion++;
         ApplyVariantTagDescriptionFallback(id);
     }
 

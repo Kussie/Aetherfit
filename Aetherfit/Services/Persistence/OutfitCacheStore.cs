@@ -83,7 +83,8 @@ public sealed class OutfitCacheStore
         }
     }
 
-    // Called after a refresh replaces the cache or tags are written into it — not on ordinary config saves.
+    // Called after a refresh replaces the cache — not on ordinary config saves (tag writes only go
+    // through Configuration.Save(), never this).
     public void Save()
     {
         try

@@ -351,11 +351,11 @@ public sealed class GlamourerService : IDisposable
     // leaving every other slot untouched - same relay shape as everything else above, just with a
     // narrower mutation.
     public bool ApplySingleEquipmentSlot(Guid designNativeId, CachedEquipmentSlot slotData, string label)
-        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-slot",
+        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-equipment-slot",
             state => GlamourerJsonSchema.ApplySingleSlot(state, slotData), state => ApplyEquipmentState(state));
 
     public bool ApplySingleBonusItem(Guid designNativeId, CachedBonusItem bonusData, string label)
-        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-slot",
+        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-bonus-item",
             state => GlamourerJsonSchema.ApplySingleBonusItem(state, bonusData), state => ApplyEquipmentState(state));
 
     // Un-wear counterpart to ApplySingleEquipmentSlot/ApplySingleBonusItem - uses SetItem/SetBonusItem
@@ -400,7 +400,7 @@ public sealed class GlamourerService : IDisposable
         => InvokeOwnChange(() => applyState.Invoke(state, objectIndex, 0, ApplyFlag.Customization));
 
     public bool ApplySingleCustomization(Guid designNativeId, CachedCustomization customization, string label)
-        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-slot",
+        => RelayApply(designNativeId, label, quiet: false, providerLabel: "single-customization",
             state => GlamourerJsonSchema.ApplySingleCustomization(state, customization), state => ApplyCustomizationState(state));
 
     private static CachedOutfit ParseOutfit(JObject j)

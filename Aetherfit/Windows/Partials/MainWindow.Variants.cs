@@ -56,7 +56,6 @@ public partial class MainWindow
                 plugin.Configuration.SetVariantParent(id, parentId,
                     existing?.InheritTagsAndDescription ?? true, existing?.InheritGear ?? false);
                 plugin.Configuration.Save();
-                variantVersion++;
                 ImGui.CloseCurrentPopup();
             }
         }
@@ -85,7 +84,6 @@ public partial class MainWindow
         {
             plugin.Configuration.RemoveVariant(id);
             plugin.Configuration.Save();
-            variantVersion++;
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Remove variant relationship");
@@ -96,7 +94,6 @@ public partial class MainWindow
             variant.InheritTagsAndDescription = inheritTags;
             plugin.Configuration.ApplyVariantTagDescriptionFallback(id);
             plugin.Configuration.Save();
-            variantVersion++;
         }
 
         var inheritGear = variant.InheritGear;

@@ -623,7 +623,7 @@ public partial class MainWindow
 
     private bool HasMatchingHiddenVariant(Guid parentId)
     {
-        foreach (var (variantId, _) in plugin.Configuration.GetVariantsOf(parentId))
+        foreach (var variantId in plugin.Configuration.GetVariantsOf(parentId))
         {
             if (!plugin.Configuration.HiddenDesigns.Contains(variantId)) continue;
             if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;
@@ -645,7 +645,7 @@ public partial class MainWindow
 
     private bool HasMatchingFavouriteVariant(Guid parentId)
     {
-        foreach (var (variantId, _) in plugin.Configuration.GetVariantsOf(parentId))
+        foreach (var variantId in plugin.Configuration.GetVariantsOf(parentId))
         {
             if (!plugin.Configuration.FavouriteDesigns.Contains(variantId)) continue;
             if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;
@@ -676,7 +676,7 @@ public partial class MainWindow
     private bool HasMatchingFlaggedVariant(Guid parentId)
     {
         var flagged = FlaggedDesignIds();
-        foreach (var (variantId, _) in plugin.Configuration.GetVariantsOf(parentId))
+        foreach (var variantId in plugin.Configuration.GetVariantsOf(parentId))
         {
             if (!flagged.Contains(variantId)) continue;
             if (!designLeafById.TryGetValue(variantId, out var variantLeaf)) continue;

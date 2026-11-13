@@ -211,7 +211,7 @@ public partial class MainWindow
     // suffix is drawn after the row's own label (e.g. Most Worn's "— N×") - never on nested variants.
     private void DrawDesignLeafWithVariants(DesignLeaf design, int depth, bool consumeReveal = true, string? suffix = null)
     {
-        var variantIds = plugin.Configuration.GetVariantsOf(design.Id).Select(kv => kv.Key).ToList();
+        var variantIds = plugin.Configuration.GetVariantsOf(design.Id);
         var hasVariants = variantIds.Count > 0;
 
         if (consumeReveal && hasVariants && revealDesignVariantParent == design.Id)

@@ -485,6 +485,15 @@ public partial class MainWindow : Window, IDisposable
         plugin.Configuration.HiddenDesigns.RemoveWhere(id => !validIds.Contains(id));
         CleanupStaleLayers(validIds);
 
+        // DesignIdentityMap only ever grows otherwise (Configuration.cs) - the value, not the key, is
+        // the Aetherfit-owned guid; the key is the provider's own native id.
+        foreach (var map in plugin.Configuration.DesignIdentityMap.Values)
+        {
+            var staleNativeIds = map.Where(kv => !validIds.Contains(kv.Value)).Select(kv => kv.Key).ToList();
+            foreach (var nativeId in staleNativeIds)
+                map.Remove(nativeId);
+        }
+
         // Nothing else sweeps per-character references (last-worn bookkeeping, persona assignments).
         foreach (var settings in plugin.Configuration.CharacterLoginSettings.Values)
         {
@@ -509,7 +518,7 @@ public partial class MainWindow : Window, IDisposable
             .Select(kv => kv.Key)
             .ToList();
         foreach (var stale in staleVariants)
-            plugin.Configuration.DesignVariants.Remove(stale);
+            plugin.Configuration.RemoveVariant(stale);
 
         // Every surviving variant's Description/Tags need to reflect inheritance before the UI reads
         // them this frame - the per-design overlay in OnFrameworkUpdate only ever sets a design's own
