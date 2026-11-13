@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Glamourer.Api.Enums;
 
 namespace Aetherfit.Services.Designs;
@@ -51,8 +52,13 @@ public sealed class RestoreSequenceService
             return;
 
         // Read-only lookup on purpose: don't create/save settings from an event firing every zone.
-        if (!plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings)
-            || settings.AutomationsEnabled)
+        if (!plugin.Configuration.CharacterLoginSettings.TryGetValue(Plugin.PlayerState.ContentId, out var settings))
+            return;
+
+        // Only a Territory-conditioned automation rule could genuinely conflict with this - Automations
+        // being enabled for an unrelated reason (e.g. an Equipment rule) shouldn't block a plain reapply.
+        if (settings.AutomationsEnabled
+            && settings.AutomationRules.Any(r => r.Enabled && r.Conditions.Any(c => c.Type == AutomationConditionType.Territory)))
             return;
 
         // An active persona survives zone changes unconditionally - it isn't gated behind
