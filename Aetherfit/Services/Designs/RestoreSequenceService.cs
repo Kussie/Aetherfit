@@ -218,8 +218,6 @@ public sealed class RestoreSequenceService
         plugin.Configuration.Save();
 
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
-        if (settings.AutomationsEnabled)
-            return;
 
         // An active persona is reapplied on login independent of the configured LoginAction (even
         // None) - it takes priority over it entirely. ReapplyLastWorn's own persona-priority check does
