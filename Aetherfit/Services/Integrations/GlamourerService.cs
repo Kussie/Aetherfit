@@ -365,8 +365,9 @@ public sealed class GlamourerService : IDisposable
     {
         var apiSlot = Enum.Parse<ApiEquipSlot>(slot.ToString());
         // A zero-length stains list crashes Glamourer's own StainIds handling - always pass both
-        // channels explicitly (0 = no dye) rather than relying on it defaulting a short/empty list.
-        var result = InvokeOwnChange(() => setItem.Invoke(0, apiSlot, 0, new byte[] { 0, 0 }, 0, 0));
+        // channels explicitly (0 = no dye). Must be a List, not a byte[] - Newtonsoft serializes byte[]
+        // as a base64 string, which the IPC's IReadOnlyList<byte> parameter can't deserialize back from.
+        var result = InvokeOwnChange(() => setItem.Invoke(0, apiSlot, 0, new List<byte> { 0, 0 }, 0, 0));
         return ReportSingleSlotRemoval(result, label, quiet);
     }
 
