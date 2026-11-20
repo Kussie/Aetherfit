@@ -33,6 +33,12 @@ public class ConfigWindow : Window, IDisposable
     private string? backupStatusMessage;
     private string? backupError;
 
+    private readonly Dictionary<string, bool> generalSectionOpen = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> behaviorSectionOpen = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> tagSuggestionsSectionOpen = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> commandsKeybindsSectionOpen = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> dataSectionOpen = new(StringComparer.Ordinal);
+
     public ConfigWindow(Plugin plugin)
         : base("Aetherfit Settings###AetherfitConfig")
     {
@@ -59,15 +65,11 @@ public class ConfigWindow : Window, IDisposable
             if (tabBar.Success)
             {
                 DrawTab("General", DrawGeneralTab);
-                DrawTab("Virtual Folders", DrawVirtualFoldersTab);
-                DrawTab("Notifications", DrawNotificationsTab);
-                DrawTab("Design Layers", DrawLayerOptionsTab);
-                DrawTab("Login & Zoning", DrawLoginSection);
+                DrawTab("Behavior", DrawBehaviorTab);
                 DrawTab("Tag Suggestions", DrawTagSuggestionsSection);
-                DrawTab("Commands", DrawCommandsSection);
-                DrawTab("Keybinds", DrawKeybindsSection);
+                DrawTab("Commands & Keybinds", DrawCommandsAndKeybindsTab);
                 DrawTab("Integrations", DrawIntegrationsTab);
-                DrawTab("Backup & Restore", DrawBackupTab);
+                DrawTab("Data", DrawDataTab);
             }
         }
 
@@ -184,6 +186,46 @@ public class ConfigWindow : Window, IDisposable
         ImGui.Separator();
         ImGui.Spacing();
 
+        if (Pills.DrawKeyedSubheader(generalSectionOpen, "Virtual Folders", "Virtual Folders"))
+            DrawVirtualFoldersTab();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (Pills.DrawKeyedSubheader(generalSectionOpen, "About", "About"))
+            DrawAboutSection();
+    }
+
+    private void DrawAboutSection()
+    {
+        using (ImRaii.PushColor(ImGuiCol.Button, UiTheme.KofiBase)
+                   .Push(ImGuiCol.ButtonHovered, UiTheme.KofiHovered)
+                   .Push(ImGuiCol.ButtonActive, UiTheme.KofiActive))
+        {
+            if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Coffee, "Support on Ko-fi", Vector2.Zero))
+                Dalamud.Utility.Util.OpenLink("https://ko-fi.com/kussie");
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Tips and donations are entirely voluntary.");
+
+        ImGui.SameLine();
+        using (ImRaii.PushColor(ImGuiCol.Button, UiTheme.PatreonBase)
+                   .Push(ImGuiCol.ButtonHovered, UiTheme.PatreonHovered)
+                   .Push(ImGuiCol.ButtonActive, UiTheme.PatreonActive))
+        {
+            if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.HandHoldingHeart, "Support on Patreon", Vector2.Zero))
+                Dalamud.Utility.Util.OpenLink("https://www.patreon.com/Kussie");
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Tips and donations are entirely voluntary.");
+
+        ImGui.Spacing();
+        ImGui.TextDisabled($"Aetherfit v{Plugin.Version}");
+    }
+
+    private void DrawDangerZoneSection()
+    {
         if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Trash, "Delete All Images", Vector2.Zero))
             ConfirmDialog.Open(DeleteAllImagesPopupId);
         if (ImGui.IsItemHovered())
@@ -210,34 +252,6 @@ public class ConfigWindow : Window, IDisposable
         {
             plugin.Configuration.ResetWornStatistics();
         }
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        using (ImRaii.PushColor(ImGuiCol.Button, UiTheme.KofiBase)
-                   .Push(ImGuiCol.ButtonHovered, UiTheme.KofiHovered)
-                   .Push(ImGuiCol.ButtonActive, UiTheme.KofiActive))
-        {
-            if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Coffee, "Support on Ko-fi", Vector2.Zero))
-                Dalamud.Utility.Util.OpenLink("https://ko-fi.com/kussie");
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Tips and donations are entirely voluntary.");
-
-        ImGui.SameLine();
-        using (ImRaii.PushColor(ImGuiCol.Button, UiTheme.PatreonBase)
-                   .Push(ImGuiCol.ButtonHovered, UiTheme.PatreonHovered)
-                   .Push(ImGuiCol.ButtonActive, UiTheme.PatreonActive))
-        {
-            if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.HandHoldingHeart, "Support on Patreon", Vector2.Zero))
-                Dalamud.Utility.Util.OpenLink("https://www.patreon.com/Kussie");
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Tips and donations are entirely voluntary.");
-
-        ImGui.Spacing();
-        ImGui.TextDisabled($"Aetherfit v{Plugin.Version}");
     }
 
     private static string VirtualFolderDisplayName(VirtualFolderKind kind) => kind switch
@@ -305,6 +319,24 @@ public class ConfigWindow : Window, IDisposable
                 }
             }
         }
+    }
+
+    private void DrawBehaviorTab()
+    {
+        if (Pills.DrawKeyedSubheader(behaviorSectionOpen, "Notifications", "Notifications"))
+            DrawNotificationsTab();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        if (Pills.DrawKeyedSubheader(behaviorSectionOpen, "Design Layers", "Design Layers"))
+            DrawLayerOptionsTab();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        if (Pills.DrawKeyedSubheader(behaviorSectionOpen, "Login & Zoning", "Login & Zoning"))
+            DrawLoginSection();
     }
 
     private void DrawNotificationsTab()
@@ -503,101 +535,101 @@ public class ConfigWindow : Window, IDisposable
             ImGui.TextDisabled("Suggests tags for a design from its screenshots. Everything runs locally on your CPU;\nno images ever leave your machine.");
             ImGui.Spacing();
 
-            DrawTagModelPicker(store);
-            ImGui.Spacing();
-
-            switch (store.CurrentState)
+            if (Pills.DrawKeyedSubheader(tagSuggestionsSectionOpen, "Model", "Model"))
             {
-                case TagModelStore.State.NotDownloaded:
-                    ImGui.TextWrapped($"Requires a one-time download of ~{FormatMb(store.RemainingDownloadBytes)}.");
-                    if (ImGui.Button("Download model"))
-                        store.StartDownload();
-                    break;
+                DrawTagModelPicker(store);
+                ImGui.Spacing();
 
-                case TagModelStore.State.Downloading:
-                    var label = store.CurrentFile ?? "Preparing...";
-                    ImGui.ProgressBar(store.Progress, new Vector2(-80 * ImGuiHelpers.GlobalScale, 0), label);
-                    ImGui.SameLine();
-                    if (ImGui.Button("Cancel"))
-                        store.CancelDownload();
-                    break;
+                switch (store.CurrentState)
+                {
+                    case TagModelStore.State.NotDownloaded:
+                        ImGui.TextWrapped($"Requires a one-time download of ~{FormatMb(store.RemainingDownloadBytes)}.");
+                        if (ImGui.Button("Download model"))
+                            store.StartDownload();
+                        break;
 
-                case TagModelStore.State.Ready:
-                    ImGui.TextDisabled($"Model ready — {FormatMb(store.TotalBytesOnDisk)} on disk in total.");
+                    case TagModelStore.State.Downloading:
+                        var label = store.CurrentFile ?? "Preparing...";
+                        ImGui.ProgressBar(store.Progress, new Vector2(-80 * ImGuiHelpers.GlobalScale, 0), label);
+                        ImGui.SameLine();
+                        if (ImGui.Button("Cancel"))
+                            store.CancelDownload();
+                        break;
 
-                    var threshold = cfg.TagSuggestionThreshold;
-                    ImGui.PushItemWidth(200 * ImGuiHelpers.GlobalScale);
-                    if (ImGui.SliderFloat("Suggestion confidence", ref threshold, 0.15f, 0.60f, "%.2f"))
-                    {
-                        cfg.TagSuggestionThreshold = threshold;
-                        cfg.Save();
-                    }
-                    ImGui.PopItemWidth();
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Lower values produce more (but noisier) suggestions.");
+                    case TagModelStore.State.Ready:
+                        ImGui.TextDisabled($"Model ready — {FormatMb(store.TotalBytesOnDisk)} on disk in total.");
 
-                    var composites = cfg.TagSuggestionComposites;
-                    if (ImGui.Checkbox("Suggest composite tags", ref composites))
-                    {
-                        cfg.TagSuggestionComposites = composites;
-                        cfg.Save();
-                    }
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Also suggests grouped \"category/type\" tags such as swimsuit/bikini\n"
-                                       + "or japanese clothes/kimono, plus colour/... tags for coloured\n"
-                                       + "garments (e.g. blue bikini also suggests colour/blue).");
-
-                    using (ImRaii.Disabled(!composites))
-                    {
-                        var hideSources = cfg.TagSuggestionHideCompositeSources;
-                        if (ImGui.Checkbox("Hide single tags that make up a composite tag", ref hideSources))
+                        var threshold = cfg.TagSuggestionThreshold;
+                        ImGui.PushItemWidth(200 * ImGuiHelpers.GlobalScale);
+                        if (ImGui.SliderFloat("Suggestion confidence", ref threshold, 0.15f, 0.60f, "%.2f"))
                         {
-                            cfg.TagSuggestionHideCompositeSources = hideSources;
+                            cfg.TagSuggestionThreshold = threshold;
                             cfg.Save();
                         }
+                        ImGui.PopItemWidth();
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Lower values produce more (but noisier) suggestions.");
+
+                        var composites = cfg.TagSuggestionComposites;
+                        if (ImGui.Checkbox("Suggest composite tags", ref composites))
+                        {
+                            cfg.TagSuggestionComposites = composites;
+                            cfg.Save();
+                        }
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Also suggests grouped \"category/type\" tags such as swimsuit/bikini\n"
+                                           + "or japanese clothes/kimono, plus colour/... tags for coloured\n"
+                                           + "garments (e.g. blue bikini also suggests colour/blue).");
+
+                        using (ImRaii.Disabled(!composites))
+                        {
+                            var hideSources = cfg.TagSuggestionHideCompositeSources;
+                            if (ImGui.Checkbox("Hide single tags that make up a composite tag", ref hideSources))
+                            {
+                                cfg.TagSuggestionHideCompositeSources = hideSources;
+                                cfg.Save();
+                            }
+                        }
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("If \"tops/crop top\" is suggested, don't also suggest the plain\n"
+                                           + "\"crop top\" tag it was built from.");
+                        break;
+
+                    case TagModelStore.State.Failed:
+                        ImGui.PushTextWrapPos(0);
+                        ImGui.TextColored(UiTheme.ErrorText, store.LastError ?? "The download failed.");
+                        ImGui.PopTextWrapPos();
+                        if (ImGui.Button("Retry download"))
+                            store.StartDownload();
+                        break;
+                }
+
+                if (store.CurrentState == TagModelStore.State.Ready)
+                {
+                    ImGui.Spacing();
+                    var busy = plugin.TagSuggestions.IsBusy;
+                    using (ImRaii.Disabled(busy))
+                    {
+                        if (MainWindow.IconTextButton(FontAwesomeIcon.Trash, "Delete model files") && ImGui.GetIO().KeyShift)
+                            store.DeleteAll();
                     }
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("If \"tops/crop top\" is suggested, don't also suggest the plain\n"
-                                       + "\"crop top\" tag it was built from.");
-                    break;
-
-                case TagModelStore.State.Failed:
-                    ImGui.PushTextWrapPos(0);
-                    ImGui.TextColored(UiTheme.ErrorText, store.LastError ?? "The download failed.");
-                    ImGui.PopTextWrapPos();
-                    if (ImGui.Button("Retry download"))
-                        store.StartDownload();
-                    break;
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                        ImGui.SetTooltip(busy
+                            ? "A suggestion is currently running."
+                            : "Hold Shift and click to delete all downloaded models and the runtime.");
+                }
             }
 
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
 
-            DrawTagBlacklistEditor();
+            if (Pills.DrawKeyedSubheader(tagSuggestionsSectionOpen, "Tag Blacklist", "Tag Blacklist"))
+                DrawTagBlacklistEditor();
 
             ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-        }
-
-        if (store.CurrentState == TagModelStore.State.Ready)
-        {
-            var busy = plugin.TagSuggestions.IsBusy;
-            using (ImRaii.Disabled(busy))
-            {
-                if (MainWindow.IconTextButton(FontAwesomeIcon.Trash, "Delete model files") && ImGui.GetIO().KeyShift)
-                    store.DeleteAll();
-            }
-            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                ImGui.SetTooltip(busy
-                    ? "A suggestion is currently running."
-                    : "Hold Shift and click to delete all downloaded models and the runtime.");
-            ImGui.SameLine();
-        }
-
-        if (enabled)
             ImGui.TextDisabled("Models by SmilingWolf.");
+        }
     }
 
     private string blacklistAddText = string.Empty;
@@ -693,6 +725,18 @@ public class ConfigWindow : Window, IDisposable
         => bytes >= 1000L * 1024 * 1024
             ? $"{bytes / (1024.0 * 1024.0 * 1024.0):0.0} GB"
             : $"{bytes / (1024.0 * 1024.0):0} MB";
+
+    private void DrawCommandsAndKeybindsTab()
+    {
+        if (Pills.DrawKeyedSubheader(commandsKeybindsSectionOpen, "Keybinds", "Keybinds"))
+            DrawKeybindsSection();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        if (Pills.DrawKeyedSubheader(commandsKeybindsSectionOpen, "Command Reference", "Command Reference"))
+            DrawCommandsSection();
+    }
 
     private static void DrawCommandsSection()
     {
@@ -884,6 +928,18 @@ public class ConfigWindow : Window, IDisposable
             rightAligned: () => plugin.Configuration.HonorificIntegrationEnabled = DrawRightAlignedCheckbox(
                 "Honorific", plugin.Configuration.HonorificIntegrationEnabled, "Let Personas set a Honorific title",
                 honorificInfo.Status == PluginIntegrationStatus.Ok));
+    }
+
+    private void DrawDataTab()
+    {
+        if (Pills.DrawKeyedSubheader(dataSectionOpen, "Backup & Restore", "Backup & Restore"))
+            DrawBackupTab();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        if (Pills.DrawKeyedSubheader(dataSectionOpen, "Danger Zone", "Danger Zone"))
+            DrawDangerZoneSection();
     }
 
     private void DrawBackupTab()
