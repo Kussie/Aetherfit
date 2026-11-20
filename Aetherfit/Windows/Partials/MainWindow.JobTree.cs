@@ -146,6 +146,12 @@ public partial class MainWindow
     // the ## keeps the whole string in the hash.
     private void ForceOpenIfFiltering(string label, bool hasFilter)
     {
+        if (expandAllFoldersRequested || collapseAllFoldersRequested)
+        {
+            ImGui.SetNextItemOpen(expandAllFoldersRequested, ImGuiCond.Always);
+            return;
+        }
+
         if (!hasFilter) return;
 
         var id = ImGui.GetID(label);

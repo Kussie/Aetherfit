@@ -34,6 +34,10 @@ public sealed class AutomationService : IDisposable
     private ulong snoozedContentId;
     private bool snoozeUntilZoneChange;
     private uint? snoozeFromJobId;
+    private bool snoozeUntilGPoseEnds;
+    // True once GPose has actually been observed active since the snooze started - covers starting the
+    // snooze before you've entered GPose yet, not just while already in it.
+    private bool sawGPoseSinceSnoozeStart;
 
     // Loop guard for Equipment conditions - a design applied BY automation changes gear, which could
     // otherwise satisfy a different Equipment rule and chain forever. See DetectEquipmentChange.
@@ -86,7 +90,7 @@ public sealed class AutomationService : IDisposable
         {
             if (!Plugin.PlayerState.IsLoaded || snoozedContentId != Plugin.PlayerState.ContentId)
                 return false;
-            return snoozeUntilZoneChange || snoozeFromJobId != null || SnoozeRemaining != null;
+            return snoozeUntilZoneChange || snoozeFromJobId != null || snoozeUntilGPoseEnds || SnoozeRemaining != null;
         }
     }
 
@@ -102,6 +106,8 @@ public sealed class AutomationService : IDisposable
                 return "next zone change";
             if (snoozeFromJobId != null)
                 return "next job change";
+            if (snoozeUntilGPoseEnds)
+                return "leaving GPose";
             return null;
         }
     }
@@ -133,6 +139,16 @@ public sealed class AutomationService : IDisposable
         snoozeFromJobId = Plugin.PlayerState.ClassJob.RowId;
     }
 
+    public void StartSnoozeUntilGPoseEnds()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+            return;
+        ResetSnoozeState();
+        snoozedContentId = Plugin.PlayerState.ContentId;
+        snoozeUntilGPoseEnds = true;
+        sawGPoseSinceSnoozeStart = Plugin.ClientState.IsGPosing;
+    }
+
     public void CancelSnooze() => ResetSnoozeState();
 
     private void ResetSnoozeState()
@@ -140,6 +156,8 @@ public sealed class AutomationService : IDisposable
         snoozeUntilUtc = null;
         snoozeUntilZoneChange = false;
         snoozeFromJobId = null;
+        snoozeUntilGPoseEnds = false;
+        sawGPoseSinceSnoozeStart = false;
     }
 
     public AutomationService(Plugin plugin)
@@ -168,6 +186,14 @@ public sealed class AutomationService : IDisposable
     {
         if (snoozeFromJobId is { } startJobId && Plugin.PlayerState.IsLoaded && Plugin.PlayerState.ClassJob.RowId != startJobId)
             CancelSnooze();
+
+        if (snoozeUntilGPoseEnds)
+        {
+            if (Plugin.ClientState.IsGPosing)
+                sawGPoseSinceSnoozeStart = true;
+            else if (sawGPoseSinceSnoozeStart)
+                CancelSnooze();
+        }
 
         if (DateTime.UtcNow < nextPollUtc)
             return;
@@ -283,9 +309,9 @@ public sealed class AutomationService : IDisposable
                 || !settings.AutomationsEnabled || !CanApplyNow(settings))
                 return;
 
-            // ApplyDesignById's own "Now wearing" toast (DesignApplyService.ApplyDesignCore) covers
-            // notifying the user here - no separate automation-specific toast needed.
-            plugin.DesignApply.ApplyDesignById(designId);
+            // viaAutomation: true makes ApplyDesignById's own toast (DesignApplyService.ApplyDesignCore)
+            // say "Automations: now wearing ..." instead of the plain wording - no separate toast needed here.
+            plugin.DesignApply.ApplyDesignById(designId, viaAutomation: true);
             // Absorb whatever gear this apply itself changes as the new baseline - see DetectEquipmentChange.
             equipmentSuppressedUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(3);
         }, TimeSpan.FromSeconds(1));
@@ -332,7 +358,7 @@ public sealed class AutomationService : IDisposable
 
             // Absorb whatever gear this itself clears as the new baseline - see DetectEquipmentChange.
             equipmentSuppressedUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(3);
-            Plugin.ShowToast($"Automations: disabled \"{string.Join(", ", designIds.Select(plugin.Configuration.ResolveDesignName))}\"");
+            plugin.ShowToast($"Automations: disabled \"{string.Join(", ", designIds.Select(plugin.Configuration.ResolveDesignName))}\"", ToastCategory.AutomationDisable);
         }, TimeSpan.FromSeconds(1));
     }
 
@@ -453,12 +479,24 @@ public sealed class AutomationService : IDisposable
         AutomationConditionType.Group => c.GroupTypes.Contains(ctx.GroupType),
         AutomationConditionType.OnlineStatus => c.OnlineStatuses.Any(s => (uint)s == ctx.OnlineStatusId),
         AutomationConditionType.ActivePersona => c.PersonaIds.Contains(ctx.ActivePersonaId),
-        AutomationConditionType.Equipment => c.EquipmentMode == EquipmentConditionMode.Empty
-            ? !ctx.CurrentEquipment.TryGetValue(c.EquipmentSlot, out var emptyCheck) || GameDataService.IsEmptySlotItem(emptyCheck)
-            : ctx.CurrentEquipment.TryGetValue(c.EquipmentSlot, out var heldItem) && !GameDataService.IsEmptySlotItem(heldItem)
-                && (c.EquipmentItemIds.Count == 0 || c.EquipmentItemIds.Contains(heldItem)),
+        AutomationConditionType.Equipment => MatchesEquipment(c, ctx),
         _ => false,
     };
+
+    private static bool MatchesEquipment(AutomationCondition c, MatchContext ctx)
+    {
+        if (c.EquipmentSlots.Count == 0)
+            return false;
+
+        bool SlotMatches(EquipmentSlot slot) => c.EquipmentMode == EquipmentConditionMode.Empty
+            ? !ctx.CurrentEquipment.TryGetValue(slot, out var emptyCheck) || GameDataService.IsEmptySlotItem(emptyCheck)
+            : ctx.CurrentEquipment.TryGetValue(slot, out var heldItem) && !GameDataService.IsEmptySlotItem(heldItem)
+                && (c.EquipmentItemIds.Count == 0 || c.EquipmentItemIds.Contains(heldItem));
+
+        return c.EquipmentSlotMatch == EquipmentSlotMatchMode.All
+            ? c.EquipmentSlots.All(SlotMatches)
+            : c.EquipmentSlots.Any(SlotMatches);
+    }
 
     private static bool MatchesHousing(HousingTarget target, GameDataService.HousingState housing) => target.Type switch
     {
@@ -570,6 +608,7 @@ public sealed class AutomationService : IDisposable
         AutomationConditionType.Group => c.GroupTypes.Count == 0,
         AutomationConditionType.OnlineStatus => c.OnlineStatuses.Count == 0,
         AutomationConditionType.ActivePersona => c.PersonaIds.Count == 0,
+        AutomationConditionType.Equipment => c.EquipmentSlots.Count == 0,
         _ => false,
     };
 

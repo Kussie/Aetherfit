@@ -122,7 +122,10 @@ public sealed class AutomationsWindow : Window, IDisposable
         }
     }
 
-    private void DrawHeader(CharacterLoginSettings settings)
+    // Shared by DrawHeader (the full window) and DrawQuickControls (the toolbar's quick-access popup) -
+    // the enable toggle, its disclaimers, the in-duty checkbox, and snooze all make sense standalone
+    // without the rest of the window (status line, Copy Rules).
+    private void DrawEnableAndSnoozeControls(CharacterLoginSettings settings)
     {
         var enabled = settings.AutomationsEnabled;
         if (ImGui.Checkbox("Enable Automations for this character", ref enabled))
@@ -159,6 +162,34 @@ public sealed class AutomationsWindow : Window, IDisposable
             DrawSnoozeControls();
         }
         ImGui.Unindent();
+    }
+
+    // The toolbar's quick-access popup - same enable/snooze controls as the full window, without the
+    // status line or Copy Rules, plus a way to actually reach the full window for editing rules.
+    internal void DrawQuickControls()
+    {
+        if (!Plugin.PlayerState.IsLoaded)
+        {
+            ImGui.TextDisabled("Log in to a character first.");
+            return;
+        }
+
+        var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
+        DrawEnableAndSnoozeControls(settings);
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        if (ImGui.Button("Manage Rules...", new Vector2(-1, 0)))
+        {
+            ImGui.CloseCurrentPopup();
+            Toggle();
+        }
+    }
+
+    private void DrawHeader(CharacterLoginSettings settings)
+    {
+        DrawEnableAndSnoozeControls(settings);
 
         ImGui.Spacing();
         ImGui.TextColored(UiTheme.SectionHeader, "Status:");
@@ -220,6 +251,10 @@ public sealed class AutomationsWindow : Window, IDisposable
             ImGui.SameLine();
             if (ImGui.Button("Until Job Change"))
                 plugin.Automation.StartSnoozeUntilJobChange();
+
+            ImGui.SameLine();
+            if (ImGui.Button("Until GPose Ends"))
+                plugin.Automation.StartSnoozeUntilGPoseEnds();
         }
 
         if (snoozed)
@@ -965,19 +1000,30 @@ public sealed class AutomationsWindow : Window, IDisposable
 
     private void DrawEquipmentConditionEditor(AutomationCondition condition)
     {
-        var slotLabel = DesignDetailView.SlotDisplay.First(s => s.Slot == condition.EquipmentSlot).Label;
-        using (var combo = ImRaii.Combo("##equipmentSlot", slotLabel))
+        ImGui.TextDisabled("Slot(s):");
+        foreach (var (slot, label) in DesignDetailView.SlotDisplay)
         {
-            if (combo.Success)
+            var on = condition.EquipmentSlots.Contains(slot);
+            if (ImGui.Checkbox($"{label}##eqSlot{slot}", ref on))
             {
-                foreach (var (slot, label) in DesignDetailView.SlotDisplay)
-                {
-                    if (ImGui.Selectable(label, slot == condition.EquipmentSlot))
-                    {
-                        condition.EquipmentSlot = slot;
-                        plugin.Configuration.Save();
-                    }
-                }
+                if (on) condition.EquipmentSlots.Add(slot);
+                else condition.EquipmentSlots.Remove(slot);
+                plugin.Configuration.Save();
+            }
+        }
+
+        if (condition.EquipmentSlots.Count > 1)
+        {
+            if (ImGui.RadioButton("Any of these slots", condition.EquipmentSlotMatch == EquipmentSlotMatchMode.Any))
+            {
+                condition.EquipmentSlotMatch = EquipmentSlotMatchMode.Any;
+                plugin.Configuration.Save();
+            }
+            ImGui.SameLine();
+            if (ImGui.RadioButton("All of these slots", condition.EquipmentSlotMatch == EquipmentSlotMatchMode.All))
+            {
+                condition.EquipmentSlotMatch = EquipmentSlotMatchMode.All;
+                plugin.Configuration.Save();
             }
         }
 
@@ -1003,18 +1049,19 @@ public sealed class AutomationsWindow : Window, IDisposable
             plugin.Configuration.Save();
         });
 
-        if (ImGui.Button("Add Current Item"))
+        if (ImGui.Button("Add Current Item(s)"))
         {
-            var current = plugin.GearImport.GetLiveEquipmentForPreview().Equipment
-                .FirstOrDefault(s => s.Slot == condition.EquipmentSlot);
-            if (current != null && !GameDataService.IsEmptySlotItem(current.ItemId) && !condition.EquipmentItemIds.Contains(current.ItemId))
+            var live = plugin.GearImport.GetLiveEquipmentForPreview().Equipment;
+            foreach (var slot in condition.EquipmentSlots)
             {
-                condition.EquipmentItemIds.Add(current.ItemId);
-                plugin.Configuration.Save();
+                var current = live.FirstOrDefault(s => s.Slot == slot);
+                if (current != null && !GameDataService.IsEmptySlotItem(current.ItemId) && !condition.EquipmentItemIds.Contains(current.ItemId))
+                    condition.EquipmentItemIds.Add(current.ItemId);
             }
+            plugin.Configuration.Save();
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Adds whatever's currently equipped in the selected slot.");
+            ImGui.SetTooltip("Adds whatever's currently equipped in each selected slot.");
     }
 
     private void DrawAddDesignButton(AutomationRule rule)

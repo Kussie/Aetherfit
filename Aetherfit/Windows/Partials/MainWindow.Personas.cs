@@ -54,6 +54,8 @@ public partial class MainWindow
         var settings = plugin.Configuration.GetOrCreateLoginSettings(Plugin.PlayerState.ContentId);
 
         ImGui.Spacing();
+        if (expandAllFoldersRequested || collapseAllFoldersRequested)
+            ImGui.SetNextItemOpen(expandAllFoldersRequested, ImGuiCond.Always);
         var sectionOpen = ImGui.TreeNodeEx($"Personas ({settings.Personas.Count})##personasRoot",
             ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
         if (sectionOpen)

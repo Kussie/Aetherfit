@@ -224,7 +224,7 @@ public partial class MainWindow
         // baseDesignId only seeds appearance (see the overlay above) - it shouldn't also carry the
         // base's tags/hidden/favourite/etc. onto every design imported with it as a base.
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Imported \"{name}\" from a design code.");
-        Plugin.ShowToast($"Created \"{name}\"");
+        plugin.ShowToast($"Created \"{name}\"", ToastCategory.Created);
         selectedDesign = newId;
         RefreshDesigns();
         ImGui.CloseCurrentPopup();

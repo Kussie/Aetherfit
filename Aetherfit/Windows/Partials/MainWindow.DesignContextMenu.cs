@@ -55,7 +55,7 @@ public partial class MainWindow
                 Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{result.Error}");
             else
             {
-                Plugin.ShowToast($"Created \"{design.DisplayName} (Copy)\"");
+                plugin.ShowToast($"Created \"{design.DisplayName} (Copy)\"", ToastCategory.Created);
                 RefreshDesigns();
                 selectedDesign = result.DesignId;
             }
@@ -69,7 +69,7 @@ public partial class MainWindow
             {
                 plugin.Configuration.SetVariantParent(result.DesignId!.Value, design.Id);
                 plugin.Configuration.Save();
-                Plugin.ShowToast($"Created \"{design.DisplayName} (Copy)\"");
+                plugin.ShowToast($"Created \"{design.DisplayName} (Copy)\"", ToastCategory.Created);
                 RefreshDesigns();
                 selectedDesign = result.DesignId;
             }

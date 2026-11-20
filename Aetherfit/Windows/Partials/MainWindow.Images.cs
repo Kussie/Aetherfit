@@ -39,7 +39,7 @@ public partial class MainWindow
                 plugin.ScreenshotSetup.Begin(croppedPath =>
                 {
                     plugin.ImageStorage.SetCover(id, croppedPath);
-                    Plugin.ShowToast($"Snapshot saved for \"{plugin.Configuration.ResolveDesignName(id)}\"");
+                    plugin.ShowToast($"Snapshot saved for \"{plugin.Configuration.ResolveDesignName(id)}\"", ToastCategory.Snapshot);
                 });
             return;
         }
@@ -172,7 +172,7 @@ public partial class MainWindow
                         plugin.ScreenshotSetup.Begin(croppedPath =>
                         {
                             plugin.ImageStorage.AddAdditional(id, croppedPath);
-                            Plugin.ShowToast($"Snapshot saved for \"{plugin.Configuration.ResolveDesignName(id)}\"");
+                            plugin.ShowToast($"Snapshot saved for \"{plugin.Configuration.ResolveDesignName(id)}\"", ToastCategory.Snapshot);
                         });
                 }
             }

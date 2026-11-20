@@ -38,6 +38,14 @@ public partial class MainWindow
 
         DrawFilterUi(extraControls: DrawEditModeGroupByControls);
         ImGui.Spacing();
+
+        if (ImGui.Button("Expand All"))
+            expandAllFoldersRequested = true;
+        ImGui.SameLine();
+        if (ImGui.Button("Collapse All"))
+            collapseAllFoldersRequested = true;
+
+        ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
 
@@ -86,7 +94,11 @@ public partial class MainWindow
 
             if (plugin.Configuration.ShowDesignsSection)
             {
-                var designsOpen = ImGui.TreeNodeEx($"Designs ({designsCount})##designsRoot",
+                var forcingAll = expandAllFoldersRequested || collapseAllFoldersRequested;
+                if (forcingAll)
+                    ImGui.SetNextItemOpen(expandAllFoldersRequested, ImGuiCond.Always);
+                const string designsLabel = "##designsRoot";
+                var designsOpen = ImGui.TreeNodeEx($"Designs ({designsCount}){designsLabel}",
                     ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.DefaultOpen);
                 if (designsOpen)
                 {
@@ -101,6 +113,13 @@ public partial class MainWindow
 
                     ImGui.TreePop();
                 }
+                else if (forcingAll && !groupByJob && !groupByTags && !groupBySource)
+                {
+                    // TreeNodeEx only pushes an ID scope for its children when it opens - closed, it
+                    // never happened, so push the same id ourselves before resetting what's underneath.
+                    using var id = ImRaii.PushId($"Designs ({designsCount}){designsLabel}");
+                    ForceFolderTreeState(root, expandAllFoldersRequested);
+                }
             }
 
             if (plugin.Configuration.ShowPersonasSection)
@@ -109,6 +128,8 @@ public partial class MainWindow
 
         // Tree's drawn, so we're done with the one-shot expand request - clear it for next frame.
         expandTreesForFilter = false;
+        expandAllFoldersRequested = false;
+        collapseAllFoldersRequested = false;
 
         // Safety net: if the reveal target's leaf was never actually reached this frame (e.g. it's
         // hidden by an active filter, or the grouped view got switched back on before this ran), don't
@@ -161,6 +182,21 @@ public partial class MainWindow
         }
     }
 
+    // Expand/Collapse All must reset every folder's stored state, not just whatever gets drawn this
+    // frame - a closed folder's children are never visited by the normal recursive draw, so their own
+    // stale state would otherwise resurface once manually reopened later. PushId(name) mirrors
+    // TreeNodeEx's own ID-stack push for children, without actually drawing anything.
+    private static void ForceFolderTreeState(FolderNode node, bool open)
+    {
+        var storage = ImGui.GetStateStorage();
+        foreach (var (name, child) in node.Folders)
+        {
+            storage.SetInt(ImGui.GetID(name), open ? 1 : 0);
+            using var id = ImRaii.PushId(name);
+            ForceFolderTreeState(child, open);
+        }
+    }
+
     private void DrawTree(FolderNode node, bool hasFilter, int depth = 0)
     {
         foreach (var (name, folder) in node.Folders)
@@ -193,6 +229,14 @@ public partial class MainWindow
                         ImGui.ColorConvertFloat4ToU32(TreeGuideColor), ImGuiHelpers.GlobalScale);
 
                 ImGui.TreePop();
+            }
+            else if (expandAllFoldersRequested || collapseAllFoldersRequested)
+            {
+                // TreeNodeEx only pushes an ID scope for its children when it opens - closed, it never
+                // happened, so push the same id ourselves before resetting what's underneath, otherwise
+                // this folder's own children keep whatever stale state they had from before.
+                using var id = ImRaii.PushId(name);
+                ForceFolderTreeState(folder, expandAllFoldersRequested);
             }
         }
 
@@ -302,7 +346,10 @@ public partial class MainWindow
     private bool DrawVirtualFolderHeader(string label, VirtualFolderKind kind)
     {
         var wasCollapsed = plugin.Configuration.CollapsedVirtualFolders.Contains(kind);
-        ImGui.SetNextItemOpen(!wasCollapsed, ImGuiCond.FirstUseEver);
+        if (expandAllFoldersRequested || collapseAllFoldersRequested)
+            ImGui.SetNextItemOpen(expandAllFoldersRequested, ImGuiCond.Always);
+        else
+            ImGui.SetNextItemOpen(!wasCollapsed, ImGuiCond.FirstUseEver);
         var open = ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.SpanAvailWidth);
         if (open == wasCollapsed)
         {

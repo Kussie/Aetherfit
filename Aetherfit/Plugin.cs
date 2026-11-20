@@ -47,10 +47,11 @@ public sealed class Plugin : IDalamudPlugin
     public const string ChatPrefix = "[Aetherfit] ";
 
     // Shared by every in-game toast we show - suppressed in GPose so a background automation (or any
-    // other action) doesn't pop a toast over someone's carefully framed shot.
-    public static void ShowToast(string message)
+    // other action) doesn't pop a toast over someone's carefully framed shot, and per-category so
+    // Settings > Notifications can turn off ones a given player doesn't want.
+    public void ShowToast(string message, ToastCategory category)
     {
-        if (!ClientState.IsGPosing)
+        if (!ClientState.IsGPosing && !Configuration.DisabledToastCategories.Contains(category))
             ToastGui.ShowNormal(message);
     }
 
@@ -199,6 +200,20 @@ public sealed class Plugin : IDalamudPlugin
             // No-op today (ActivePersonaId/DefaultDesignId default via their own field initializers;
             // AssignedDesignIds is simply dropped by Newtonsoft on load, nothing to migrate off of it).
             Configuration.Version = 4;
+            Configuration.Save();
+        }
+
+        if (Configuration.Version < 5)
+        {
+            // Equipment conditions moved from a single slot to a list - fold the old value in once so
+            // already-configured rules keep matching the same slot they always did.
+            foreach (var settings in Configuration.CharacterLoginSettings.Values)
+            foreach (var rule in settings.AutomationRules)
+            foreach (var condition in rule.Conditions)
+                if (condition.Type == AutomationConditionType.Equipment && condition.EquipmentSlots.Count == 0)
+                    condition.EquipmentSlots.Add(condition.EquipmentSlot);
+
+            Configuration.Version = 5;
             Configuration.Save();
         }
 
@@ -673,6 +688,7 @@ public sealed class Plugin : IDalamudPlugin
     public void ToggleTagManagerUi() => TagManagerWindow.Toggle();
     public void ToggleBatchScreenshotUi() => BatchScreenshotWindow.Toggle();
     public void ToggleAutomationsUi() => AutomationsWindow.Toggle();
+    public void DrawAutomationsQuickControls() => AutomationsWindow.DrawQuickControls();
     public void ToggleQuickCreateUi() => QuickCreateWindow.Toggle();
 
     // Ensures it's open rather than toggling, for callers (the Create Design dropdown) that always mean

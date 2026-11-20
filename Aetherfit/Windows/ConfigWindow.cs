@@ -60,6 +60,7 @@ public class ConfigWindow : Window, IDisposable
             {
                 DrawTab("General", DrawGeneralTab);
                 DrawTab("Virtual Folders", DrawVirtualFoldersTab);
+                DrawTab("Notifications", DrawNotificationsTab);
                 DrawTab("Design Layers", DrawLayerOptionsTab);
                 DrawTab("Login & Zoning", DrawLoginSection);
                 DrawTab("Tag Suggestions", DrawTagSuggestionsSection);
@@ -305,6 +306,39 @@ public class ConfigWindow : Window, IDisposable
             }
         }
     }
+
+    private void DrawNotificationsTab()
+    {
+        var cfg = plugin.Configuration;
+        ImGui.TextWrapped("Choose which in-game toast notifications Aetherfit shows. All of these are already "
+            + "hidden automatically while you're in GPose.");
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        foreach (var category in Enum.GetValues<ToastCategory>())
+        {
+            var enabled = !cfg.DisabledToastCategories.Contains(category);
+            if (ImGui.Checkbox(ToastCategoryDisplayName(category), ref enabled))
+            {
+                if (enabled)
+                    cfg.DisabledToastCategories.Remove(category);
+                else
+                    cfg.DisabledToastCategories.Add(category);
+                cfg.Save();
+            }
+        }
+    }
+
+    private static string ToastCategoryDisplayName(ToastCategory category) => category switch
+    {
+        ToastCategory.Worn => "Design worn",
+        ToastCategory.Created => "Design created",
+        ToastCategory.Deleted => "Design deleted",
+        ToastCategory.Snapshot => "Snapshot taken",
+        ToastCategory.AutomationDisable => "Automation disabled a design",
+        _ => category.ToString(),
+    };
 
     private void DrawLayerOptionsTab()
     {

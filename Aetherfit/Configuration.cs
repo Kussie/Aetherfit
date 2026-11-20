@@ -79,6 +79,22 @@ public enum EquipmentConditionMode
     Empty,
 }
 
+// Only meaningful with 2+ slots selected on a condition.
+public enum EquipmentSlotMatchMode
+{
+    Any,
+    All,
+}
+
+public enum ToastCategory
+{
+    Worn,
+    Created,
+    Deleted,
+    Snapshot,
+    AutomationDisable,
+}
+
 public enum SwimState
 {
     Swimming,
@@ -168,10 +184,16 @@ public class AutomationCondition
     // Guid.Empty means Default (no persona active) - same sentinel used elsewhere for it.
     public List<Guid> PersonaIds { get; set; } = new();
 
-    public EquipmentSlot EquipmentSlot { get; set; }
+    public List<EquipmentSlot> EquipmentSlots { get; set; } = new();
+    public EquipmentSlotMatchMode EquipmentSlotMatch { get; set; } = EquipmentSlotMatchMode.Any;
     public EquipmentConditionMode EquipmentMode { get; set; }
     // Occupied only - empty means "any item equipped", same "empty = any" convention as MountIds.
     public List<ulong> EquipmentItemIds { get; set; } = new();
+
+    // Legacy single-slot predecessor of EquipmentSlots - migrated into it once on load (Plugin.cs),
+    // kept only so a condition saved before that migration isn't silently dropped. Never written by
+    // new code.
+    public EquipmentSlot EquipmentSlot { get; set; }
 }
 
 // AutoApply keeps today's silent behavior; Suggest surfaces a dismissible popup instead of applying
@@ -221,6 +243,10 @@ public class Configuration : IPluginConfiguration
     public Dictionary<Guid, List<string>> OutfitAdditionalImages { get; set; } = new();
 
     public bool ShowThumbnailOnHover { get; set; } = true;
+
+    // Which in-game toast categories are turned off. Absence means shown - same "missing = default"
+    // convention as DisabledVirtualFolders.
+    public HashSet<ToastCategory> DisabledToastCategories { get; set; } = new();
 
     public bool ImageViewerFollowsSelection { get; set; } = false;
     public bool DefaultToCoverMode { get; set; } = false;

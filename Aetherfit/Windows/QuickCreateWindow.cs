@@ -60,7 +60,7 @@ public sealed class QuickCreateWindow : Window, IDisposable
                 plugin.ScreenshotSetup.Begin(croppedPath =>
                 {
                     plugin.ImageStorage.SetCover(snapId, croppedPath);
-                    Plugin.ShowToast($"Snapshot saved for \"{plugin.Configuration.ResolveDesignName(snapId)}\"");
+                    plugin.ShowToast($"Snapshot saved for \"{plugin.Configuration.ResolveDesignName(snapId)}\"", ToastCategory.Snapshot);
                 });
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))

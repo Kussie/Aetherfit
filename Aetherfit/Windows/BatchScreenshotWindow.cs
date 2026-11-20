@@ -536,6 +536,6 @@ public sealed class BatchScreenshotWindow : Window, IDisposable
             ? $"Batch screenshot finished: {succeeded} captured, {failed} failed."
             : $"Batch screenshot finished: {succeeded} captured.";
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}{summary}");
-        Plugin.ShowToast(summary);
+        plugin.ShowToast(summary, ToastCategory.Snapshot);
     }
 }

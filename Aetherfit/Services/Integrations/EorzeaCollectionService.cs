@@ -217,7 +217,7 @@ public sealed class EorzeaCollectionService
         {
             // baseDesignId only seeds appearance - it shouldn't also carry the base's tags/hidden/favourite/etc.
             Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Imported \"{name}\" from Eorzea Collection.");
-            Plugin.ShowToast($"Created \"{name}\"");
+            plugin.ShowToast($"Created \"{name}\"", ToastCategory.Created);
             foreach (var warning in warnings)
                 Plugin.ChatGui.PrintError($"{Plugin.ChatPrefix}{warning}");
 

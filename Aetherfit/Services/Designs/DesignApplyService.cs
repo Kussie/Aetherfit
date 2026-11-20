@@ -30,7 +30,7 @@ public sealed class DesignApplyService
         return ApplyResult.Fail(msg);
     }
 
-    public void ApplyDesignById(Guid id, bool recordLastApplied = true)
+    public void ApplyDesignById(Guid id, bool recordLastApplied = true, bool viaAutomation = false)
     {
         var beforeLayers = applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: true);
         var afterLayers = applyingLayer ? new List<Guid>() : PickLayers(id, isBefore: false);
@@ -39,7 +39,7 @@ public sealed class DesignApplyService
         if (!applyingLayer && ResolveBaseLayer(id) is { } baseLayerId)
             beforeLayers.Insert(0, baseLayerId);
 
-        ApplyDesignCore(id, beforeLayers, afterLayers, recordLastApplied: recordLastApplied);
+        ApplyDesignCore(id, beforeLayers, afterLayers, recordLastApplied: recordLastApplied, viaAutomation: viaAutomation);
     }
 
     // A design can only be picked as a Base Design Layer if it still exists and its provider supports
@@ -232,7 +232,7 @@ public sealed class DesignApplyService
     }
 
     private void ApplyDesignCore(Guid id, List<Guid> beforeLayerIds, List<Guid> afterLayerIds, bool quiet = false,
-        bool recordLastApplied = true)
+        bool recordLastApplied = true, bool viaAutomation = false)
     {
         var name = plugin.Configuration.ResolveDesignName(id);
         if (!plugin.Configuration.CachedOutfits.TryGetValue(id, out var outfit))
@@ -306,7 +306,7 @@ public sealed class DesignApplyService
             RecordLastWorn(id, beforeLayerIds, afterLayerIds);
             plugin.Configuration.RecordLastApplied(id, outfit);
             if (!quiet)
-                Plugin.ShowToast($"Now wearing \"{name}\"");
+                plugin.ShowToast(viaAutomation ? $"Automations: now wearing \"{name}\"" : $"Now wearing \"{name}\"", ToastCategory.Worn);
         }
     }
 

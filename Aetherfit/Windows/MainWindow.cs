@@ -74,6 +74,10 @@ public partial class MainWindow : Window, IDisposable
     // Set for the single frame after the filter changes. Pops matching nodes open to show results, but
     // otherwise stays out of the way so folders can still be collapsed.
     private bool expandTreesForFilter;
+    // One-shot, consumed by ForceOpenIfFiltering the same frame they're set - the "Expand All"/"Collapse
+    // All" tree buttons.
+    private bool expandAllFoldersRequested;
+    private bool collapseAllFoldersRequested;
 
     private Guid? revealDesignInTree;
     private List<string>? revealDesignFolderPath;
@@ -627,10 +631,15 @@ public partial class MainWindow : Window, IDisposable
             plugin.ToggleBatchScreenshotUi();
         ImGui.SameLine();
 
-        if (IconTextButton(FontAwesomeIcon.Robot, "Automations", warning: HasAutomationsIssues(),
+        if (IconTextButton(FontAwesomeIcon.Robot, "Automations", dropdown: true, warning: HasAutomationsIssues(),
                 warningTooltip: "Automations has configuration issues - open it for details",
                 suffix: AutomationsStateSuffix()))
-            plugin.ToggleAutomationsUi();
+            ImGui.OpenPopup("##automationsQuickPopup");
+        using (var automationsPopup = ImRaii.Popup("##automationsQuickPopup"))
+        {
+            if (automationsPopup.Success)
+                plugin.DrawAutomationsQuickControls();
+        }
 
         var countText = IsRefreshing && activeRefresh is { } job
             ? $"Loading {job.Index}/{designsCount}..."

@@ -338,7 +338,7 @@ public partial class MainWindow
                     if (result == GlamourerApiEc.Success)
                     {
                         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Deleted \"{details.Name}\" from Glamourer");
-                        Plugin.ShowToast($"Deleted \"{details.Name}\"");
+                        plugin.ShowToast($"Deleted \"{details.Name}\"", ToastCategory.Deleted);
                         selectedDesign = null;
                         RefreshDesigns();
                     }
