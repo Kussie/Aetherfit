@@ -122,6 +122,7 @@ public partial class MainWindow
         }
 
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Imported \"{name}\" into Glamourer.");
+        Plugin.ShowToast($"Created \"{name}\"");
 
         if (deleteFromGlamaholic)
         {
@@ -302,6 +303,7 @@ public partial class MainWindow
         }
 
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Created \"{name}\" from \"{details.Name}\" and currently worn equipment.");
+        Plugin.ShowToast($"Created \"{name}\"");
         selectedDesign = newId;
         RefreshDesigns();
     }
@@ -329,6 +331,7 @@ public partial class MainWindow
         }
 
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Imported \"{name}\" into Glamourer.");
+        Plugin.ShowToast($"Created \"{name}\"");
 
         plugin.Configuration.GearImportOverrides.Remove(id);
         plugin.Configuration.Save();

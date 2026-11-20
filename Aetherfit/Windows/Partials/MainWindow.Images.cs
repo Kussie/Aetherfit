@@ -36,7 +36,11 @@ public partial class MainWindow
                 OpenImagePicker(id);
             ImGui.SameLine();
             if (DrawImageActionTile("coverSnap", FontAwesomeIcon.Camera, "Snap", "Capture from the game", thumb))
-                plugin.ScreenshotSetup.Begin(croppedPath => plugin.ImageStorage.SetCover(id, croppedPath));
+                plugin.ScreenshotSetup.Begin(croppedPath =>
+                {
+                    plugin.ImageStorage.SetCover(id, croppedPath);
+                    Plugin.ShowToast($"Snapshot saved for \"{plugin.Configuration.ResolveDesignName(id)}\"");
+                });
             return;
         }
 
@@ -165,7 +169,11 @@ public partial class MainWindow
                 else
                 {
                     if (DrawImageActionTile("addSnap", FontAwesomeIcon.Camera, "Snap", "Capture from the game", thumb))
-                        plugin.ScreenshotSetup.Begin(croppedPath => plugin.ImageStorage.AddAdditional(id, croppedPath));
+                        plugin.ScreenshotSetup.Begin(croppedPath =>
+                        {
+                            plugin.ImageStorage.AddAdditional(id, croppedPath);
+                            Plugin.ShowToast($"Snapshot saved for \"{plugin.Configuration.ResolveDesignName(id)}\"");
+                        });
                 }
             }
         }

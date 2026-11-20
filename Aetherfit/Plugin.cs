@@ -46,6 +46,14 @@ public sealed class Plugin : IDalamudPlugin
     // Prefix on every chat message we print, so players can tell our output apart.
     public const string ChatPrefix = "[Aetherfit] ";
 
+    // Shared by every in-game toast we show - suppressed in GPose so a background automation (or any
+    // other action) doesn't pop a toast over someone's carefully framed shot.
+    public static void ShowToast(string message)
+    {
+        if (!ClientState.IsGPosing)
+            ToastGui.ShowNormal(message);
+    }
+
     public static readonly string Version = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "unknown";
 
     private const string CommandName = "/aetherfit";

@@ -315,6 +315,7 @@ public partial class MainWindow
 
         // baseDesignId only seeds appearance - it shouldn't also carry the base's tags/hidden/favourite/etc.
         Plugin.ChatGui.Print($"{Plugin.ChatPrefix}Created \"{name}\" from currently worn equipment.");
+        Plugin.ShowToast($"Created \"{name}\"");
         selectedDesign = result.NewId;
         RefreshDesigns();
         DesignCreated?.Invoke(result.NewId);

@@ -57,7 +57,11 @@ public sealed class QuickCreateWindow : Window, IDisposable
         using (ImRaii.Disabled(lastCreatedDesignId == null))
         {
             if (ImGuiComponents.IconButton("qcSnap", FontAwesomeIcon.Camera) && lastCreatedDesignId is { } snapId)
-                plugin.ScreenshotSetup.Begin(croppedPath => plugin.ImageStorage.SetCover(snapId, croppedPath));
+                plugin.ScreenshotSetup.Begin(croppedPath =>
+                {
+                    plugin.ImageStorage.SetCover(snapId, croppedPath);
+                    Plugin.ShowToast($"Snapshot saved for \"{plugin.Configuration.ResolveDesignName(snapId)}\"");
+                });
         }
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(lastCreatedDesignId == null ? "Create a design first" : "Snap - set its cover from the game");

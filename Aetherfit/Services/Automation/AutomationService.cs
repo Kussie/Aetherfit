@@ -283,10 +283,11 @@ public sealed class AutomationService : IDisposable
                 || !settings.AutomationsEnabled || !CanApplyNow(settings))
                 return;
 
+            // ApplyDesignById's own "Now wearing" toast (DesignApplyService.ApplyDesignCore) covers
+            // notifying the user here - no separate automation-specific toast needed.
             plugin.DesignApply.ApplyDesignById(designId);
             // Absorb whatever gear this apply itself changes as the new baseline - see DetectEquipmentChange.
             equipmentSuppressedUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(3);
-            Plugin.ToastGui.ShowNormal($"Automations: now wearing \"{plugin.Configuration.ResolveDesignName(designId)}\"");
         }, TimeSpan.FromSeconds(1));
     }
 
@@ -331,7 +332,7 @@ public sealed class AutomationService : IDisposable
 
             // Absorb whatever gear this itself clears as the new baseline - see DetectEquipmentChange.
             equipmentSuppressedUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(3);
-            Plugin.ToastGui.ShowNormal($"Automations: disabled \"{string.Join(", ", designIds.Select(plugin.Configuration.ResolveDesignName))}\"");
+            Plugin.ShowToast($"Automations: disabled \"{string.Join(", ", designIds.Select(plugin.Configuration.ResolveDesignName))}\"");
         }, TimeSpan.FromSeconds(1));
     }
 

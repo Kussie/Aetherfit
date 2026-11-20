@@ -305,6 +305,8 @@ public sealed class DesignApplyService
         {
             RecordLastWorn(id, beforeLayerIds, afterLayerIds);
             plugin.Configuration.RecordLastApplied(id, outfit);
+            if (!quiet)
+                Plugin.ShowToast($"Now wearing \"{name}\"");
         }
     }
 
