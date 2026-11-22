@@ -410,10 +410,12 @@ public sealed class AutomationService : IDisposable
 
     // See lastSeenEquipment/equipmentSuppressedUntilUtc - only called from the real poll (never from
     // PreviewRule), since a preview click must never mutate this loop-guard bookkeeping.
+    // No baseline yet counts as a change too, or a rule whose gear is already in place when tracking
+    // starts could never fire until the player takes it off and back on again.
     private bool DetectEquipmentChange(IReadOnlyDictionary<EquipmentSlot, ulong> current)
     {
         var suppressed = DateTime.UtcNow < equipmentSuppressedUntilUtc;
-        var changed = !suppressed && lastSeenEquipment != null && !EquipmentEquals(lastSeenEquipment, current);
+        var changed = !suppressed && (lastSeenEquipment == null || !EquipmentEquals(lastSeenEquipment, current));
         lastSeenEquipment = new Dictionary<EquipmentSlot, ulong>(current);
         return changed;
     }

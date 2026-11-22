@@ -635,6 +635,12 @@ public partial class MainWindow : Window, IDisposable
                 warningTooltip: "Automations has configuration issues - open it for details",
                 suffix: AutomationsStateSuffix()))
             ImGui.OpenPopup("##automationsQuickPopup");
+        // Its content is tall enough that ImGui's default mouse-anchored popup placement can flip it
+        // somewhere disconnected from the button - anchor it explicitly instead, like a real dropdown.
+        ImGui.SetNextWindowPos(new Vector2(ImGui.GetItemRectMin().X, ImGui.GetItemRectMax().Y));
+        // Without a starting width, the TextWrapped disclaimers inside wrap to ~0 width on the popup's
+        // first frame (one word per line), flashing tall before it settles - same width as the full window.
+        ImGui.SetNextWindowSize(new Vector2(480 * ImGuiHelpers.GlobalScale, 0), ImGuiCond.Appearing);
         using (var automationsPopup = ImRaii.Popup("##automationsQuickPopup"))
         {
             if (automationsPopup.Success)
