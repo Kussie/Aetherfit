@@ -352,6 +352,10 @@ public class Configuration : IPluginConfiguration
 
     public HashSet<Guid> HiddenDesigns { get; set; } = new();
 
+    // Designs an automation applies that shouldn't count as "worn" - e.g. a piercings accessory an
+    // automation toggles on/off, which would otherwise hijack LastWornDesign. Manual applies still count.
+    public HashSet<Guid> AutomationWornTrackingExcluded { get; set; } = new();
+
     // User-authored associations between a design and one or more ClassJob RowIds. Stored here (not on CachedOutfit)
     // because CachedOutfits is wholly replaced from Glamourer metadata on every Refresh.
     public Dictionary<Guid, List<uint>> DesignJobAssociations { get; set; } = new();

@@ -487,6 +487,7 @@ public partial class MainWindow : Window, IDisposable
 
         plugin.Configuration.FavouriteDesigns.RemoveWhere(id => !validIds.Contains(id));
         plugin.Configuration.HiddenDesigns.RemoveWhere(id => !validIds.Contains(id));
+        plugin.Configuration.AutomationWornTrackingExcluded.RemoveWhere(id => !validIds.Contains(id));
         CleanupStaleLayers(validIds);
 
         // DesignIdentityMap only ever grows otherwise (Configuration.cs) - the value, not the key, is

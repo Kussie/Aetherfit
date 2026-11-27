@@ -48,6 +48,22 @@ public partial class MainWindow
             hiddenVersion++;
         }
 
+        var excludedFromAutomationWorn = plugin.Configuration.AutomationWornTrackingExcluded.Contains(design.Id);
+        if (ImGui.MenuItem(excludedFromAutomationWorn
+                ? "Include in Automation Worn Tracking"
+                : "Exclude from Automation Worn Tracking"))
+        {
+            if (excludedFromAutomationWorn)
+                plugin.Configuration.AutomationWornTrackingExcluded.Remove(design.Id);
+            else
+                plugin.Configuration.AutomationWornTrackingExcluded.Add(design.Id);
+            plugin.Configuration.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("When an Automation rule applies this design, don't count it as \"worn\" - keeps it\n"
+                + "out of Recently Worn/Most Worn and out of what gets reapplied at login or on zone change.\n"
+                + "Applying it yourself still counts as normal.");
+
         if (ImGui.MenuItem("Duplicate"))
         {
             var result = plugin.DesignApply.DuplicateDesign(design.Id);

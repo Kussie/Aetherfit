@@ -303,8 +303,13 @@ public sealed class DesignApplyService
         // opt out via this flag, gating both last-worn and last-applied bookkeeping together.
         if (recordLastApplied)
         {
-            RecordLastWorn(id, beforeLayerIds, afterLayerIds);
-            plugin.Configuration.RecordLastApplied(id, outfit);
+            // A design the user has opted out of automation worn-tracking still applies normally -
+            // only its LastWornDesign/worn-count bookkeeping is skipped, and only when automation-driven.
+            if (!viaAutomation || !plugin.Configuration.AutomationWornTrackingExcluded.Contains(id))
+            {
+                RecordLastWorn(id, beforeLayerIds, afterLayerIds);
+                plugin.Configuration.RecordLastApplied(id, outfit);
+            }
             if (!quiet)
                 plugin.ShowToast(viaAutomation ? $"Automations: now wearing \"{name}\"" : $"Now wearing \"{name}\"", ToastCategory.Worn);
         }
